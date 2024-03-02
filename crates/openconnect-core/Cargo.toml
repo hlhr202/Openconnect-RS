@@ -1,0 +1,15 @@
+[package]
+name = "openconnect-core"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+dotenvy = "0.15.7"
+lazy_static = "1.4.0"
+openconnect-sys = { path = "../openconnect-sys" }
+rustls = { version = "0.23.1", features = ["ring"] }
