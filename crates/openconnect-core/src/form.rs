@@ -4,10 +4,7 @@ use openconnect_sys::{
     OC_FORM_OPT_PASSWORD, OC_FORM_OPT_SELECT, OC_FORM_OPT_TEXT, OC_FORM_OPT_TOKEN,
     OC_FORM_RESULT_CANCELLED, OC_FORM_RESULT_OK,
 };
-use std::{
-    ffi::{CStr, CString},
-    ptr,
-};
+use std::{ffi::CString, ptr};
 
 pub struct FormField {
     pub next: *mut FormField,
@@ -91,6 +88,13 @@ pub unsafe extern "C" fn process_auth_form_cb(
     form: *mut openconnect_sys::oc_auth_form,
 ) -> ::std::os::raw::c_int {
     println!("process_auth_form_cb");
+
+    let user = *USER.clone();
+    let user = CString::new(user).unwrap();
+
+    let password = *PASSWORD.clone();
+    let password = CString::new(password).unwrap();
+
     let vpninfo = privdata as *mut openconnect_info;
     let mut opt = (*form).opts;
     let mut empty = 1;
@@ -139,14 +143,11 @@ pub unsafe extern "C" fn process_auth_form_cb(
                 empty = 0;
             }
             OC_FORM_OPT_TEXT => {
-                println!("OC_FORM_OPT_TEXT");
                 let opt_name = std::ffi::CStr::from_ptr((*opt).name).to_str().unwrap();
-                let user = USER.clone();
-                let user = CString::new(user).unwrap();
-                let mut user = user.into_bytes_with_nul();
+                println!("OC_FORM_OPT_TEXT: {}", opt_name);
 
-                if opt_name == "user" || opt_name == "uname" {
-                    (*opt)._value = user.as_mut_ptr() as *mut i8;
+                if opt_name == "user" || opt_name == "uname" || opt_name == "username" {
+                    (*opt)._value = user.as_ptr() as *mut i8;
                 } else {
                     let value =
                         saved_form_field(vpninfo, (*form).auth_id, (*opt).name, ptr::null_mut());
@@ -168,10 +169,8 @@ pub unsafe extern "C" fn process_auth_form_cb(
             }
             OC_FORM_OPT_PASSWORD => {
                 println!("OC_FORM_OPT_PASSWORD");
-                let password = PASSWORD.clone();
-                let password = CString::new(password).unwrap();
-                let mut password = password.into_bytes_with_nul();
-                (*opt)._value = password.as_mut_ptr() as *mut i8;
+
+                (*opt)._value = password.as_ptr() as *mut i8;
                 empty = 0;
             }
             OC_FORM_OPT_TOKEN => {
@@ -197,7 +196,10 @@ pub unsafe extern "C" fn process_auth_form_cb(
         opt = (*opt).next;
     }
 
-    if empty != 0 {
+    std::mem::forget(user);
+    std::mem::forget(password);
+
+    if empty == 0 {
         LAST_FORM_EMPTY = 1;
     } else if {
         LAST_FORM_EMPTY += 1;
@@ -205,8 +207,11 @@ pub unsafe extern "C" fn process_auth_form_cb(
     } >= 3
     {
         println!("{} consecutive empty forms, aborting loop", LAST_FORM_EMPTY);
+        println!();
         return OC_FORM_RESULT_CANCELLED as i32;
     }
 
+    println!("Submitting form");
+    println!();
     OC_FORM_RESULT_OK as i32
 }

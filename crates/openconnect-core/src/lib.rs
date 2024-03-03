@@ -1,6 +1,7 @@
 #![feature(c_variadic)]
 #![feature(pointer_is_aligned)]
 // #![allow(unused)]
+#![allow(clippy::box_collection)]
 #![allow(clippy::just_underscores_and_digits)]
 
 use std::{
@@ -9,7 +10,7 @@ use std::{
 };
 
 use form::process_auth_form_cb;
-use lazy_static::lazy_static;
+use lazy_static::{initialize, lazy_static};
 use openconnect_sys::openconnect_info;
 
 mod errno;
@@ -81,13 +82,20 @@ lazy_static! {
 }
 
 lazy_static! {
-    pub static ref USER: String = env::var("USER").unwrap_or("".to_string());
-    pub static ref SERVER: String = env::var("SERVER").unwrap_or("".to_string());
-    pub static ref PASSWORD: String = env::var("PASSWORD").unwrap_or("".to_string());
+    // TODO: Optimize memory allocation
+    pub static ref USER: Box<String> = Box::new(env::var("USER").unwrap_or("".to_string()));
+    pub static ref SERVER: Box<String> = Box::new(env::var("SERVER").unwrap_or("".to_string()));
+    pub static ref PASSWORD: Box<String> = Box::new(env::var("PASSWORD").unwrap_or("".to_string()));
 }
 
 pub fn init() {
     dotenvy::from_path(".env.local").unwrap();
+    initialize(&USER);
+    initialize(&SERVER);
+    initialize(&PASSWORD);
+    initialize(&VALIDATE_PEER_CERT);
+    initialize(&PROCESS_AUTH_FORM_CB);
+    initialize(&WRITE_PROCESS);
 }
 
 impl OpenconnectInfo {
@@ -139,10 +147,6 @@ fn test_openconnect_info() {
 
     init();
 
-    println!("PASSWORD: {}", *PASSWORD);
-    println!("USER: {}", *USER);
-    println!("SERVER: {}", *SERVER);
-
     unsafe {
         openconnect_init_ssl();
         let vpninfo = OpenconnectInfo::new();
@@ -158,13 +162,24 @@ fn test_openconnect_info() {
         let hostname = std::ffi::CStr::from_ptr(hostname).to_str().unwrap();
         println!("hostname: {}", hostname);
 
+        println!();
+
         let cookie = openconnect_get_cookie(*vpninfo);
         if cookie.is_null() {
             let ret = openconnect_obtain_cookie(*vpninfo);
-            println!("ret: {}", ret);
+            println!("cookie ret: {}", ret);
         }
 
         let ret = openconnect_make_cstp_connection(*vpninfo);
-        println!("ret: {}", ret);
+        println!("cstp ret: {}", ret);
+
+        // let reconnect_timeout = 300;
+        // loop {
+        //     let ret =
+        //         openconnect_mainloop(*vpninfo, reconnect_timeout, RECONNECT_INTERVAL_MIN as i32);
+        //     if ret == 1 {
+        //         break;
+        //     }
+        // }
     }
 }
