@@ -65,7 +65,7 @@ unsafe extern "C" fn write_process(
     fmt: *const ::std::os::raw::c_char,
     _args: ...
 ) {
-    let fmt = std::ffi::CStr::from_ptr(fmt).to_str().unwrap();
+    let fmt_str = std::ffi::CStr::from_ptr(fmt).to_str().unwrap();
     let level = match _level as u32 {
         openconnect_sys::PRG_ERR => "ERR",
         openconnect_sys::PRG_INFO => "INFO",
@@ -74,14 +74,9 @@ unsafe extern "C" fn write_process(
         _ => "UNKNOWN",
     };
     print!("level: {}, ", level);
-    print!("fmt: {}", fmt);
-    // print args
-    // let mut args = args;
-    // let arg = args.arg::<*mut i8>();
-    // if !arg.is_null() {
-    //     let arg = std::ffi::CStr::from_ptr(arg).to_str().unwrap_or("");
-    //     println!("arg: {}", arg);
-    // }
+    print!("fmt: {}", fmt_str);
+
+    // libc::printf(fmt, _args);
 }
 
 unsafe extern "C" fn stats_fn(privdata: *mut ::std::os::raw::c_void, _stats: *const oc_stats) {
@@ -181,5 +176,13 @@ impl Deref for OpenconnectInfo {
 impl DerefMut for OpenconnectInfo {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.vpninfo
+    }
+}
+
+impl Drop for OpenconnectInfo {
+    fn drop(&mut self) {
+        unsafe {
+            openconnect_sys::openconnect_vpninfo_free(self.vpninfo);
+        }
     }
 }

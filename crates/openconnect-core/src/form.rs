@@ -200,8 +200,8 @@ pub unsafe extern "C" fn process_auth_form_cb(
         opt = (*opt).next;
     }
 
-    std::mem::forget(user);
-    std::mem::forget(password);
+    std::mem::forget(user); // prevent double free
+    std::mem::forget(password); // prevent double free
 
     if empty == 0 {
         LAST_FORM_EMPTY = 1;

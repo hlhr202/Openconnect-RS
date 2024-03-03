@@ -6,12 +6,22 @@ fn main() {
     init_global_statics();
 
     unsafe {
-        env::set_var("GNUTLS_SYSTEM_PRIORITY_FILE", "/dev/null");
+        // env::set_var("GNUTLS_SYSTEM_PRIORITY_FILE", "/dev/null");
+
         let ret = openconnect_init_ssl();
         println!("init ssl ret: {}", ret);
         let vpninfo = OpenconnectInfo::new();
 
         openconnect_set_loglevel(*vpninfo, PRG_INFO as i32);
+
+        // ====== set proxy ======
+        let proxy = env::var("https_proxy").unwrap_or("".to_string());
+        if !proxy.is_empty() {
+            let proxy = std::ffi::CString::new(proxy).unwrap();
+            let ret = openconnect_set_http_proxy(*vpninfo, proxy.as_ptr());
+            println!("set http proxy ret: {}", ret);
+        }
+        // ====== set proxy end ======
 
         let cmd_fd = openconnect_setup_cmd_pipe(*vpninfo);
         println!("cmd_fd: {}", cmd_fd);
@@ -53,7 +63,6 @@ fn main() {
         let server = std::ffi::CString::new(server).unwrap();
         let ret = openconnect_parse_url(*vpninfo, server.as_ptr());
         println!("parse url ret: {}", ret);
-        std::mem::forget(server);
 
         let port = openconnect_get_port(*vpninfo);
         println!("port: {}", port);

@@ -11,5 +11,6 @@ crate-type = ["lib"]
 [dependencies]
 dotenvy = "0.15.7"
 lazy_static = "1.4.0"
+libc = "0.2.153"
 openconnect-sys = { path = "../openconnect-sys" }
 rustls = { version = "0.23.1", features = ["ring"] }

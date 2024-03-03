@@ -256,6 +256,7 @@ version = "0.1.0"
 dependencies = [
  "dotenvy",
  "lazy_static",
+ "libc",
  "openconnect-sys",
  "rustls",
 ]
