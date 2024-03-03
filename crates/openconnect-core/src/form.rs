@@ -110,6 +110,10 @@ pub unsafe extern "C" fn process_auth_form_cb(
         println!("Authentication failed: {}", error);
     }
 
+    if !(*form).authgroup_opt.is_null() {
+        // TODO: authgroup
+    }
+
     'loop_opt: while !opt.is_null() {
         if ((*opt).flags & OC_FORM_OPT_IGNORE) != 0 {
             continue 'loop_opt;

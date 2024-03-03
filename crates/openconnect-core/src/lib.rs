@@ -11,7 +11,10 @@ use std::{
 
 use form::process_auth_form_cb;
 use lazy_static::{initialize, lazy_static};
-use openconnect_sys::openconnect_info;
+use openconnect_sys::{
+    oc_stats, openconnect_get_dtls_cipher, openconnect_info, openconnect_setup_tun_device,
+    DEFAULT_VPNCSCRIPT,
+};
 
 mod errno;
 mod form;
@@ -59,43 +62,87 @@ unsafe extern "C" fn validate_peer_cert(
 unsafe extern "C" fn write_process(
     _privdata: *mut ::std::os::raw::c_void,
     _level: ::std::os::raw::c_int,
-    _fmt: *const ::std::os::raw::c_char,
-    ...
+    fmt: *const ::std::os::raw::c_char,
+    _args: ...
 ) {
+    let fmt = std::ffi::CStr::from_ptr(fmt).to_str().unwrap();
+    let level = match _level as u32 {
+        openconnect_sys::PRG_ERR => "ERR",
+        openconnect_sys::PRG_INFO => "INFO",
+        openconnect_sys::PRG_DEBUG => "DEBUG",
+        openconnect_sys::PRG_TRACE => "TRACE",
+        _ => "UNKNOWN",
+    };
+    print!("level: {}, ", level);
+    print!("fmt: {}", fmt);
+    // print args
+    // let mut args = args;
+    // let arg = args.arg::<*mut i8>();
+    // if !arg.is_null() {
+    //     let arg = std::ffi::CStr::from_ptr(arg).to_str().unwrap_or("");
+    //     println!("arg: {}", arg);
+    // }
+}
+
+unsafe extern "C" fn stats_fn(privdata: *mut ::std::os::raw::c_void, _stats: *const oc_stats) {
+    let vpninfo = privdata.cast::<openconnect_info>();
+    let cipher = openconnect_get_dtls_cipher(vpninfo);
+    if !cipher.is_null() {
+        let _dtls = std::ffi::CStr::from_ptr(cipher).to_str().unwrap();
+    }
+
+    // TODO: display stats, dtls
+}
+
+unsafe extern "C" fn setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
+    let vpninfo = privdata.cast::<openconnect_info>();
+    let vpnc_script = DEFAULT_VPNCSCRIPT;
+    let ret = openconnect_setup_tun_device(
+        vpninfo,
+        vpnc_script.as_ptr() as *const i8,
+        std::ptr::null_mut(),
+    );
+    println!("setup_tun_device ret: {}", ret);
 }
 
 lazy_static! {
-    static ref VALIDATE_PEER_CERT: unsafe extern "C" fn(
+    pub static ref VALIDATE_PEER_CERT: unsafe extern "C" fn(
         *mut ::std::os::raw::c_void,
         *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int = validate_peer_cert;
-    static ref PROCESS_AUTH_FORM_CB: unsafe extern "C" fn(
+    pub static ref PROCESS_AUTH_FORM_CB: unsafe extern "C" fn(
         privdata: *mut ::std::os::raw::c_void,
         form: *mut openconnect_sys::oc_auth_form,
     ) -> ::std::os::raw::c_int = process_auth_form_cb;
-    static ref WRITE_PROCESS: unsafe extern "C" fn(
+    pub static ref WRITE_PROCESS: unsafe extern "C" fn(
         *mut ::std::os::raw::c_void,
         ::std::os::raw::c_int,
         *const ::std::os::raw::c_char,
         ...
     ) = write_process;
+    pub static ref STATS_FN: unsafe extern "C" fn(*mut ::std::os::raw::c_void, *const oc_stats) =
+        stats_fn;
+    pub static ref SETUP_TUN_VFN: unsafe extern "C" fn(*mut ::std::os::raw::c_void) = setup_tun_vfn;
 }
 
 lazy_static! {
-    // TODO: Optimize memory allocation
+    // TODO: Optimize memory allocation or avoid using Box
     pub static ref USER: Box<String> = Box::new(env::var("USER").unwrap_or("".to_string()));
     pub static ref SERVER: Box<String> = Box::new(env::var("SERVER").unwrap_or("".to_string()));
     pub static ref PASSWORD: Box<String> = Box::new(env::var("PASSWORD").unwrap_or("".to_string()));
 }
 
-pub fn init() {
+pub fn init_global_statics() {
     dotenvy::from_path(".env.local").unwrap();
     initialize(&USER);
     initialize(&SERVER);
     initialize(&PASSWORD);
+
     initialize(&VALIDATE_PEER_CERT);
     initialize(&PROCESS_AUTH_FORM_CB);
     initialize(&WRITE_PROCESS);
+    initialize(&STATS_FN);
+    initialize(&SETUP_TUN_VFN);
 }
 
 impl OpenconnectInfo {
@@ -134,65 +181,5 @@ impl Deref for OpenconnectInfo {
 impl DerefMut for OpenconnectInfo {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.vpninfo
-    }
-}
-
-#[test]
-fn test_openconnect_info() {
-    use openconnect_sys::{
-        openconnect_get_cookie, openconnect_get_hostname, openconnect_get_port,
-        openconnect_init_ssl, openconnect_mainloop, openconnect_make_cstp_connection,
-        openconnect_obtain_cookie, openconnect_parse_url, openconnect_set_loglevel,
-        openconnect_setup_cmd_pipe, openconnect_setup_dtls, PRG_DEBUG, RECONNECT_INTERVAL_MIN,
-    };
-
-    init();
-
-    unsafe {
-        openconnect_init_ssl();
-        let vpninfo = OpenconnectInfo::new();
-
-        openconnect_set_loglevel(*vpninfo, PRG_DEBUG as i32);
-
-        let cmd_fd = openconnect_setup_cmd_pipe(*vpninfo);
-        println!("cmd_fd: {}", cmd_fd);
-
-        let server = *SERVER.clone();
-        let server = std::ffi::CString::new(server).unwrap();
-        openconnect_parse_url(*vpninfo, server.as_ptr());
-        std::mem::forget(server);
-
-        let port = openconnect_get_port(*vpninfo);
-        println!("port: {}", port);
-
-        let hostname = openconnect_get_hostname(*vpninfo);
-        let hostname = std::ffi::CStr::from_ptr(hostname).to_str().unwrap();
-        println!("hostname: {}", hostname);
-
-        println!();
-
-        let disable_udp = false;
-        if !disable_udp {
-            let ret = openconnect_setup_dtls(*vpninfo, 60);
-            println!("dtls ret: {}", ret);
-        }
-
-        let cookie = openconnect_get_cookie(*vpninfo);
-        if cookie.is_null() {
-            let ret = openconnect_obtain_cookie(*vpninfo);
-            println!("cookie ret: {}", ret);
-        }
-
-        let ret = openconnect_make_cstp_connection(*vpninfo);
-        println!("cstp ret: {}", ret);
-
-        // let reconnect_timeout = 300;
-        // loop {
-        //     let ret =
-        //         openconnect_mainloop(*vpninfo, reconnect_timeout, RECONNECT_INTERVAL_MIN as i32);
-        //     if ret == 1 {
-        //         break;
-        //     }
-        // }
     }
 }
