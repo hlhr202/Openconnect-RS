@@ -18,7 +18,7 @@ mod form;
 
 #[repr(C)]
 pub struct OpenconnectInfo {
-    pub info: *mut openconnect_info,
+    pub vpninfo: *mut openconnect_info,
 }
 
 // struct AcceptCert {
@@ -113,7 +113,7 @@ impl OpenconnectInfo {
             )
         };
 
-        Self { info: vpninfo }
+        Self { vpninfo }
     }
 }
 
@@ -127,13 +127,13 @@ impl Deref for OpenconnectInfo {
     type Target = *mut openconnect_info;
 
     fn deref(&self) -> &Self::Target {
-        &self.info
+        &self.vpninfo
     }
 }
 
 impl DerefMut for OpenconnectInfo {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.info
+        &mut self.vpninfo
     }
 }
 
@@ -141,8 +141,9 @@ impl DerefMut for OpenconnectInfo {
 fn test_openconnect_info() {
     use openconnect_sys::{
         openconnect_get_cookie, openconnect_get_hostname, openconnect_get_port,
-        openconnect_init_ssl, openconnect_make_cstp_connection, openconnect_obtain_cookie,
-        openconnect_parse_url, openconnect_set_loglevel, PRG_DEBUG,
+        openconnect_init_ssl, openconnect_mainloop, openconnect_make_cstp_connection,
+        openconnect_obtain_cookie, openconnect_parse_url, openconnect_set_loglevel,
+        openconnect_setup_cmd_pipe, openconnect_setup_dtls, PRG_DEBUG, RECONNECT_INTERVAL_MIN,
     };
 
     init();
@@ -153,7 +154,13 @@ fn test_openconnect_info() {
 
         openconnect_set_loglevel(*vpninfo, PRG_DEBUG as i32);
 
-        openconnect_parse_url(*vpninfo, SERVER.as_ptr() as *const i8);
+        let cmd_fd = openconnect_setup_cmd_pipe(*vpninfo);
+        println!("cmd_fd: {}", cmd_fd);
+
+        let server = *SERVER.clone();
+        let server = std::ffi::CString::new(server).unwrap();
+        openconnect_parse_url(*vpninfo, server.as_ptr());
+        std::mem::forget(server);
 
         let port = openconnect_get_port(*vpninfo);
         println!("port: {}", port);
@@ -163,6 +170,12 @@ fn test_openconnect_info() {
         println!("hostname: {}", hostname);
 
         println!();
+
+        let disable_udp = false;
+        if !disable_udp {
+            let ret = openconnect_setup_dtls(*vpninfo, 60);
+            println!("dtls ret: {}", ret);
+        }
 
         let cookie = openconnect_get_cookie(*vpninfo);
         if cookie.is_null() {
