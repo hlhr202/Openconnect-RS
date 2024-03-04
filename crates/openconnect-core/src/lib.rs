@@ -16,9 +16,9 @@ use openconnect_sys::{
     DEFAULT_VPNCSCRIPT,
 };
 
+mod cert;
 mod errno;
 mod form;
-mod cert;
 
 #[repr(C)]
 pub struct OpenconnectInfo {

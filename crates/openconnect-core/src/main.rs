@@ -26,6 +26,7 @@ fn main() {
 
         let cmd_fd = openconnect_setup_cmd_pipe(*vpninfo);
         println!("cmd_fd: {}", cmd_fd);
+        libc::fcntl(cmd_fd, libc::F_SETFD, libc::fcntl(cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK);
 
         openconnect_set_stats_handler(*vpninfo, Some(*STATS_FN));
 
@@ -74,6 +75,9 @@ fn main() {
         println!("hostname: {}", hostname);
 
         println!();
+
+        openconnect_set_client_cert(*vpninfo, std::ptr::null(), std::ptr::null());
+        openconnect_set_mca_cert(*vpninfo, std::ptr::null(), std::ptr::null());
 
         let disable_udp = false;
         if disable_udp {
