@@ -6,6 +6,11 @@ fn main() {
     // Tell cargo to look for shared libraries in the specified directory
     println!("cargo:rustc-link-search=native={}/openconnect/.libs", dir);
 
+    // TODO: platform based, for macos, currently only dynamic link is runnable
+    // Should export DYLD_LIBRARY_PATH=/path/to/openconnect/.libs
+    // println!("cargo:rustc-link-search-native={}/openconnect/.libs", dir);
+    println!("cargo:rustc-link-search=dylib={}/openconnect/.libs", dir);
+
     // Tell cargo to tell rustc to link the system bzip2
     // shared library.
     println!("cargo:rustc-link-lib=openconnect");
