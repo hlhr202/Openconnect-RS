@@ -7,6 +7,7 @@ fn main() {
 
     unsafe {
         // env::set_var("GNUTLS_SYSTEM_PRIORITY_FILE", "/dev/null");
+        env::set_var("OPENSSL_CONF", "/dev/null");
 
         let ret = openconnect_init_ssl();
         println!("init ssl ret: {}", ret);
@@ -48,6 +49,7 @@ fn main() {
         println!("protocols: {:?}", protocols);
 
         let selected_protocol = protocols.first().unwrap().as_ref().unwrap();
+        println!("selected protocol: {}", selected_protocol);
         let selected_protocol = std::ffi::CString::new(selected_protocol.as_str()).unwrap();
         let ret = openconnect_set_protocol(*vpninfo, selected_protocol.as_ptr());
         println!("set protocol ret: {}", ret);

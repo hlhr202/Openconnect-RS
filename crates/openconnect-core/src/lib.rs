@@ -18,6 +18,7 @@ use openconnect_sys::{
 
 mod errno;
 mod form;
+mod cert;
 
 #[repr(C)]
 pub struct OpenconnectInfo {
