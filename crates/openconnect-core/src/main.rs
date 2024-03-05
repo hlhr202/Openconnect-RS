@@ -11,7 +11,7 @@ fn main() {
 
         let ret = openconnect_init_ssl();
         println!("init ssl ret: {}", ret);
-        let vpninfo = OpenconnectInfo::new();
+        let vpninfo = OpenconnectCtx::new();
 
         openconnect_set_loglevel(*vpninfo, PRG_INFO as i32);
 

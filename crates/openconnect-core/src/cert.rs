@@ -1,3 +1,4 @@
+use crate::OpenconnectCtx;
 use openconnect_sys::*;
 
 pub static mut ACCEPTED_CERTS: *mut AcceptedCert = std::ptr::null_mut();
@@ -13,7 +14,8 @@ pub unsafe extern "C" fn validate_peer_cert(
     _privdata: *mut ::std::os::raw::c_void,
     _reason: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
-    let vpninfo = _privdata.cast::<openconnect_info>();
+    let ctx = _privdata.cast::<OpenconnectCtx>();
+    let vpninfo = (*ctx).vpninfo;
     let fingerprint = openconnect_get_peer_cert_hash(vpninfo);
     let mut this = ACCEPTED_CERTS;
 

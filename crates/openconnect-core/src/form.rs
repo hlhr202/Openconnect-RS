@@ -1,4 +1,4 @@
-use crate::{errno::EINVAL, PASSWORD, USER};
+use crate::{errno::EINVAL, OpenconnectCtx, PASSWORD, USER};
 use openconnect_sys::{
     oc_form_opt_select, openconnect_info, OC_FORM_OPT_HIDDEN, OC_FORM_OPT_IGNORE,
     OC_FORM_OPT_PASSWORD, OC_FORM_OPT_SELECT, OC_FORM_OPT_TEXT, OC_FORM_OPT_TOKEN,
@@ -88,6 +88,7 @@ pub unsafe extern "C" fn process_auth_form_cb(
     form: *mut openconnect_sys::oc_auth_form,
 ) -> ::std::os::raw::c_int {
     println!("process_auth_form_cb");
+    let ctx = privdata.cast::<OpenconnectCtx>();
 
     let user = *USER.clone();
     let user = CString::new(user).unwrap();
@@ -95,7 +96,7 @@ pub unsafe extern "C" fn process_auth_form_cb(
     let password = *PASSWORD.clone();
     let password = CString::new(password).unwrap();
 
-    let vpninfo = privdata as *mut openconnect_info;
+    let vpninfo = *(*ctx);
     let mut opt = (*form).opts;
     let mut empty = 1;
 

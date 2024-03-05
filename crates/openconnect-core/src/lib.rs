@@ -1,8 +1,5 @@
 #![feature(c_variadic)]
-#![feature(pointer_is_aligned)]
-// #![allow(unused)]
 #![allow(clippy::box_collection)]
-#![allow(clippy::just_underscores_and_digits)]
 
 use std::{
     env,
@@ -11,17 +8,14 @@ use std::{
 
 use form::process_auth_form_cb;
 use lazy_static::{initialize, lazy_static};
-use openconnect_sys::{
-    oc_stats, openconnect_get_dtls_cipher, openconnect_info, openconnect_setup_tun_device,
-    DEFAULT_VPNCSCRIPT,
-};
+use openconnect_sys::*;
 
 mod cert;
 mod errno;
 mod form;
 
 #[repr(C)]
-pub struct OpenconnectInfo {
+pub struct OpenconnectCtx {
     pub vpninfo: *mut openconnect_info,
 }
 
@@ -32,34 +26,6 @@ pub struct OpenconnectInfo {
 //     port: u16,
 // }
 
-// TODO: complete tls implementation
-unsafe extern "C" fn validate_peer_cert(
-    _privdata: *mut ::std::os::raw::c_void,
-    _reason: *const ::std::os::raw::c_char,
-) -> ::std::os::raw::c_int {
-    println!("validate_peer_cert");
-    // let vpninfo = privdata.cast::<openconnect_info>();
-    // let fingerprint = openconnect_get_peer_cert_hash(vpninfo);
-    // let this: Rc<AcceptCert>;
-
-    // TODO: review certificate validation
-    // let mut root_store = RootCertStore::empty();
-    // let der = Der::from_slice(std::slice::from_raw_parts(der, der_size as usize));
-    // let cert = CertificateDer::from(der.to_vec());
-    // root_store.add(cert);
-    // let root_store = Arc::new(root_store);
-
-    // let client_config = ClientConfig::builder()
-    //     .with_root_certificates(root_store.clone())
-    //     .with_no_client_auth();
-
-    // let verifier = WebPkiClientVerifier::builder(root_store).build().unwrap();
-
-    // let details = openconnect_get_peer_cert_details(vpninfo);
-
-    0
-}
-
 unsafe extern "C" fn write_process(
     _privdata: *mut ::std::os::raw::c_void,
     _level: ::std::os::raw::c_int,
@@ -68,10 +34,10 @@ unsafe extern "C" fn write_process(
 ) {
     let fmt_str = std::ffi::CStr::from_ptr(fmt).to_str().unwrap();
     let level = match _level as u32 {
-        openconnect_sys::PRG_ERR => "ERR",
-        openconnect_sys::PRG_INFO => "INFO",
-        openconnect_sys::PRG_DEBUG => "DEBUG",
-        openconnect_sys::PRG_TRACE => "TRACE",
+        PRG_ERR => "ERR",
+        PRG_INFO => "INFO",
+        PRG_DEBUG => "DEBUG",
+        PRG_TRACE => "TRACE",
         _ => "UNKNOWN",
     };
     print!("level: {}, ", level);
@@ -81,8 +47,8 @@ unsafe extern "C" fn write_process(
 }
 
 unsafe extern "C" fn stats_fn(privdata: *mut ::std::os::raw::c_void, _stats: *const oc_stats) {
-    let vpninfo = privdata.cast::<openconnect_info>();
-    let cipher = openconnect_get_dtls_cipher(vpninfo);
+    let ctx = privdata.cast::<OpenconnectCtx>();
+    let cipher = openconnect_get_dtls_cipher(*(*ctx));
     if !cipher.is_null() {
         let _dtls = std::ffi::CStr::from_ptr(cipher).to_str().unwrap();
     }
@@ -91,10 +57,10 @@ unsafe extern "C" fn stats_fn(privdata: *mut ::std::os::raw::c_void, _stats: *co
 }
 
 unsafe extern "C" fn setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
-    let vpninfo = privdata.cast::<openconnect_info>();
+    let ctx = privdata.cast::<OpenconnectCtx>();
     let vpnc_script = DEFAULT_VPNCSCRIPT;
     let ret = openconnect_setup_tun_device(
-        vpninfo,
+        *(*ctx),
         vpnc_script.as_ptr() as *const i8,
         std::ptr::null_mut(),
     );
@@ -102,10 +68,6 @@ unsafe extern "C" fn setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
 }
 
 lazy_static! {
-    pub static ref VALIDATE_PEER_CERT: unsafe extern "C" fn(
-        *mut ::std::os::raw::c_void,
-        *const ::std::os::raw::c_char,
-    ) -> ::std::os::raw::c_int = validate_peer_cert;
     pub static ref PROCESS_AUTH_FORM_CB: unsafe extern "C" fn(
         privdata: *mut ::std::os::raw::c_void,
         form: *mut openconnect_sys::oc_auth_form,
@@ -134,39 +96,52 @@ pub fn init_global_statics() {
     initialize(&SERVER);
     initialize(&PASSWORD);
 
-    initialize(&VALIDATE_PEER_CERT);
     initialize(&PROCESS_AUTH_FORM_CB);
     initialize(&WRITE_PROCESS);
     initialize(&STATS_FN);
     initialize(&SETUP_TUN_VFN);
 }
 
-impl OpenconnectInfo {
+impl OpenconnectCtx {
+    unsafe extern "C" fn validate_peer_cert(
+        _privdata: *mut ::std::os::raw::c_void,
+        _reason: *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int {
+        println!("validate_peer_cert");
+        0
+    }
+
     pub fn new() -> Self {
         let useragent = "AnyConnect-compatible OpenConnect VPN Agent";
 
+        let mut instance = Self {
+            vpninfo: std::ptr::null_mut(),
+        };
+
         let vpninfo = unsafe {
-            openconnect_sys::openconnect_vpninfo_new(
+            openconnect_vpninfo_new(
                 useragent.as_ptr() as *const i8,
-                Some(*VALIDATE_PEER_CERT),
+                Some(OpenconnectCtx::validate_peer_cert),
                 None,
                 Some(*PROCESS_AUTH_FORM_CB),
                 Some(*WRITE_PROCESS),
-                std::ptr::null_mut(),
+                &instance as *const _ as *mut _,
             )
         };
 
-        Self { vpninfo }
+        instance.vpninfo = vpninfo;
+
+        instance
     }
 }
 
-impl Default for OpenconnectInfo {
+impl Default for OpenconnectCtx {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl Deref for OpenconnectInfo {
+impl Deref for OpenconnectCtx {
     type Target = *mut openconnect_info;
 
     fn deref(&self) -> &Self::Target {
@@ -174,16 +149,16 @@ impl Deref for OpenconnectInfo {
     }
 }
 
-impl DerefMut for OpenconnectInfo {
+impl DerefMut for OpenconnectCtx {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.vpninfo
     }
 }
 
-impl Drop for OpenconnectInfo {
+impl Drop for OpenconnectCtx {
     fn drop(&mut self) {
         unsafe {
-            openconnect_sys::openconnect_vpninfo_free(self.vpninfo);
+            openconnect_vpninfo_free(self.vpninfo);
         }
     }
 }
