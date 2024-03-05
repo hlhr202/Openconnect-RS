@@ -1,28 +1,49 @@
 use std::env;
 use std::path::PathBuf;
 
-#[cfg(not(target_os = "windows"))]
 fn copy_libs() {
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let out_dir = env::var("OUT_DIR").unwrap();
 
+    // copy static library
+    #[cfg(not(target_os = "windows"))]
     std::fs::copy(
         format!("{}/openconnect/.libs/libopenconnect.a", dir),
         format!("{}/libopenconnect.a", out_dir),
     )
     .unwrap();
 
-    std::fs::copy(
-        format!("{}/openconnect/.libs/libopenconnect.so", dir),
-        format!("{}/libopenconnect.so", out_dir),
-    )
-    .unwrap();
+    // copy shared library on linux
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::copy(
+            format!("{}/openconnect/.libs/libopenconnect.so", dir),
+            format!("{}/libopenconnect.so", out_dir),
+        )
+        .unwrap();
 
-    std::fs::copy(
-        format!("{}/openconnect/.libs/libopenconnect.so.5", dir),
-        format!("{}/libopenconnect.so.5", out_dir),
-    )
-    .unwrap();
+        std::fs::copy(
+            format!("{}/openconnect/.libs/libopenconnect.so.5", dir),
+            format!("{}/libopenconnect.so.5", out_dir),
+        )
+        .unwrap();
+    }
+
+    // copy shared library on macos
+    #[cfg(target_os = "macos")]
+    {
+        std::fs::copy(
+            format!("{}/openconnect/.libs/libopenconnect.dylib", dir),
+            format!("{}/libopenconnect.dylib", out_dir),
+        )
+        .unwrap();
+
+        std::fs::copy(
+            format!("{}/openconnect/.libs/libopenconnect.5.dylib", dir),
+            format!("{}/libopenconnect.5.dylib", out_dir),
+        )
+        .unwrap();
+    }
 }
 
 // TODO: check macos
