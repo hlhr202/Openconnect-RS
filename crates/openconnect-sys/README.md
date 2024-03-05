@@ -60,6 +60,6 @@ git clone https://gitlab.com/openconnect/openconnect.git
 ```bash
 cd openconnect
 ./autogen.sh
-./configure --enable-static # probably you need to add --with-vpnc-script=/opt/vpnc-scripts/vpnc-script
+./configure --enable-static --with-openssl # probably you need to add --with-vpnc-script=/opt/vpnc-scripts/vpnc-script
 make
 ```

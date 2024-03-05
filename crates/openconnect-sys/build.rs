@@ -1,19 +1,62 @@
 use std::env;
 use std::path::PathBuf;
 
-fn main() {
+fn copy_libs() {
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    // Tell cargo to look for shared libraries in the specified directory
-    println!("cargo:rustc-link-search=native={}/openconnect/.libs", dir);
+    let out_dir = env::var("OUT_DIR").unwrap();
 
-    // TODO: platform based, for macos, currently only dynamic link is runnable
-    // Should export DYLD_LIBRARY_PATH=/path/to/openconnect/.libs
-    // println!("cargo:rustc-link-search-native={}/openconnect/.libs", dir);
-    println!("cargo:rustc-link-search=dylib={}/openconnect/.libs", dir);
+    // copy static library
+    #[cfg(not(target_os = "windows"))]
+    std::fs::copy(
+        format!("{}/openconnect/.libs/libopenconnect.a", dir),
+        format!("{}/libopenconnect.a", out_dir),
+    )
+    .unwrap();
+
+    // copy shared library on linux
+    #[cfg(target_os = "linux")]
+    {
+        std::fs::copy(
+            format!("{}/openconnect/.libs/libopenconnect.so", dir),
+            format!("{}/libopenconnect.so", out_dir),
+        )
+        .unwrap();
+
+        std::fs::copy(
+            format!("{}/openconnect/.libs/libopenconnect.so.5", dir),
+            format!("{}/libopenconnect.so.5", out_dir),
+        )
+        .unwrap();
+    }
+
+    // copy shared library on macos
+    #[cfg(target_os = "macos")]
+    {
+        std::fs::copy(
+            format!("{}/openconnect/.libs/libopenconnect.dylib", dir),
+            format!("{}/libopenconnect.dylib", out_dir),
+        )
+        .unwrap();
+
+        std::fs::copy(
+            format!("{}/openconnect/.libs/libopenconnect.5.dylib", dir),
+            format!("{}/libopenconnect.5.dylib", out_dir),
+        )
+        .unwrap();
+    }
+}
+
+// TODO: check macos
+fn main() {
+    copy_libs();
+    let out_dir = env::var("OUT_DIR").unwrap();
+    // Tell cargo to look for shared libraries in the specified directory
+    println!("cargo:rustc-link-search={}", out_dir);
 
     // Tell cargo to tell rustc to link the system bzip2
     // shared library.
-    println!("cargo:rustc-link-lib=openconnect");
+    println!("cargo:rustc-link-lib=dylib=openconnect");
+    println!("cargo:rerun-if-changed=wrapper.h");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
