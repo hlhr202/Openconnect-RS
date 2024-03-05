@@ -104,7 +104,7 @@ impl OpenconnectCtx {
 
     pub fn new() -> *mut Self {
         let useragent = "AnyConnect-compatible OpenConnect VPN Agent";
-        let user = "haoran".to_string();
+        let user = env::var("USER").unwrap_or("".to_string());
         let server = env::var("SERVER").unwrap_or("".to_string());
         let password = env::var("PASSWORD").unwrap_or("".to_string());
 
