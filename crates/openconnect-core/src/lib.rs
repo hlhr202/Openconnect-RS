@@ -17,6 +17,9 @@ mod form;
 #[repr(C)]
 pub struct OpenconnectCtx {
     pub vpninfo: *mut openconnect_info,
+    pub user: String,
+    pub server: String,
+    pub password: String,
 }
 
 // struct AcceptCert {
@@ -46,64 +49,39 @@ unsafe extern "C" fn write_process(
     // libc::printf(fmt, _args);
 }
 
-unsafe extern "C" fn stats_fn(privdata: *mut ::std::os::raw::c_void, _stats: *const oc_stats) {
-    let ctx = privdata.cast::<OpenconnectCtx>();
-    let cipher = openconnect_get_dtls_cipher(*(*ctx));
-    if !cipher.is_null() {
-        let _dtls = std::ffi::CStr::from_ptr(cipher).to_str().unwrap();
-    }
-
-    // TODO: display stats, dtls
-}
-
-unsafe extern "C" fn setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
-    let ctx = privdata.cast::<OpenconnectCtx>();
-    let vpnc_script = DEFAULT_VPNCSCRIPT;
-    let ret = openconnect_setup_tun_device(
-        *(*ctx),
-        vpnc_script.as_ptr() as *const i8,
-        std::ptr::null_mut(),
-    );
-    println!("setup_tun_device ret: {}", ret);
-}
-
 lazy_static! {
-    pub static ref PROCESS_AUTH_FORM_CB: unsafe extern "C" fn(
-        privdata: *mut ::std::os::raw::c_void,
-        form: *mut openconnect_sys::oc_auth_form,
-    ) -> ::std::os::raw::c_int = process_auth_form_cb;
     pub static ref WRITE_PROCESS: unsafe extern "C" fn(
         *mut ::std::os::raw::c_void,
         ::std::os::raw::c_int,
         *const ::std::os::raw::c_char,
         ...
     ) = write_process;
-    pub static ref STATS_FN: unsafe extern "C" fn(*mut ::std::os::raw::c_void, *const oc_stats) =
-        stats_fn;
-    pub static ref SETUP_TUN_VFN: unsafe extern "C" fn(*mut ::std::os::raw::c_void) = setup_tun_vfn;
 }
 
 lazy_static! {
     // TODO: Optimize memory allocation or avoid using Box
-    pub static ref USER: Box<String> = Box::new(env::var("USER").unwrap_or("".to_string()));
     pub static ref SERVER: Box<String> = Box::new(env::var("SERVER").unwrap_or("".to_string()));
-    pub static ref PASSWORD: Box<String> = Box::new(env::var("PASSWORD").unwrap_or("".to_string()));
 }
 
 pub fn init_global_statics() {
     dotenvy::from_path(".env.local").unwrap();
-    initialize(&USER);
     initialize(&SERVER);
-    initialize(&PASSWORD);
-
-    initialize(&PROCESS_AUTH_FORM_CB);
     initialize(&WRITE_PROCESS);
-    initialize(&STATS_FN);
-    initialize(&SETUP_TUN_VFN);
 }
 
 impl OpenconnectCtx {
-    unsafe extern "C" fn validate_peer_cert(
+    pub extern "C" fn stats_fn(privdata: *mut ::std::os::raw::c_void, _stats: *const oc_stats) {
+        let ctx = privdata.cast::<OpenconnectCtx>();
+        unsafe {
+            let cipher = openconnect_get_dtls_cipher(*(*ctx));
+            if !cipher.is_null() {
+                let _dtls = std::ffi::CStr::from_ptr(cipher).to_str().unwrap();
+            }
+            // TODO: display stats, dtls
+        }
+    }
+
+    pub extern "C" fn validate_peer_cert(
         _privdata: *mut ::std::os::raw::c_void,
         _reason: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int {
@@ -111,33 +89,50 @@ impl OpenconnectCtx {
         0
     }
 
-    pub fn new() -> Self {
-        let useragent = "AnyConnect-compatible OpenConnect VPN Agent";
+    pub extern "C" fn setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
+        let ctx = privdata.cast::<OpenconnectCtx>();
+        let vpnc_script = DEFAULT_VPNCSCRIPT;
+        unsafe {
+            let ret = openconnect_setup_tun_device(
+                *(*ctx),
+                vpnc_script.as_ptr() as *const i8,
+                std::ptr::null_mut(),
+            );
+            println!("setup_tun_device ret: {}", ret);
+        }
+    }
 
-        let mut instance = Self {
+    pub fn new() -> *mut Self {
+        let useragent = "AnyConnect-compatible OpenConnect VPN Agent";
+        let user = "haoran".to_string();
+        let server = env::var("SERVER").unwrap_or("".to_string());
+        let password = env::var("PASSWORD").unwrap_or("".to_string());
+
+        let instance = Box::new(Self {
             vpninfo: std::ptr::null_mut(),
-        };
+            user,
+            server,
+            password,
+        });
+
+        let instance = Box::into_raw(instance);
 
         let vpninfo = unsafe {
             openconnect_vpninfo_new(
                 useragent.as_ptr() as *const i8,
                 Some(OpenconnectCtx::validate_peer_cert),
                 None,
-                Some(*PROCESS_AUTH_FORM_CB),
+                Some(process_auth_form_cb),
                 Some(*WRITE_PROCESS),
-                &instance as *const _ as *mut _,
+                instance as *mut ::std::os::raw::c_void,
             )
         };
 
-        instance.vpninfo = vpninfo;
+        unsafe {
+            (*instance).vpninfo = vpninfo;
+        }
 
         instance
-    }
-}
-
-impl Default for OpenconnectCtx {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

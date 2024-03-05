@@ -15,7 +15,7 @@ pub unsafe extern "C" fn validate_peer_cert(
     _reason: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
     let ctx = _privdata.cast::<OpenconnectCtx>();
-    let vpninfo = (*ctx).vpninfo;
+    let vpninfo = *(*ctx);
     let fingerprint = openconnect_get_peer_cert_hash(vpninfo);
     let mut this = ACCEPTED_CERTS;
 
