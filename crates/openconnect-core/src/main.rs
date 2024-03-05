@@ -67,7 +67,7 @@ fn main() {
         let ret = openconnect_set_reported_os(vpninfo, os_name.as_ptr());
         println!("set os ret: {}", ret);
 
-        let server = *SERVER.clone();
+        let server = env::var("SERVER").unwrap();
         let server = std::ffi::CString::new(server).unwrap();
         let ret = openconnect_parse_url(vpninfo, server.as_ptr());
         println!("parse url ret: {}", ret);

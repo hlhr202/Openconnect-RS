@@ -1,18 +1,17 @@
 #![feature(c_variadic)]
 #![allow(clippy::box_collection)]
 
-use std::{
-    env,
-    ops::{Deref, DerefMut},
-};
+mod cert;
+mod errno;
+mod form;
 
 use form::process_auth_form_cb;
 use lazy_static::{initialize, lazy_static};
 use openconnect_sys::*;
-
-mod cert;
-mod errno;
-mod form;
+use std::{
+    env,
+    ops::{Deref, DerefMut},
+};
 
 #[repr(C)]
 pub struct OpenconnectCtx {
@@ -21,13 +20,6 @@ pub struct OpenconnectCtx {
     pub server: String,
     pub password: String,
 }
-
-// struct AcceptCert {
-//     next: Rc<AcceptCert>,
-//     fingerprint: String,
-//     host: String,
-//     port: u16,
-// }
 
 unsafe extern "C" fn write_process(
     _privdata: *mut ::std::os::raw::c_void,
@@ -58,14 +50,8 @@ lazy_static! {
     ) = write_process;
 }
 
-lazy_static! {
-    // TODO: Optimize memory allocation or avoid using Box
-    pub static ref SERVER: Box<String> = Box::new(env::var("SERVER").unwrap_or("".to_string()));
-}
-
 pub fn init_global_statics() {
     dotenvy::from_path(".env.local").unwrap();
-    initialize(&SERVER);
     initialize(&WRITE_PROCESS);
 }
 
