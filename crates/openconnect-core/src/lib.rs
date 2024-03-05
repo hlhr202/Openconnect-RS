@@ -5,22 +5,23 @@ mod cert;
 mod errno;
 mod form;
 
-use form::process_auth_form_cb;
-use lazy_static::{initialize, lazy_static};
+use form::{Form, FormTrait};
 use openconnect_sys::*;
 use std::{
     env,
+    ffi::CString,
     ops::{Deref, DerefMut},
 };
 
 #[repr(C)]
 pub struct OpenconnectCtx {
     pub vpninfo: *mut openconnect_info,
-    pub user: String,
-    pub server: String,
-    pub password: String,
+    pub user: CString,
+    pub server: CString,
+    pub password: CString,
 }
 
+#[no_mangle]
 unsafe extern "C" fn write_process(
     _privdata: *mut ::std::os::raw::c_void,
     _level: ::std::os::raw::c_int,
@@ -41,18 +42,17 @@ unsafe extern "C" fn write_process(
     // libc::printf(fmt, _args);
 }
 
-lazy_static! {
-    pub static ref WRITE_PROCESS: unsafe extern "C" fn(
-        *mut ::std::os::raw::c_void,
-        ::std::os::raw::c_int,
-        *const ::std::os::raw::c_char,
-        ...
-    ) = write_process;
+#[no_mangle]
+pub extern "C" fn validate_peer_cert(
+    _privdata: *mut ::std::os::raw::c_void,
+    _reason: *const ::std::os::raw::c_char,
+) -> ::std::os::raw::c_int {
+    println!("validate_peer_cert");
+    0
 }
 
 pub fn init_global_statics() {
     dotenvy::from_path(".env.local").unwrap();
-    initialize(&WRITE_PROCESS);
 }
 
 impl OpenconnectCtx {
@@ -65,14 +65,6 @@ impl OpenconnectCtx {
             }
             // TODO: display stats, dtls
         }
-    }
-
-    pub extern "C" fn validate_peer_cert(
-        _privdata: *mut ::std::os::raw::c_void,
-        _reason: *const ::std::os::raw::c_char,
-    ) -> ::std::os::raw::c_int {
-        println!("validate_peer_cert");
-        0
     }
 
     pub extern "C" fn setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
@@ -89,10 +81,11 @@ impl OpenconnectCtx {
     }
 
     pub fn new() -> *mut Self {
-        let useragent = "AnyConnect-compatible OpenConnect VPN Agent";
-        let user = env::var("USER").unwrap_or("".to_string());
-        let server = env::var("SERVER").unwrap_or("".to_string());
-        let password = env::var("PASSWORD").unwrap_or("".to_string());
+        let useragent =
+            std::ffi::CString::new("AnyConnect-compatible OpenConnect VPN Agent").unwrap();
+        let user = CString::new(env::var("USER").unwrap_or("".to_string())).unwrap();
+        let server = CString::new(env::var("SERVER").unwrap_or("".to_string())).unwrap();
+        let password = CString::new(env::var("PASSWORD").unwrap_or("".to_string())).unwrap();
 
         let instance = Box::new(Self {
             vpninfo: std::ptr::null_mut(),
@@ -103,19 +96,27 @@ impl OpenconnectCtx {
 
         let instance = Box::into_raw(instance);
 
+        let process_auth_form_cb = Form::process_auth_form_cb as *const ();
+        let validate_peer_cert = validate_peer_cert as *const ();
+        let write_process = write_process as *const ();
+
         let vpninfo = unsafe {
+            // TODO: these pointers are weird
             openconnect_vpninfo_new(
-                useragent.as_ptr() as *const i8,
-                Some(OpenconnectCtx::validate_peer_cert),
+                useragent.as_ptr(),
+                std::mem::transmute(validate_peer_cert),
                 None,
-                Some(process_auth_form_cb),
-                Some(*WRITE_PROCESS),
+                std::mem::transmute(process_auth_form_cb),
+                std::mem::transmute(write_process),
                 instance as *mut ::std::os::raw::c_void,
             )
         };
 
         unsafe {
             (*instance).vpninfo = vpninfo;
+            if (*instance).vpninfo.is_null() {
+                panic!("openconnect_vpninfo_new failed");
+            }
         }
 
         instance

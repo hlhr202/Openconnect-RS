@@ -69,7 +69,9 @@ fn main() {
 
         let server = env::var("SERVER").unwrap();
         let server = std::ffi::CString::new(server).unwrap();
+        println!("server: {}", server.to_str().unwrap());
         let ret = openconnect_parse_url(vpninfo, server.as_ptr());
+        std::mem::forget(server);
         println!("parse url ret: {}", ret);
 
         let port = openconnect_get_port(vpninfo);
@@ -99,13 +101,13 @@ fn main() {
         let ret = openconnect_make_cstp_connection(vpninfo);
         println!("cstp ret: {}", ret);
 
-        let reconnect_timeout = 300;
-        'main: loop {
-            let ret =
-                openconnect_mainloop(vpninfo, reconnect_timeout, RECONNECT_INTERVAL_MIN as i32);
-            if ret == 1 {
-                break 'main;
-            }
-        }
+        // let reconnect_timeout = 300;
+        // 'main: loop {
+        //     let ret =
+        //         openconnect_mainloop(vpninfo, reconnect_timeout, RECONNECT_INTERVAL_MIN as i32);
+        //     if ret == 1 {
+        //         break 'main;
+        //     }
+        // }
     }
 }
