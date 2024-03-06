@@ -2,36 +2,44 @@ use openconnect_core::*;
 use openconnect_sys::*;
 use std::env;
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), anyhow::Error> {
     init_global_statics();
+    let username = env::var("USER").unwrap();
+    let password = env::var("PASSWORD").unwrap();
+
+    // send form
+    let form = [("username", username), ("password", password)];
+
+    let response = reqwest::Client::new()
+        .post("https://vpn-sg-anyc.advai.net:8543/auth")
+        .form(&form)
+        .send()
+        .await?;
+
+    let cookie = response
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap();
+
+    println!();
 
     unsafe {
         // env::set_var("GNUTLS_SYSTEM_PRIORITY_FILE", "/dev/null");
         env::set_var("OPENSSL_CONF", "/dev/null");
 
-        let ret = openconnect_init_ssl();
-        println!("init ssl ret: {}", ret);
-        let ctx = OpenconnectCtx::new();
-        let vpninfo = (*ctx).vpninfo;
+        let ctx = OpenconnectCtx::new(); // TODO: optimize when all methods are implemented
+        let vpninfo = **ctx;
+        ctx.set_loglevel(LogLevel::Info);
 
-        openconnect_set_loglevel(vpninfo, PRG_INFO as i32);
-
-        // ====== set proxy ======
         let proxy = env::var("https_proxy").unwrap_or("".to_string());
         if !proxy.is_empty() {
-            let proxy = std::ffi::CString::new(proxy).unwrap();
-            let ret = openconnect_set_http_proxy(vpninfo, proxy.as_ptr());
-            println!("set http proxy ret: {}", ret);
+            ctx.set_http_proxy(&proxy).unwrap();
         }
-        // ====== set proxy end ======
 
-        let cmd_fd = openconnect_setup_cmd_pipe(vpninfo);
-        println!("cmd_fd: {}", cmd_fd);
-        libc::fcntl(
-            cmd_fd,
-            libc::F_SETFD,
-            libc::fcntl(cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK,
-        );
+        ctx.setup_cmd_pipe();
 
         openconnect_set_stats_handler(vpninfo, Some(OpenconnectCtx::stats_fn));
 
@@ -92,22 +100,21 @@ fn main() {
             println!("disable_dtls ret: {}", ret);
         }
 
-        let cookie = openconnect_get_cookie(vpninfo);
-        if cookie.is_null() {
-            let ret = openconnect_obtain_cookie(vpninfo);
-            println!("cookie ret: {}", ret);
+        // ctx.obtain_cookie();
+        let cookie = std::ffi::CString::new(cookie).unwrap();
+        openconnect_set_cookie(vpninfo, cookie.as_ptr());
+        ctx.make_cstp_connection();
+        
+
+        let reconnect_timeout = 300;
+        'main: loop {
+            let ret =
+                openconnect_mainloop(vpninfo, reconnect_timeout, RECONNECT_INTERVAL_MIN as i32);
+            if ret == 1 {
+                break 'main;
+            }
         }
-
-        let ret = openconnect_make_cstp_connection(vpninfo);
-        println!("cstp ret: {}", ret);
-
-        // let reconnect_timeout = 300;
-        // 'main: loop {
-        //     let ret =
-        //         openconnect_mainloop(vpninfo, reconnect_timeout, RECONNECT_INTERVAL_MIN as i32);
-        //     if ret == 1 {
-        //         break 'main;
-        //     }
-        // }
     }
+
+    Ok(())
 }

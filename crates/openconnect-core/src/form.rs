@@ -17,11 +17,11 @@ pub static mut FORM_FIELDS: *mut FormField = std::ptr::null_mut();
 static mut LAST_FORM_EMPTY: i32 = 1;
 
 #[repr(C)]
-pub struct Form;
+pub struct Form {
+    _unused: [u8; 0],
+}
 
-impl FormTrait for Form {}
-
-pub trait FormTrait {
+impl Form {
     unsafe fn saved_form_field(
         _vpninfo: *mut openconnect_info,
         form_id: *mut i8,
@@ -89,147 +89,150 @@ pub trait FormTrait {
     }
 
     // TODO: forward rust string to C
-    unsafe extern "C" fn process_auth_form_cb(
+    #[no_mangle]
+    pub extern "C" fn process_auth_form_cb(
         privdata: *mut ::std::os::raw::c_void,
         form: *mut openconnect_sys::oc_auth_form,
     ) -> ::std::os::raw::c_int {
-        let ctx = privdata.cast::<OpenconnectCtx>();
-        let user = &(*ctx).user;
-        let password = &(*ctx).password;
         println!("process_auth_form_cb");
+        let ctx = OpenconnectCtx::from_c_void(privdata);
+        unsafe {
+            let user = (*ctx).user.clone();
+            let password = (*ctx).password.clone();
 
-        let vpninfo = *(*ctx);
-        let mut opt = (*form).opts;
-        let mut empty = 1;
+            let vpninfo = (*ctx).vpninfo;
+            let mut opt = (*form).opts;
+            let mut empty = 1;
 
-        if (*form).auth_id.is_null() {
-            return -1;
-        }
-
-        if !(*form).error.is_null() {
-            let error: String = std::ffi::CStr::from_ptr((*form).error)
-                .to_string_lossy()
-                .into();
-            println!("Authentication failed: {}", error);
-        }
-
-        if !(*form).authgroup_opt.is_null() {
-            // TODO: authgroup
-            println!("authgroup_opt");
-        }
-
-        'loop_opt: while !opt.is_null() {
-            if ((*opt).flags & OC_FORM_OPT_IGNORE) != 0 {
-                continue 'loop_opt;
+            if (*form).auth_id.is_null() {
+                return -1;
             }
 
-            match (*opt).type_ as u32 {
-                OC_FORM_OPT_SELECT => {
-                    println!("OC_FORM_OPT_SELECT");
-                    let select_opt = opt.cast::<oc_form_opt_select>();
+            if !(*form).error.is_null() {
+                let error: String = std::ffi::CStr::from_ptr((*form).error)
+                    .to_string_lossy()
+                    .into();
+                println!("Authentication failed: {}", error);
+            }
 
-                    if select_opt == (*form).authgroup_opt {
-                        continue 'loop_opt;
-                    }
+            if !(*form).authgroup_opt.is_null() {
+                // TODO: authgroup
+                println!("authgroup_opt");
+            }
 
-                    let opt_response = Form::saved_form_field(
-                        vpninfo,
-                        (*form).auth_id,
-                        (*select_opt).form.name,
-                        ptr::null_mut(),
-                    );
-
-                    if opt_response.is_some()
-                        && Form::match_choice_label(vpninfo, select_opt, &opt_response.unwrap())
-                            == 0
-                    {
-                        // free(opt_response);
-                        continue 'loop_opt;
-                    }
-                    // free(opt_response);
-                    // TODO: if (prompt_opt_select(vpninfo, form, select_opt) < 0)
-                    //     goto error;
-                    empty = 0;
+            'loop_opt: while !opt.is_null() {
+                if ((*opt).flags & OC_FORM_OPT_IGNORE) != 0 {
+                    continue 'loop_opt;
                 }
-                OC_FORM_OPT_TEXT => {
-                    let opt_name = std::ffi::CStr::from_ptr((*opt).name).to_str().unwrap();
-                    println!("OC_FORM_OPT_TEXT: {}", opt_name);
 
-                    if opt_name == "user" || opt_name == "uname" || opt_name == "username" {
-                        openconnect_set_option_value(opt, user.as_ptr());
-                    } else {
-                        let value = Form::saved_form_field(
+                match (*opt).type_ as u32 {
+                    OC_FORM_OPT_SELECT => {
+                        println!("OC_FORM_OPT_SELECT");
+                        let select_opt = opt.cast::<oc_form_opt_select>();
+
+                        if select_opt == (*form).authgroup_opt {
+                            continue 'loop_opt;
+                        }
+
+                        let opt_response = Form::saved_form_field(
                             vpninfo,
                             (*form).auth_id,
-                            (*opt).name,
+                            (*select_opt).form.name,
                             ptr::null_mut(),
                         );
+
+                        if opt_response.is_some()
+                            && Form::match_choice_label(vpninfo, select_opt, &opt_response.unwrap())
+                                == 0
+                        {
+                            // free(opt_response);
+                            continue 'loop_opt;
+                        }
+                        // free(opt_response);
+                        // TODO: if (prompt_opt_select(vpninfo, form, select_opt) < 0)
+                        //     goto error;
+                        empty = 0;
+                    }
+                    OC_FORM_OPT_TEXT => {
+                        let opt_name = std::ffi::CStr::from_ptr((*opt).name).to_str().unwrap();
+                        println!("OC_FORM_OPT_TEXT: {}", opt_name);
+
+                        if opt_name == "user" || opt_name == "uname" || opt_name == "username" {
+                            openconnect_set_option_value(opt, user.as_ptr());
+                        } else {
+                            let value = Form::saved_form_field(
+                                vpninfo,
+                                (*form).auth_id,
+                                (*opt).name,
+                                ptr::null_mut(),
+                            );
+                            if value.is_some() {
+                                let value = CString::new(value.unwrap()).unwrap();
+                                openconnect_set_option_value(opt, value.as_ptr());
+                            }
+
+                            #[allow(unused_labels)]
+                            'prompt: {
+                                // TODO: (*opt)._value = prompt_for_input(vpninfo, form, opt);
+                            }
+                        }
+
+                        if (*opt)._value.is_null() {
+                            println!("No value for {}", opt_name);
+                            // goto error;
+                        } else {
+                            let name_fmt = std::ffi::CString::new("name: %s\n").unwrap();
+                            libc::printf(name_fmt.as_ptr(), (*opt)._value);
+                        }
+
+                        empty = 0;
+                    }
+                    OC_FORM_OPT_PASSWORD => {
+                        println!("OC_FORM_OPT_PASSWORD");
+                        openconnect_set_option_value(opt, password.as_ptr());
+                        let password_fmt = std::ffi::CString::new("password length: %d\n").unwrap();
+                        let password_len = libc::strlen((*opt)._value);
+                        libc::printf(password_fmt.as_ptr(), password_len);
+
+                        empty = 0;
+                    }
+                    OC_FORM_OPT_TOKEN => {
+                        println!("OC_FORM_OPT_TOKEN");
+                        // Nothing to do here
+                        empty = 0;
+                    }
+                    OC_FORM_OPT_HIDDEN => {
+                        println!("OC_FORM_OPT_HIDDEN");
+                        let found = ptr::null_mut::<i32>();
+                        let value =
+                            Form::saved_form_field(vpninfo, (*form).auth_id, (*opt).name, found);
                         if value.is_some() {
                             let value = CString::new(value.unwrap()).unwrap();
                             openconnect_set_option_value(opt, value.as_ptr());
-                        }
-
-                        #[allow(unused_labels)]
-                        'prompt: {
-                            // TODO: (*opt)._value = prompt_for_input(vpninfo, form, opt);
+                        } else if !found.is_null() {
+                            // TODO: goto prompt;
                         }
                     }
-
-                    if (*opt)._value.is_null() {
-                        println!("No value for {}", opt_name);
-                        // goto error;
-                    } else {
-                        let name_fmt = std::ffi::CString::new("name: %s\n").unwrap();
-                        libc::printf(name_fmt.as_ptr(), (*opt)._value);
-                    }
-
-                    empty = 0;
-                }
-                OC_FORM_OPT_PASSWORD => {
-                    println!("OC_FORM_OPT_PASSWORD");
-                    openconnect_set_option_value(opt, password.as_ptr());
-                    let password_fmt = std::ffi::CString::new("password: %s\n").unwrap();
-                    libc::printf(password_fmt.as_ptr(), (*opt)._value);
-
-                    empty = 0;
-                }
-                OC_FORM_OPT_TOKEN => {
-                    println!("OC_FORM_OPT_TOKEN");
-                    // Nothing to do here
-                    empty = 0;
-                }
-                OC_FORM_OPT_HIDDEN => {
-                    println!("OC_FORM_OPT_HIDDEN");
-                    let found = ptr::null_mut::<i32>();
-                    let value =
-                        Form::saved_form_field(vpninfo, (*form).auth_id, (*opt).name, found);
-                    if value.is_some() {
-                        let value = CString::new(value.unwrap()).unwrap();
-                        openconnect_set_option_value(opt, value.as_ptr());
-                    } else if !found.is_null() {
-                        // TODO: goto prompt;
+                    _ => {
+                        continue 'loop_opt;
                     }
                 }
-                _ => {
-                    continue 'loop_opt;
-                }
+
+                opt = (*opt).next;
             }
 
-            opt = (*opt).next;
+            if empty == 0 {
+                LAST_FORM_EMPTY = 1;
+            } else if {
+                LAST_FORM_EMPTY += 1;
+                LAST_FORM_EMPTY
+            } >= 3
+            {
+                println!("{} consecutive empty forms, aborting loop", LAST_FORM_EMPTY);
+                println!();
+                return OC_FORM_RESULT_CANCELLED as i32;
+            }
         }
-
-        if empty == 0 {
-            LAST_FORM_EMPTY = 1;
-        } else if {
-            LAST_FORM_EMPTY += 1;
-            LAST_FORM_EMPTY
-        } >= 3
-        {
-            println!("{} consecutive empty forms, aborting loop", LAST_FORM_EMPTY);
-            println!();
-            return OC_FORM_RESULT_CANCELLED as i32;
-        }
-
         println!("Submitting form");
         println!();
         OC_FORM_RESULT_OK as i32
