@@ -68,7 +68,7 @@ fn main() {
     cc::Build::new()
         .file("c-src/helper.c")
         .include("c-src")
-        .include("openconnect")
+        .include("openconnect") // maybe not needed
         .compile("helper");
 
     // The bindgen::Builder is the main entry point

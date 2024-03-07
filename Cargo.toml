@@ -3,4 +3,5 @@ resolver = "2"
 members = [
     "crates/openconnect-sys",
     "crates/openconnect-core",
+    "crates/openconnect-gui/src-tauri",
 ]

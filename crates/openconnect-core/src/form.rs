@@ -1,6 +1,6 @@
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
-use crate::{errno::EINVAL, OpenconnectCtx};
+use crate::VpnClient;
 use openconnect_sys::{
     oc_form_opt_select, openconnect_info, openconnect_set_option_value, OC_FORM_OPT_HIDDEN,
     OC_FORM_OPT_IGNORE, OC_FORM_OPT_PASSWORD, OC_FORM_OPT_SELECT, OC_FORM_OPT_TEXT,
@@ -23,6 +23,7 @@ pub struct Form {
     _unused: [u8; 0],
 }
 
+// TODO: optimize this
 impl Form {
     unsafe fn saved_form_field(
         _vpninfo: *mut openconnect_info,
@@ -84,10 +85,10 @@ impl Form {
         }
         if partial_matches > 1 {
             println!("Auth choice '{}' is ambiguous", label);
-            -EINVAL
+            -libc::EINVAL
         } else {
             println!("Auth choice '{}' not found", label);
-            -EINVAL
+            -libc::EINVAL
         }
     }
 
@@ -98,17 +99,14 @@ impl Form {
         form: *mut openconnect_sys::oc_auth_form,
     ) -> ::std::os::raw::c_int {
         println!("process_auth_form_cb");
-        let ctx = OpenconnectCtx::from_c_void(privdata);
+        let client = VpnClient::from_c_void(privdata);
         unsafe {
-            let user = CString::new((*ctx).user.clone()).unwrap();
-            let password = CString::new((*ctx).password.clone()).unwrap();
-
-            let vpninfo = (*ctx).vpninfo;
+            let vpninfo = (*client).vpninfo;
             let mut opt = (*form).opts;
             let mut empty = 1;
 
             if (*form).auth_id.is_null() {
-                return -EINVAL;
+                return -libc::EINVAL;
             }
 
             if !(*form).error.is_null() {
@@ -119,7 +117,7 @@ impl Form {
             }
 
             if !(*form).authgroup_opt.is_null() {
-                // TODO: authgroup
+                // TODO: implement authgroup
                 println!("authgroup_opt");
             }
 
@@ -158,53 +156,42 @@ impl Form {
                     }
                     OC_FORM_OPT_TEXT => {
                         let opt_name = std::ffi::CStr::from_ptr((*opt).name).to_str().unwrap();
-                        println!("OC_FORM_OPT_TEXT: {}", opt_name);
+                        let value = (*client).handle_text_input(opt_name);
+                        if let Some(value) = value {
+                            let value = CString::new(value).unwrap();
+                            openconnect_set_option_value(opt, value.as_ptr());
 
-                        if (*ctx).form_attempt == 0
-                            && (opt_name == "user" || opt_name == "uname" || opt_name == "username")
-                        {
-                            openconnect_set_option_value(opt, user.as_c_str().as_ptr());
-                        } else {
-                            let value = Form::saved_form_field(
-                                vpninfo,
-                                (*form).auth_id,
-                                (*opt).name,
-                                ptr::null_mut(),
-                            );
-                            if value.is_some() {
-                                let value = CString::new(value.unwrap()).unwrap();
-                                openconnect_set_option_value(opt, value.as_ptr());
+                            // if (*client).form_attempt == 0
+                            //     && (opt_name == "user" || opt_name == "uname" || opt_name == "username")
+                            // {
+                            //     openconnect_set_option_value(opt, user.as_c_str().as_ptr());
+                            // } else {
+                            //     let value = Form::saved_form_field(
+                            //         vpninfo,
+                            //         (*form).auth_id,
+                            //         (*opt).name,
+                            //         ptr::null_mut(),
+                            //     );
+                            //     if value.is_some() {
+                            //         let value = CString::new(value.unwrap()).unwrap();
+                            //         openconnect_set_option_value(opt, value.as_ptr());
+                            //     }
+                            // }
+
+                            if (*opt)._value.is_null() {
+                                println!("No value for {}", opt_name);
+                                // goto error;
                             }
-
-                            #[allow(unused_labels)]
-                            'prompt: {
-                                // TODO: (*opt)._value = prompt_for_input(vpninfo, form, opt);
-                            }
+                            empty = 0;
                         }
-
-                        if (*opt)._value.is_null() {
-                            println!("No value for {}", opt_name);
-                            // goto error;
-                        } else {
-                            let name_fmt = std::ffi::CString::new("name: %s\n").unwrap();
-                            libc::printf(name_fmt.as_ptr(), (*opt)._value);
-                        }
-
-                        (*ctx).form_attempt += 1;
-                        empty = 0;
                     }
                     OC_FORM_OPT_PASSWORD => {
-                        println!("OC_FORM_OPT_PASSWORD");
-                        if (*ctx).form_pass_attempt == 0 {
-                            openconnect_set_option_value(opt, password.as_c_str().as_ptr());
-                            let password_fmt =
-                                std::ffi::CString::new("password length: %d\n").unwrap();
-                            let password_len = libc::strlen((*opt)._value);
-                            libc::printf(password_fmt.as_ptr(), password_len);
+                        let value = (*client).handle_password_input();
+                        if let Some(value) = value {
+                            let value = CString::new(value).unwrap();
+                            openconnect_set_option_value(opt, value.as_ptr());
+                            empty = 0;
                         }
-                        (*ctx).form_pass_attempt += 1;
-
-                        empty = 0;
                     }
                     OC_FORM_OPT_TOKEN => {
                         println!("OC_FORM_OPT_TOKEN");
@@ -220,7 +207,7 @@ impl Form {
                             let value = CString::new(value.unwrap()).unwrap();
                             openconnect_set_option_value(opt, value.as_ptr());
                         } else if !found.is_null() {
-                            // TODO: goto prompt;
+                            // TODO: implement prompt;
                         }
                     }
                     _ => {
