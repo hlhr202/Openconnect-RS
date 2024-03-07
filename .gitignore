@@ -1,6 +1,5 @@
 /target
 .env.local
-.cargo/
 .vscode/
 ._*
 .DS_Store

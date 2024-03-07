@@ -1,15 +1,21 @@
 use std::env;
 use std::path::PathBuf;
 
+fn get_lib_path() -> String {
+    let path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let target_dir = path.join("../../..");
+    target_dir.to_string_lossy().to_string()
+}
+
 fn copy_libs() {
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let out_dir = env::var("OUT_DIR").unwrap();
+    let lib_dir = get_lib_path();
 
     // copy static library
     #[cfg(not(target_os = "windows"))]
     std::fs::copy(
         format!("{}/openconnect/.libs/libopenconnect.a", dir),
-        format!("{}/libopenconnect.a", out_dir),
+        format!("{}/libopenconnect.a", lib_dir),
     )
     .unwrap();
 
@@ -18,13 +24,13 @@ fn copy_libs() {
     {
         std::fs::copy(
             format!("{}/openconnect/.libs/libopenconnect.so", dir),
-            format!("{}/libopenconnect.so", out_dir),
+            format!("{}/libopenconnect.so", lib_dir),
         )
         .unwrap();
 
         std::fs::copy(
             format!("{}/openconnect/.libs/libopenconnect.so.5", dir),
-            format!("{}/libopenconnect.so.5", out_dir),
+            format!("{}/libopenconnect.so.5", lib_dir),
         )
         .unwrap();
     }
@@ -49,13 +55,12 @@ fn copy_libs() {
 // TODO: check macos
 fn main() {
     copy_libs();
-    let out_dir = env::var("OUT_DIR").unwrap();
     // Tell cargo to look for shared libraries in the specified directory
-    println!("cargo:rustc-link-search={}", out_dir);
+    println!("cargo:rustc-link-search={}", get_lib_path());
 
     // Tell cargo to tell rustc to link the system bzip2
     // shared library.
-    println!("cargo:rustc-link-lib=dylib=openconnect");
+    println!("cargo:rustc-link-lib=openconnect");
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=c-src/helper.h");
     println!("cargo:rerun-if-changed=c-src/helper.c");

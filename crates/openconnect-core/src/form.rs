@@ -100,8 +100,8 @@ impl Form {
         println!("process_auth_form_cb");
         let ctx = OpenconnectCtx::from_c_void(privdata);
         unsafe {
-            let user = (*ctx).user.clone();
-            let password = (*ctx).password.clone();
+            let user = CString::new((*ctx).user.clone()).unwrap();
+            let password = CString::new((*ctx).password.clone()).unwrap();
 
             let vpninfo = (*ctx).vpninfo;
             let mut opt = (*form).opts;

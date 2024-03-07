@@ -14,17 +14,23 @@ use std::{
     env,
     ffi::CString,
     ops::{Deref, DerefMut},
+    sync::Arc,
 };
 
 #[repr(C)]
 pub struct OpenconnectCtx {
     pub vpninfo: *mut openconnect_info,
-    pub user: CString,
-    pub server: CString,
-    pub password: CString,
+    pub user: String,
+    pub server: String,
+    pub password: String,
+    pub cmd_fd: i32,
     pub form_attempt: i32,
     pub form_pass_attempt: i32,
 }
+
+// make openconnect_info thread shareable/tranferable
+unsafe impl Send for OpenconnectCtx {}
+unsafe impl Sync for OpenconnectCtx {}
 
 pub enum LogLevel {
     Err = PRG_ERR as isize,
@@ -36,12 +42,20 @@ pub enum LogLevel {
 #[no_mangle]
 unsafe extern "C" fn handle_process_buffer(
     _privdata: *mut ::std::os::raw::c_void,
-    _level: ::std::os::raw::c_int,
+    level: ::std::os::raw::c_int,
     buf: *const ::std::os::raw::c_char,
 ) {
     let buf = std::ffi::CStr::from_ptr(buf).to_str().ok();
+    let level = level as u32;
+    let level = match level {
+        PRG_ERR => "ERR",
+        PRG_INFO => "INFO",
+        PRG_DEBUG => "DEBUG",
+        PRG_TRACE => "TRACE",
+        _ => "UNKNOWN",
+    };
     if buf.is_some() {
-        println!("log: {}", buf.unwrap());
+        println!("{}: {}", level, buf.unwrap());
     }
 }
 
@@ -67,7 +81,7 @@ impl OpenconnectCtx {
         }
     }
 
-    pub extern "C" fn setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
+    pub extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
         let ctx = OpenconnectCtx::from_c_void(privdata);
         let vpnc_script = DEFAULT_VPNCSCRIPT;
         unsafe {
@@ -81,26 +95,31 @@ impl OpenconnectCtx {
     }
 
     pub(crate) fn from_c_void(ptr: *mut std::os::raw::c_void) -> *mut Self {
-        unsafe { Box::leak(Box::from_raw(ptr.cast())) }
+        ptr.cast()
     }
 
-    pub fn new() -> Box<Self> {
+    pub(crate) fn to_raw_ptr(&self) -> *mut Self {
+        self as *const Self as *mut Self
+    }
+
+    pub fn new() -> Arc<Self> {
         let useragent =
             std::ffi::CString::new("AnyConnect-compatible OpenConnect VPN Agent").unwrap();
-        let user = CString::new(env::var("VPN_USER").unwrap_or("".to_string())).unwrap();
-        let server = CString::new(env::var("VPN_SERVER").unwrap_or("".to_string())).unwrap();
-        let password = CString::new(env::var("VPN_PASSWORD").unwrap_or("".to_string())).unwrap();
+        let user = env::var("VPN_USER").unwrap_or("".to_string());
+        let server = env::var("VPN_SERVER").unwrap_or("".to_string());
+        let password = env::var("VPN_PASSWORD").unwrap_or("".to_string());
 
-        let instance = Box::new(Self {
+        let instance = Arc::new(Self {
             vpninfo: std::ptr::null_mut(),
             user,
             server,
             password,
+            cmd_fd: -1,
             form_attempt: 0,
             form_pass_attempt: 0,
         });
 
-        let instance = Box::into_raw(instance); // leak for assign to vpninfo
+        let instance = Arc::into_raw(instance) as *mut OpenconnectCtx; // dangerous, leak for assign to vpninfo
 
         unsafe {
             let ret = openconnect_init_ssl();
@@ -124,9 +143,8 @@ impl OpenconnectCtx {
                 panic!("openconnect_vpninfo_new failed");
             }
 
-            let mut instance = Box::from_raw(instance); // reclaim ownership
-            instance.vpninfo = vpninfo;
-            instance
+            (*instance).vpninfo = vpninfo;
+            Arc::from_raw(instance) // reclaim ownership
         }
     }
 
@@ -142,6 +160,21 @@ impl OpenconnectCtx {
         match ret {
             0 => Ok(()),
             _ => Err(OpenConnectError::SetProtocolError(ret)),
+        }
+    }
+
+    pub fn set_stats_handler(&self) {
+        unsafe {
+            openconnect_set_stats_handler(self.vpninfo, Some(OpenconnectCtx::stats_fn));
+        }
+    }
+
+    pub fn set_setup_tun_handler(&self) {
+        unsafe {
+            openconnect_set_setup_tun_handler(
+                self.vpninfo,
+                Some(OpenconnectCtx::default_setup_tun_vfn),
+            );
         }
     }
 
@@ -173,15 +206,17 @@ impl OpenconnectCtx {
     }
 
     pub fn setup_cmd_pipe(&self) -> OpenConnectResult<()> {
+        // mutates self but keep &self immutable
+        let this = self.to_raw_ptr();
         unsafe {
-            let cmd_fd = openconnect_setup_cmd_pipe(self.vpninfo);
-            if cmd_fd < 0 {
-                return Err(result::OpenConnectError::CmdPipeError(cmd_fd));
+            (*this).cmd_fd = openconnect_setup_cmd_pipe((*this).vpninfo);
+            if (*this).cmd_fd < 0 {
+                return Err(result::OpenConnectError::CmdPipeError((*this).cmd_fd));
             }
             libc::fcntl(
-                cmd_fd,
+                (*this).cmd_fd,
                 libc::F_SETFL,
-                libc::fcntl(cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK,
+                libc::fcntl((*this).cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK,
             );
         }
         Ok(())
@@ -240,13 +275,8 @@ impl OpenconnectCtx {
             CString::new(cert).map_err(|_| OpenConnectError::SetClientCertError(libc::EIO))?;
         let sslkey =
             CString::new(sslkey).map_err(|_| OpenConnectError::SetClientCertError(libc::EIO))?;
-        let ret = unsafe {
-            openconnect_set_client_cert(
-                self.vpninfo,
-                cert.as_ptr() as *mut i8,
-                sslkey.as_ptr() as *mut i8,
-            )
-        };
+        let ret =
+            unsafe { openconnect_set_client_cert(self.vpninfo, cert.as_ptr(), sslkey.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenConnectError::SetClientCertError(ret)),
@@ -256,13 +286,7 @@ impl OpenconnectCtx {
     pub fn set_mca_cert(&self, cert: &str, key: &str) -> OpenConnectResult<()> {
         let cert = CString::new(cert).map_err(|_| OpenConnectError::SetMCACertError(libc::EIO))?;
         let key = CString::new(key).map_err(|_| OpenConnectError::SetMCACertError(libc::EIO))?;
-        let ret = unsafe {
-            openconnect_set_mca_cert(
-                self.vpninfo,
-                cert.as_ptr() as *mut i8,
-                key.as_ptr() as *mut i8,
-            )
-        };
+        let ret = unsafe { openconnect_set_mca_cert(self.vpninfo, cert.as_ptr(), key.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenConnectError::SetMCACertError(ret)),
@@ -282,6 +306,30 @@ impl OpenconnectCtx {
             _ => Err(OpenConnectError::MainLoopError(ret)),
         }
     }
+
+    /// Gracefully stop the main loop
+    pub fn stop_main_loop(&self) {
+        let cmd = OC_CMD_CANCEL;
+        let this = self.to_raw_ptr();
+        unsafe {
+            if (*this).cmd_fd != -1 {
+                // TODO: windows should use libc::send
+                let ret = libc::write((*this).cmd_fd, std::ptr::from_ref(&cmd) as *const _, 1);
+                if ret < 0 {
+                    println!("write cmd_fd failed");
+                }
+                (*this).cmd_fd = -1;
+            }
+        }
+        println!("terminate");
+    }
+
+    pub fn free(&self) {
+        unsafe {
+            openconnect_vpninfo_free(self.vpninfo);
+        }
+        println!("free context");
+    }
 }
 
 impl Deref for OpenconnectCtx {
@@ -300,9 +348,6 @@ impl DerefMut for OpenconnectCtx {
 
 impl Drop for OpenconnectCtx {
     fn drop(&mut self) {
-        println!("drop OpenconnectCtx");
-        unsafe {
-            openconnect_vpninfo_free(self.vpninfo);
-        }
+        self.free();
     }
 }
