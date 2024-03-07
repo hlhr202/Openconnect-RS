@@ -57,6 +57,14 @@ fn main() {
     // shared library.
     println!("cargo:rustc-link-lib=dylib=openconnect");
     println!("cargo:rerun-if-changed=wrapper.h");
+    println!("cargo:rerun-if-changed=c-src/helper.h");
+    println!("cargo:rerun-if-changed=c-src/helper.c");
+
+    cc::Build::new()
+        .file("c-src/helper.c")
+        .include("c-src")
+        .include("openconnect")
+        .compile("helper");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -65,6 +73,7 @@ fn main() {
         // The input header we would like to generate
         // bindings for.
         .header("wrapper.h")
+        .header("c-src/helper.h")
         .clang_arg("-I./openconnect")
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)

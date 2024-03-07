@@ -1,3 +1,5 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use crate::{errno::EINVAL, OpenconnectCtx};
 use openconnect_sys::{
     oc_form_opt_select, openconnect_info, openconnect_set_option_value, OC_FORM_OPT_HIDDEN,
@@ -14,7 +16,7 @@ pub struct FormField {
 }
 
 pub static mut FORM_FIELDS: *mut FormField = std::ptr::null_mut();
-static mut LAST_FORM_EMPTY: i32 = 1;
+static mut LAST_FORM_EMPTY: i32 = -1;
 
 #[repr(C)]
 pub struct Form {
@@ -28,6 +30,7 @@ impl Form {
         opt_id: *mut i8,
         found: *mut i32,
     ) -> Option<String> {
+        println!("saved_form_field");
         let mut ff = FORM_FIELDS;
 
         while !ff.is_null() {
@@ -105,7 +108,7 @@ impl Form {
             let mut empty = 1;
 
             if (*form).auth_id.is_null() {
-                return -1;
+                return -EINVAL;
             }
 
             if !(*form).error.is_null() {
@@ -157,8 +160,10 @@ impl Form {
                         let opt_name = std::ffi::CStr::from_ptr((*opt).name).to_str().unwrap();
                         println!("OC_FORM_OPT_TEXT: {}", opt_name);
 
-                        if opt_name == "user" || opt_name == "uname" || opt_name == "username" {
-                            openconnect_set_option_value(opt, user.as_ptr());
+                        if (*ctx).form_attempt == 0
+                            && (opt_name == "user" || opt_name == "uname" || opt_name == "username")
+                        {
+                            openconnect_set_option_value(opt, user.as_c_str().as_ptr());
                         } else {
                             let value = Form::saved_form_field(
                                 vpninfo,
@@ -185,14 +190,19 @@ impl Form {
                             libc::printf(name_fmt.as_ptr(), (*opt)._value);
                         }
 
+                        (*ctx).form_attempt += 1;
                         empty = 0;
                     }
                     OC_FORM_OPT_PASSWORD => {
                         println!("OC_FORM_OPT_PASSWORD");
-                        openconnect_set_option_value(opt, password.as_ptr());
-                        let password_fmt = std::ffi::CString::new("password length: %d\n").unwrap();
-                        let password_len = libc::strlen((*opt)._value);
-                        libc::printf(password_fmt.as_ptr(), password_len);
+                        if (*ctx).form_pass_attempt == 0 {
+                            openconnect_set_option_value(opt, password.as_c_str().as_ptr());
+                            let password_fmt =
+                                std::ffi::CString::new("password length: %d\n").unwrap();
+                            let password_len = libc::strlen((*opt)._value);
+                            libc::printf(password_fmt.as_ptr(), password_len);
+                        }
+                        (*ctx).form_pass_attempt += 1;
 
                         empty = 0;
                     }
@@ -221,8 +231,8 @@ impl Form {
                 opt = (*opt).next;
             }
 
-            if empty == 0 {
-                LAST_FORM_EMPTY = 1;
+            if empty != 0 {
+                LAST_FORM_EMPTY = 0;
             } else if {
                 LAST_FORM_EMPTY += 1;
                 LAST_FORM_EMPTY
