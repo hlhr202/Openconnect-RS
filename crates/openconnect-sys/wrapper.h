@@ -1,2 +1,2 @@
-#include "openconnect/config.h"
-#include "openconnect/openconnect.h"
+#include <config.h>
+#include <openconnect.h>
