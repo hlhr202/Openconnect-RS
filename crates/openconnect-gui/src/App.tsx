@@ -1,52 +1,90 @@
-import { useState } from "react";
-// import reactLogo from "./assets/react.svg";
-import { invoke } from "@tauri-apps/api/tauri";
-import "./App.css";
+import {
+  NextUIProvider,
+  Button,
+  Input,
+  Card,
+  CardBody,
+  Divider,
+} from "@nextui-org/react";
+import { TauriTitleBar } from "./Titlebar";
+import { useForm, SubmitHandler } from "react-hook-form";
+import { useLocalStorage } from "react-use";
+
+interface Inputs {
+  server: string;
+  username: string;
+  password: string;
+}
 
 function App() {
-  const [greetMsg, setGreetMsg] = useState("");
-  const [name, setName] = useState("");
+  const [data, setData] = useLocalStorage("_openconnect_rs_", {
+    server: "",
+    username: "",
+    password: "",
+  });
 
-  async function greet() {
-    // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-    setGreetMsg(await invoke("greet", { name }));
-  }
+  const { handleSubmit, register } = useForm<Inputs>({
+    defaultValues: async () => data!,
+  });
+
+  const onSubmit: SubmitHandler<Inputs> = (data) => {
+    setData(data);
+  };
 
   return (
-    <div className="container">
-      <h1>Openconnect RS</h1>
+    <NextUIProvider>
+      <TauriTitleBar />
+      <main className="select-none dark text-foreground bg-background h-[calc(100vh-30px)] flex justify-center flex-col items-center mt-[30px]">
+        <h1 className="font-thin pb-8 text-3xl select-none cursor-pointer">
+          Openconnect RS
+        </h1>
+        <Card className="max-w-[800px] min-w-[400px]">
+          <CardBody>
+            <form onSubmit={handleSubmit(onSubmit)}>
+              <Input
+                {...register("server", { required: true })}
+                label="Server:"
+                labelPlacement="outside"
+                placeholder="https://"
+                className="p-3"
+                size="md"
+                required
+              ></Input>
+              <Input
+                {...register("username", { required: true })}
+                label="Username:"
+                labelPlacement="outside"
+                placeholder="admin"
+                className="p-3"
+                size="md"
+                required
+              ></Input>
+              <Input
+                {...register("password", { required: true })}
+                label="Password:"
+                labelPlacement="outside"
+                placeholder="password"
+                className="p-3"
+                type="password"
+                size="md"
+                required
+              ></Input>
 
-      {/* <div className="row">
-        <a href="https://vitejs.dev" target="_blank">
-          <img src="/vite.svg" className="logo vite" alt="Vite logo" />
-        </a>
-        <a href="https://tauri.app" target="_blank">
-          <img src="/tauri.svg" className="logo tauri" alt="Tauri logo" />
-        </a>
-        <a href="https://reactjs.org" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div> */}
-
-      {/* <p>Click on the Tauri, Vite, and React logos to learn more.</p> */}
-
-      <form
-        className="row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          greet();
-        }}
-      >
-        <input
-          id="greet-input"
-          onChange={(e) => setName(e.currentTarget.value)}
-          placeholder="Server URL:"
-        />
-        <button type="submit">Connect</button>
-      </form>
-
-      <p>{greetMsg}</p>
-    </div>
+              <Divider className="mt-4"></Divider>
+              <Button type="submit" color="primary" className="m-3">
+                Connect
+              </Button>
+            </form>
+          </CardBody>
+        </Card>
+        <div className="font-thin pt-8 text-xs select-none cursor-none">
+          Source codes license - LGPL
+        </div>
+        <div className="font-thin pt-2 text-xs select-none cursor-none">
+          Copyright @2024 hlhr202
+        </div>
+      </main>
+    </NextUIProvider>
   );
 }
 
