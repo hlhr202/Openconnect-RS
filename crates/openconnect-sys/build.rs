@@ -55,11 +55,40 @@ fn copy_libs() {
 // TODO: check macos
 fn main() {
     copy_libs();
+    let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     // Tell cargo to look for shared libraries in the specified directory
-    println!("cargo:rustc-link-search={}", get_lib_path());
+    println!(
+        "cargo:rustc-link-search={}",
+        format_args!("{}/openconnect/.libs", dir)
+    );
+
+    println!("cargo:rustc-link-search=/opt/local/lib");
+    println!("cargo:rustc-link-search=/usr/local/lib");
+    println!("cargo:rustc-link-search=/usr/lib");
+    println!("cargo:rustc-link-search=/opt/homebrew/opt/llvm/lib/c++");
 
     // Tell cargo to tell rustc to link the openconnect shared library.
-    println!("cargo:rustc-link-lib=dylib=openconnect");
+    println!("cargo:rustc-link-lib=static=openconnect");
+
+    println!("cargo:rustc-link-lib=static=xml2");
+    println!("cargo:rustc-link-lib=static=lzma");
+    println!("cargo:rustc-link-lib=static=iconv");
+    println!("cargo:rustc-link-lib=static=icudata");
+    println!("cargo:rustc-link-lib=static=icuuc");
+
+    println!("cargo:rustc-link-lib=static=crypto");
+    println!("cargo:rustc-link-lib=static=ssl");
+    println!("cargo:rustc-link-lib=static=z");
+    println!("cargo:rustc-link-lib=static=lz4");
+
+    // link c++ stdlib
+    #[cfg(target_os = "linux")]
+    println!("cargo:rustc-link-lib=stdc++");
+
+    #[cfg(target_os = "macos")]
+    println!("cargo:rustc-link-lib=static=c++");
+    println!("cargo:rustc-link-lib=static=c++abi");
+
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=c-src/helper.h");
     println!("cargo:rerun-if-changed=c-src/helper.c");
