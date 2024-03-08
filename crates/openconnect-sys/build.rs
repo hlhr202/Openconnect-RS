@@ -1,22 +1,25 @@
 use std::env;
 use std::path::PathBuf;
 
-// TODO: check macos
+// TODO: windows support
 fn main() {
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let openconnect_lib = format!("{}/openconnect/.libs", dir);
     // Tell cargo to look for shared libraries in the specified directory
-    println!(
-        "cargo:rustc-link-search={}",
-        format_args!("{}/openconnect/.libs", dir)
-    );
-
+    println!("cargo:rustc-link-search={}", openconnect_lib);
 
     // macOS search path
     println!("cargo:rustc-link-search=/opt/local/lib");
     println!("cargo:rustc-link-search=/usr/local/lib");
     println!("cargo:rustc-link-search=/usr/lib");
+    // TODO: for stdc++, optimize auto search
     println!("cargo:rustc-link-search=/opt/homebrew/opt/llvm/lib/c++");
     // macOS search path end
+
+    // Linux search path
+    println!("cargo:rustc-link-search=/usr/lib/x86_64-linux-gnu");
+    // TODO: for stdc++, optimize auto search
+    println!("cargo:rustc-link-search=/usr/lib/gcc/x86_64-linux-gnu/11");
 
     // Tell cargo to tell rustc to link the openconnect shared library.
     println!("cargo:rustc-link-lib=static=openconnect");
@@ -24,7 +27,6 @@ fn main() {
     // link for xml2
     println!("cargo:rustc-link-lib=static=xml2");
     println!("cargo:rustc-link-lib=static=z");
-    println!("cargo:rustc-link-lib=static=iconv");
     println!("cargo:rustc-link-lib=static=icui18n");
     println!("cargo:rustc-link-lib=static=lzma");
     println!("cargo:rustc-link-lib=static=icudata");
@@ -34,16 +36,24 @@ fn main() {
     println!("cargo:rustc-link-lib=static=crypto");
     println!("cargo:rustc-link-lib=static=ssl");
 
-    // link for lz4
-    println!("cargo:rustc-link-lib=static=lz4");
-
     // link c++ stdlib
     #[cfg(target_os = "linux")]
-    println!("cargo:rustc-link-lib=static=stdc++");
+    {
+        println!("cargo:rustc-link-lib=static=stdc++");
+    }
 
     #[cfg(target_os = "macos")]
-    println!("cargo:rustc-link-lib=static=c++");
-    println!("cargo:rustc-link-lib=static=c++abi");
+    {
+        // link for iconv
+        println!("cargo:rustc-link-lib=static=iconv");
+
+        // link for lz4
+        println!("cargo:rustc-link-lib=static=lz4");
+
+        // link for c++ stdlib
+        println!("cargo:rustc-link-lib=static=c++");
+        println!("cargo:rustc-link-lib=static=c++abi");
+    }
 
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=c-src/helper.h");
