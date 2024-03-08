@@ -1,60 +1,8 @@
 use std::env;
 use std::path::PathBuf;
 
-fn get_lib_path() -> String {
-    let path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let target_dir = path.join("../../..");
-    target_dir.to_string_lossy().to_string()
-}
-
-fn copy_libs() {
-    let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-    let lib_dir = get_lib_path();
-
-    // copy static library
-    #[cfg(not(target_os = "windows"))]
-    std::fs::copy(
-        format!("{}/openconnect/.libs/libopenconnect.a", dir),
-        format!("{}/libopenconnect.a", lib_dir),
-    )
-    .unwrap();
-
-    // copy shared library on linux
-    #[cfg(target_os = "linux")]
-    {
-        std::fs::copy(
-            format!("{}/openconnect/.libs/libopenconnect.so", dir),
-            format!("{}/libopenconnect.so", lib_dir),
-        )
-        .unwrap();
-
-        std::fs::copy(
-            format!("{}/openconnect/.libs/libopenconnect.so.5", dir),
-            format!("{}/libopenconnect.so.5", lib_dir),
-        )
-        .unwrap();
-    }
-
-    // copy shared library on macos
-    #[cfg(target_os = "macos")]
-    {
-        std::fs::copy(
-            format!("{}/openconnect/.libs/libopenconnect.dylib", dir),
-            format!("{}/libopenconnect.dylib", lib_dir),
-        )
-        .unwrap();
-
-        std::fs::copy(
-            format!("{}/openconnect/.libs/libopenconnect.5.dylib", dir),
-            format!("{}/libopenconnect.5.dylib", lib_dir),
-        )
-        .unwrap();
-    }
-}
-
 // TODO: check macos
 fn main() {
-    copy_libs();
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     // Tell cargo to look for shared libraries in the specified directory
     println!(
@@ -62,28 +10,36 @@ fn main() {
         format_args!("{}/openconnect/.libs", dir)
     );
 
+
+    // macOS search path
     println!("cargo:rustc-link-search=/opt/local/lib");
     println!("cargo:rustc-link-search=/usr/local/lib");
     println!("cargo:rustc-link-search=/usr/lib");
     println!("cargo:rustc-link-search=/opt/homebrew/opt/llvm/lib/c++");
+    // macOS search path end
 
     // Tell cargo to tell rustc to link the openconnect shared library.
     println!("cargo:rustc-link-lib=static=openconnect");
 
+    // link for xml2
     println!("cargo:rustc-link-lib=static=xml2");
-    println!("cargo:rustc-link-lib=static=lzma");
+    println!("cargo:rustc-link-lib=static=z");
     println!("cargo:rustc-link-lib=static=iconv");
+    println!("cargo:rustc-link-lib=static=icui18n");
+    println!("cargo:rustc-link-lib=static=lzma");
     println!("cargo:rustc-link-lib=static=icudata");
     println!("cargo:rustc-link-lib=static=icuuc");
 
+    // link for openssl
     println!("cargo:rustc-link-lib=static=crypto");
     println!("cargo:rustc-link-lib=static=ssl");
-    println!("cargo:rustc-link-lib=static=z");
+
+    // link for lz4
     println!("cargo:rustc-link-lib=static=lz4");
 
     // link c++ stdlib
     #[cfg(target_os = "linux")]
-    println!("cargo:rustc-link-lib=stdc++");
+    println!("cargo:rustc-link-lib=static=stdc++");
 
     #[cfg(target_os = "macos")]
     println!("cargo:rustc-link-lib=static=c++");
@@ -109,6 +65,7 @@ fn main() {
         .header("wrapper.h")
         .header("c-src/helper.h")
         .clang_arg("-I./openconnect")
+        .clang_arg("-static")
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)
         // Tell cargo to invalidate the built crate whenever any of the
