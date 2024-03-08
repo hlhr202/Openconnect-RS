@@ -40,13 +40,13 @@ fn copy_libs() {
     {
         std::fs::copy(
             format!("{}/openconnect/.libs/libopenconnect.dylib", dir),
-            format!("{}/libopenconnect.dylib", out_dir),
+            format!("{}/libopenconnect.dylib", lib_dir),
         )
         .unwrap();
 
         std::fs::copy(
             format!("{}/openconnect/.libs/libopenconnect.5.dylib", dir),
-            format!("{}/libopenconnect.5.dylib", out_dir),
+            format!("{}/libopenconnect.5.dylib", lib_dir),
         )
         .unwrap();
     }
@@ -58,13 +58,13 @@ fn main() {
     // Tell cargo to look for shared libraries in the specified directory
     println!("cargo:rustc-link-search={}", get_lib_path());
 
-    // Tell cargo to tell rustc to link the system bzip2
-    // shared library.
-    println!("cargo:rustc-link-lib=openconnect");
+    // Tell cargo to tell rustc to link the openconnect shared library.
+    println!("cargo:rustc-link-lib=dylib=openconnect");
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=c-src/helper.h");
     println!("cargo:rerun-if-changed=c-src/helper.c");
 
+    // Compile helper.c
     cc::Build::new()
         .file("c-src/helper.c")
         .include("c-src")
