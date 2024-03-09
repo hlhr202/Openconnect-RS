@@ -7,6 +7,7 @@ use openconnect_core::{
 };
 use std::sync::{mpsc::Sender, Arc, Mutex};
 
+// TODO: temporary solution, should be replaced with a proper event loop
 static mut RESULT_SENDER: Option<Mutex<Sender<UIEvent>>> = None;
 static mut CLIENT: Option<Arc<VpnClient>> = None;
 
