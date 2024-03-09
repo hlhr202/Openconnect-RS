@@ -1,5 +1,5 @@
 use openconnect_core::{
-    config::{ConfigBuilder, LogLevel},
+    config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
     protocols::get_anyconnect_protocol,
     Connectable, Shutdown, VpnClient,
@@ -12,18 +12,21 @@ fn main() -> anyhow::Result<()> {
 
     let protocol = get_anyconnect_protocol();
 
-    let config = ConfigBuilder::default()
-        .username(&env::var("VPN_USERNAME").unwrap())
-        .password(&env::var("VPN_PASSWORD").unwrap())
-        .server(&env::var("VPN_SERVER").unwrap())
-        .loglevel(LogLevel::Info)
-        .protocol(protocol)
-        .build()?;
+    let config = ConfigBuilder::default().loglevel(LogLevel::Info).build()?;
 
     let event_handlers = EventHandlers::default();
+
     let client = VpnClient::new(config, event_handlers)?.with_ctrlc_shutdown()?;
 
-    client.connect()?;
+    let entrypoint = EntrypointBuilder::new()
+        .server(&env::var("VPN_SERVER").unwrap())
+        .username(&env::var("VPN_USERNAME").unwrap())
+        .password(&env::var("VPN_PASSWORD").unwrap())
+        .protocol(protocol)
+        .enable_udp(true)
+        .build()?;
+
+    client.connect(entrypoint)?;
 
     Ok(())
 }

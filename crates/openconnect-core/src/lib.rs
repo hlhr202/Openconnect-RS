@@ -6,9 +6,9 @@ pub mod protocols;
 pub mod result;
 pub mod stats;
 
-use config::{Config, LogLevel};
+use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
-use form::Form;
+use form::FormContext;
 pub use openconnect_sys::*;
 use result::{OpenConnectError, OpenConnectResult};
 use stats::Stats;
@@ -16,16 +16,17 @@ use std::{
     ffi::CString,
     sync::{
         atomic::{AtomicI32, AtomicU8, Ordering},
-        Arc,
+        Arc, RwLock,
     },
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
     Initialized = 0,
-    Disconnect = 1,
-    Connecting = 2,
-    Connected = 3,
+    Disconnecting = 1,
+    Disconnected = 2,
+    Connecting = 3,
+    Connected = 4,
 }
 
 impl From<Status> for AtomicU8 {
@@ -40,6 +41,31 @@ impl From<Status> for u8 {
     }
 }
 
+impl From<&AtomicU8> for Status {
+    fn from(val: &AtomicU8) -> Self {
+        match val.load(Ordering::Relaxed) {
+            0 => Status::Initialized,
+            1 => Status::Disconnecting,
+            2 => Status::Disconnected,
+            3 => Status::Connecting,
+            4 => Status::Connected,
+            _ => Status::Disconnected,
+        }
+    }
+}
+
+impl From<Status> for String {
+    fn from(val: Status) -> Self {
+        match val {
+            Status::Initialized => "Initialized".to_string(),
+            Status::Disconnecting => "Disconnecting".to_string(),
+            Status::Disconnected => "Disconnected".to_string(),
+            Status::Connecting => "Connecting".to_string(),
+            Status::Connected => "Connected".to_string(),
+        }
+    }
+}
+
 #[repr(C)]
 pub struct VpnClient {
     pub(crate) config: Config,
@@ -47,6 +73,8 @@ pub struct VpnClient {
     cmd_fd: AtomicI32,
     status: AtomicU8,
     callbacks: EventHandlers,
+    entrypoint: RwLock<Option<Entrypoint>>,
+    form_context: FormContext,
 }
 
 // make openconnect_info thread shareable/tranferable
@@ -110,14 +138,17 @@ impl VpnClient {
     }
 
     pub(crate) fn handle_text_input(&self, field_name: &str) -> Option<String> {
+        let entrypoint = self.entrypoint.read().ok()?;
+        let entrypoint = (*entrypoint).as_ref()?;
         match field_name {
-            "username" | "user" | "uname" => self.config.username.clone(),
+            "username" | "user" | "uname" => entrypoint.username.clone(),
             _ => todo!("handle_text_input: {}", field_name),
         }
     }
 
     pub(crate) fn handle_password_input(&self) -> Option<String> {
-        self.config.password.clone()
+        let entrypoint = self.entrypoint.read().ok()?;
+        (*entrypoint).as_ref()?.password.clone()
     }
 
     pub(crate) fn handle_stats(&self, (dlts, stats): (Option<String>, Option<Stats>)) {
@@ -161,7 +192,13 @@ impl VpnClient {
     }
 
     pub fn obtain_cookie(&self) -> OpenConnectResult<()> {
-        let ret = unsafe { openconnect_obtain_cookie(self.vpninfo) };
+        let ret = unsafe {
+            println!();
+            println!("obtain_cookie");
+            println!();
+            openconnect_clear_cookie(self.vpninfo);
+            openconnect_obtain_cookie(self.vpninfo)
+        };
         match ret {
             0 => Ok(()),
             _ => Err(result::OpenConnectError::ObtainCookieError(ret)),
@@ -289,14 +326,16 @@ impl VpnClient {
 
 impl Drop for VpnClient {
     fn drop(&mut self) {
+        self.disconnect();
         self.free();
     }
 }
 
 pub trait Connectable {
     fn new(config: Config, callbacks: EventHandlers) -> OpenConnectResult<Arc<Self>>;
-    fn connect(&self) -> OpenConnectResult<()>;
+    fn connect(&self, entrypoint: Entrypoint) -> OpenConnectResult<()>;
     fn disconnect(&self);
+    fn get_state(&self) -> Status;
 }
 
 impl Connectable for VpnClient {
@@ -308,8 +347,10 @@ impl Connectable for VpnClient {
             vpninfo: std::ptr::null_mut(),
             config,
             cmd_fd: (-1).into(),
-            status: Status::Disconnect.into(),
+            status: Status::Initialized.into(),
             callbacks,
+            entrypoint: RwLock::new(None),
+            form_context: FormContext::default(),
         });
 
         let instance = Arc::into_raw(instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
@@ -327,7 +368,7 @@ impl Connectable for VpnClient {
                 useragent.as_ptr(),
                 Some(Self::validate_peer_cert),
                 None,
-                Some(Form::process_auth_form_cb),
+                Some(FormContext::process_auth_form_cb),
                 Some(helper_format_vargs), // format args on C side
                 instance as *mut ::std::os::raw::c_void,
             );
@@ -341,7 +382,6 @@ impl Connectable for VpnClient {
         };
 
         instance.set_loglevel(instance.config.loglevel);
-        instance.set_protocol(&instance.config.protocol.name)?;
         instance.set_setup_tun_handler();
 
         if let Some(proxy) = &instance.config.http_proxy {
@@ -353,18 +393,30 @@ impl Connectable for VpnClient {
         Ok(instance)
     }
 
-    fn connect(&self) -> OpenConnectResult<()> {
+    fn connect(&self, entrypoint: Entrypoint) -> OpenConnectResult<()> {
         self.emit_state_change(Status::Connecting);
 
+        self.form_context.reset();
+
+        self.set_protocol(&entrypoint.protocol.name)?;
         self.setup_cmd_pipe()?;
         self.set_stats_handler();
         self.set_report_os("linux-64")?;
 
-        if !self.config.enable_udp {
+        {
+            let mut entrypoint_write_guard = self.entrypoint.write().map_err(|_| {
+                OpenConnectError::EntrypointConfigError("write entrypoint lock failed".to_string())
+            })?;
+
+            *entrypoint_write_guard = Some(entrypoint.clone());
+            // drop entrypoint_write_guard
+        }
+
+        if !entrypoint.enable_udp {
             self.disable_dtls()?;
         }
 
-        self.parse_url(&self.config.server)?;
+        self.parse_url(&entrypoint.server)?;
         let hostname = self.get_hostname();
         if let Some(hostname) = hostname {
             println!("connecting: {}", hostname);
@@ -386,6 +438,12 @@ impl Connectable for VpnClient {
 
     /// Gracefully stop the main loop
     fn disconnect(&self) {
+        if self.get_state() != Status::Connected {
+            return;
+        }
+
+        self.emit_state_change(Status::Disconnecting);
+
         let cmd = OC_CMD_CANCEL;
         unsafe {
             let cmd_fd = self.cmd_fd.load(Ordering::Relaxed);
@@ -399,7 +457,11 @@ impl Connectable for VpnClient {
             }
         }
 
-        self.emit_state_change(Status::Disconnect);
+        self.emit_state_change(Status::Disconnected);
+    }
+
+    fn get_state(&self) -> Status {
+        Status::from(&self.status)
     }
 }
 

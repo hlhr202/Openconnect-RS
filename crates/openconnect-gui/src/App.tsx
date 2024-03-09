@@ -10,6 +10,16 @@ import { TauriTitleBar } from "./Titlebar";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { useLocalStorage } from "react-use";
 import { invoke } from "@tauri-apps/api/tauri";
+import { listen } from "@tauri-apps/api/event";
+import { useEffect } from "react";
+import { atom, useAtom } from "jotai";
+
+const vpnStatusAtom = atom<string>("Initialized");
+vpnStatusAtom.onMount = (set) => {
+  listen<string>("vpnStatus", (event) => {
+    set(event.payload);
+  });
+};
 
 interface Inputs {
   server: string;
@@ -18,14 +28,16 @@ interface Inputs {
 }
 
 function App() {
+  const [vpnStatus] = useAtom(vpnStatusAtom);
+
   const [data, setData] = useLocalStorage("_openconnect_rs_", {
     server: "",
     username: "",
     password: "",
   });
 
-  const { handleSubmit, register } = useForm<Inputs>({
-    values: data,
+  const { handleSubmit, register, getValues } = useForm<Inputs>({
+    defaultValues: data,
   });
 
   const onSubmit: SubmitHandler<Inputs> = async (data) => {
@@ -38,6 +50,10 @@ function App() {
     invoke("disconnect");
   };
 
+  useEffect(() => {
+    console.log(vpnStatus);
+  }, [vpnStatus]);
+
   return (
     <NextUIProvider>
       <TauriTitleBar />
@@ -45,44 +61,70 @@ function App() {
         <h1 className="font-thin pb-8 text-3xl select-none cursor-pointer">
           Openconnect RS
         </h1>
-        <Card className="max-w-[800px] min-w-[400px]">
+        <Card className="max-w-[800px] min-w-[400px] max-h-[800px] min-h-[400px]">
           <CardBody>
-            <form onSubmit={handleSubmit(onSubmit)}>
-              <Input
-                {...register("server", { required: true })}
-                label="Server:"
-                labelPlacement="outside"
-                placeholder="https://"
-                className="p-3"
-                size="md"
-                required
-              ></Input>
-              <Input
-                {...register("username", { required: true })}
-                label="Username:"
-                labelPlacement="outside"
-                placeholder="admin"
-                className="p-3"
-                size="md"
-                required
-              ></Input>
-              <Input
-                {...register("password", { required: true })}
-                label="Password:"
-                labelPlacement="outside"
-                placeholder="password"
-                className="p-3"
-                type="password"
-                size="md"
-                required
-              ></Input>
+            {(() => {
+              switch (vpnStatus) {
+                case "Initialized":
+                case "Disconnected":
+                  return (
+                    <form
+                      onSubmit={handleSubmit(onSubmit)}
+                      className="flex flex-col w-full"
+                    >
+                      <Input
+                        label="Server:"
+                        labelPlacement="outside"
+                        placeholder="https://"
+                        className="p-3"
+                        size="md"
+                        defaultValue={getValues("server")}
+                        {...register("server", { required: true })}
+                      />
+                      <Input
+                        label="Username:"
+                        labelPlacement="outside"
+                        placeholder="admin"
+                        className="p-3"
+                        size="md"
+                        defaultValue={getValues("username")}
+                        {...register("username", { required: true })}
+                      />
+                      <Input
+                        label="Password:"
+                        labelPlacement="outside"
+                        placeholder="password"
+                        className="p-3"
+                        type="password"
+                        size="md"
+                        defaultValue={getValues("password")}
+                        {...register("password", { required: true })}
+                      />
 
-              <Divider className="mt-4"></Divider>
-              <Button type="submit" color="primary" className="m-3">
-                Connect
-              </Button>
-            </form>
-            <Button color="primary" className="m-3" onClick={handleDisconnect}>Disconnect</Button>
+                      <Divider className="mt-4"></Divider>
+                      <Button type="submit" color="primary" className="m-3">
+                        Connect
+                      </Button>
+                    </form>
+                  );
+                case "Connecting":
+                  return <div>Connecting...</div>;
+
+                case "Disconnecting":
+                  return <div>Disconnecting...</div>;
+
+                case "Connected":
+                  return (
+                    <Button
+                      color="primary"
+                      className="m-3"
+                      onClick={handleDisconnect}
+                    >
+                      Disconnect
+                    </Button>
+                  );
+              }
+            })()}
           </CardBody>
         </Card>
         <div className="font-thin pt-8 text-xs select-none cursor-none">

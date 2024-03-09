@@ -2,8 +2,11 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum OpenConnectError {
-    #[error("Failed to create new VPN client: {0}")]
+    #[error("Failed to create new VPN config: {0}")]
     ConfigError(String),
+
+    #[error("Failed to create new VPN entry point: {0}")]
+    EntrypointConfigError(String),
 
     #[error("Failed to setup shutdown error: {0}")]
     SetupShutdownError(#[from] ctrlc::Error),

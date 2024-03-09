@@ -1,7 +1,9 @@
 use crate::Status;
+use std::sync::Arc;
 
+#[derive(Clone)]
 pub struct EventHandlers {
-    pub(crate) handle_connection_state_change: Option<Box<dyn Fn(Status)>>,
+    pub(crate) handle_connection_state_change: Option<Arc<dyn Fn(Status)>>,
 }
 
 impl EventHandlers {
@@ -16,7 +18,7 @@ impl EventHandlers {
         F: Fn(Status),
         F: Send + 'static,
     {
-        self.handle_connection_state_change = Some(Box::new(handler));
+        self.handle_connection_state_change = Some(Arc::new(handler));
         self
     }
 }

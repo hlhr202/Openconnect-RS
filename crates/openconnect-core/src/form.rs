@@ -6,7 +6,15 @@ use openconnect_sys::{
     OC_FORM_OPT_IGNORE, OC_FORM_OPT_PASSWORD, OC_FORM_OPT_SELECT, OC_FORM_OPT_TEXT,
     OC_FORM_OPT_TOKEN, OC_FORM_RESULT_CANCELLED, OC_FORM_RESULT_OK,
 };
-use std::{ffi::CString, ptr};
+use std::{
+    collections::HashMap,
+    ffi::CString,
+    ptr,
+    sync::{
+        atomic::{AtomicI32, Ordering},
+        Mutex,
+    },
+};
 
 pub struct FormField {
     pub next: *mut FormField,
@@ -15,16 +23,31 @@ pub struct FormField {
     pub value: Option<String>,
 }
 
-pub static mut FORM_FIELDS: *mut FormField = std::ptr::null_mut();
-static mut LAST_FORM_EMPTY: i32 = -1;
+pub static mut FORM_FIELDS: *mut FormField = std::ptr::null_mut(); // TODO: to be replaced
 
 #[repr(C)]
-pub struct Form {
-    _unused: [u8; 0],
+pub struct FormContext {
+    last_form_empty: AtomicI32,
+    saved_form_fields: Mutex<HashMap<String, FormField>>, // TODO: use this to replace current implementation with C saved_form_field
 }
 
 // TODO: optimize this
-impl Form {
+impl FormContext {
+    pub fn new() -> Self {
+        Self {
+            last_form_empty: AtomicI32::new(-1),
+            saved_form_fields: Mutex::new(HashMap::new()),
+        }
+    }
+
+    pub fn reset(&self) {
+        self.last_form_empty
+            .store(-1, std::sync::atomic::Ordering::Relaxed);
+        if let Ok(mut form_fields) = self.saved_form_fields.lock() {
+            form_fields.clear();
+        }
+    }
+
     unsafe fn saved_form_field(
         _vpninfo: *mut openconnect_info,
         form_id: *mut i8,
@@ -135,7 +158,7 @@ impl Form {
                             continue 'loop_opt;
                         }
 
-                        let opt_response = Form::saved_form_field(
+                        let opt_response = FormContext::saved_form_field(
                             vpninfo,
                             (*form).auth_id,
                             (*select_opt).form.name,
@@ -143,8 +166,11 @@ impl Form {
                         );
 
                         if opt_response.is_some()
-                            && Form::match_choice_label(vpninfo, select_opt, &opt_response.unwrap())
-                                == 0
+                            && FormContext::match_choice_label(
+                                vpninfo,
+                                select_opt,
+                                &opt_response.unwrap(),
+                            ) == 0
                         {
                             // free(opt_response);
                             continue 'loop_opt;
@@ -201,8 +227,12 @@ impl Form {
                     OC_FORM_OPT_HIDDEN => {
                         println!("OC_FORM_OPT_HIDDEN");
                         let found = ptr::null_mut::<i32>();
-                        let value =
-                            Form::saved_form_field(vpninfo, (*form).auth_id, (*opt).name, found);
+                        let value = FormContext::saved_form_field(
+                            vpninfo,
+                            (*form).auth_id,
+                            (*opt).name,
+                            found,
+                        );
                         if value.is_some() {
                             let value = CString::new(value.unwrap()).unwrap();
                             openconnect_set_option_value(opt, value.as_ptr());
@@ -218,14 +248,31 @@ impl Form {
                 opt = (*opt).next;
             }
 
+            // TODO: optimize this stupid empty check
             if empty != 0 {
-                LAST_FORM_EMPTY = 0;
+                (*client)
+                    .form_context
+                    .last_form_empty
+                    .store(0, Ordering::Relaxed);
             } else if {
-                LAST_FORM_EMPTY += 1;
-                LAST_FORM_EMPTY
+                (*client)
+                    .form_context
+                    .last_form_empty
+                    .fetch_add(1, Ordering::Relaxed);
+
+                (*client)
+                    .form_context
+                    .last_form_empty
+                    .load(Ordering::Relaxed)
             } >= 3
             {
-                println!("{} consecutive empty forms, aborting loop", LAST_FORM_EMPTY);
+                println!(
+                    "{} consecutive empty forms, aborting loop",
+                    (*client)
+                        .form_context
+                        .last_form_empty
+                        .load(Ordering::Relaxed)
+                );
                 println!();
                 return OC_FORM_RESULT_CANCELLED as i32;
             }
@@ -233,5 +280,11 @@ impl Form {
         println!("Submitting form");
         println!();
         OC_FORM_RESULT_OK as i32
+    }
+}
+
+impl Default for FormContext {
+    fn default() -> Self {
+        Self::new()
     }
 }
