@@ -9,6 +9,7 @@ import {
 import { TauriTitleBar } from "./Titlebar";
 import { useForm, SubmitHandler } from "react-hook-form";
 import { useLocalStorage } from "react-use";
+import { invoke } from "@tauri-apps/api/tauri";
 
 interface Inputs {
   server: string;
@@ -24,11 +25,17 @@ function App() {
   });
 
   const { handleSubmit, register } = useForm<Inputs>({
-    defaultValues: async () => data!,
+    values: data,
   });
 
-  const onSubmit: SubmitHandler<Inputs> = (data) => {
+  const onSubmit: SubmitHandler<Inputs> = async (data) => {
     setData(data);
+    const result = invoke("connect", data as unknown as Record<string, string>);
+    console.log(result);
+  };
+
+  const handleDisconnect = () => {
+    invoke("disconnect");
   };
 
   return (
@@ -75,6 +82,7 @@ function App() {
                 Connect
               </Button>
             </form>
+            <Button color="primary" className="m-3" onClick={handleDisconnect}>Disconnect</Button>
           </CardBody>
         </Card>
         <div className="font-thin pt-8 text-xs select-none cursor-none">

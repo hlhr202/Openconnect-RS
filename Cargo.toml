@@ -5,3 +5,6 @@ members = [
     "crates/openconnect-core",
     "crates/openconnect-gui/src-tauri",
 ]
+
+[workspace.dependencies]
+lazy_static = "1.4.0"

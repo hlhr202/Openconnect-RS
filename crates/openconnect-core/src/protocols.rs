@@ -1,16 +1,16 @@
 use openconnect_sys::{oc_vpn_proto, openconnect_get_supported_protocols};
 
-#[derive(Debug)]
-pub struct Protocols {
+#[derive(Debug, Clone)]
+pub struct Protocol {
     pub name: String,
     pub pretty_name: String,
     pub description: String,
     pub flags: u32,
 }
 
-pub fn get_supported_protocols() -> Vec<Protocols> {
+pub fn get_supported_protocols() -> Vec<Protocol> {
     let mut raw_protocols = std::ptr::null_mut::<oc_vpn_proto>();
-    let mut protocols: Vec<Protocols> = vec![];
+    let mut protocols: Vec<Protocol> = vec![];
     unsafe {
         let n = openconnect_get_supported_protocols(&mut raw_protocols);
         if n < 0 {
@@ -30,7 +30,7 @@ pub fn get_supported_protocols() -> Vec<Protocols> {
                 .expect("protocol description is not valid")
                 .to_string();
             let flags = (*raw_protocols).flags;
-            protocols.push(Protocols {
+            protocols.push(Protocol {
                 name,
                 pretty_name,
                 description,
@@ -40,4 +40,13 @@ pub fn get_supported_protocols() -> Vec<Protocols> {
         }
     }
     protocols
+}
+
+// TODO: temp solution
+pub fn get_anyconnect_protocol() -> Protocol {
+    get_supported_protocols()
+        .iter()
+        .find(|p| p.name == "anyconnect")
+        .expect("anyconnect protocol not found")
+        .clone()
 }

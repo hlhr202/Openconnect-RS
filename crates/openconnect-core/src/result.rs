@@ -2,6 +2,12 @@ use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum OpenConnectError {
+    #[error("Failed to create new VPN client: {0}")]
+    ConfigError(String),
+
+    #[error("Failed to setup shutdown error: {0}")]
+    SetupShutdownError(#[from] ctrlc::Error),
+
     #[error("Failed to obtain cookie from server. Error code: {0}")]
     ObtainCookieError(i32),
 
