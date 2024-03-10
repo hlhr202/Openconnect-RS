@@ -10,60 +10,24 @@ use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
 use form::FormContext;
 pub use openconnect_sys::*;
-use result::{OpenConnectError, OpenConnectResult};
+use result::{EmitError, OpenconnectError, OpenconnectResult};
 use stats::Stats;
 use std::{
     ffi::CString,
     sync::{
-        atomic::{AtomicI32, AtomicU8, Ordering},
+        atomic::{AtomicI32, Ordering},
         Arc, RwLock,
     },
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
-    Initialized = 0,
-    Disconnecting = 1,
-    Disconnected = 2,
-    Connecting = 3,
-    Connected = 4,
-}
-
-impl From<Status> for AtomicU8 {
-    fn from(status: Status) -> Self {
-        AtomicU8::new(status.into())
-    }
-}
-
-impl From<Status> for u8 {
-    fn from(val: Status) -> Self {
-        val as u8
-    }
-}
-
-impl From<&AtomicU8> for Status {
-    fn from(val: &AtomicU8) -> Self {
-        match val.load(Ordering::Relaxed) {
-            0 => Status::Initialized,
-            1 => Status::Disconnecting,
-            2 => Status::Disconnected,
-            3 => Status::Connecting,
-            4 => Status::Connected,
-            _ => Status::Disconnected,
-        }
-    }
-}
-
-impl From<Status> for String {
-    fn from(val: Status) -> Self {
-        match val {
-            Status::Initialized => "Initialized".to_string(),
-            Status::Disconnecting => "Disconnecting".to_string(),
-            Status::Disconnected => "Disconnected".to_string(),
-            Status::Connecting => "Connecting".to_string(),
-            Status::Connected => "Connected".to_string(),
-        }
-    }
+    Initialized,
+    Disconnecting,
+    Disconnected,
+    Connecting,
+    Connected,
+    Error(OpenconnectError),
 }
 
 #[repr(C)]
@@ -71,7 +35,7 @@ pub struct VpnClient {
     pub(crate) config: Config,
     vpninfo: *mut openconnect_info,
     cmd_fd: AtomicI32,
-    status: AtomicU8,
+    status: RwLock<Status>,
     callbacks: EventHandlers,
     entrypoint: RwLock<Option<Entrypoint>>,
     form_context: FormContext,
@@ -161,12 +125,12 @@ impl VpnClient {
         }
     }
 
-    pub fn set_protocol(&self, protocol: &str) -> OpenConnectResult<()> {
+    pub fn set_protocol(&self, protocol: &str) -> OpenconnectResult<()> {
         let protocol = CString::new(protocol).unwrap();
         let ret = unsafe { openconnect_set_protocol(self.vpninfo, protocol.as_ptr()) };
         match ret {
             0 => Ok(()),
-            _ => Err(OpenConnectError::SetProtocolError(ret)),
+            _ => Err(OpenconnectError::SetProtocolError(ret)),
         }
     }
 
@@ -182,26 +146,31 @@ impl VpnClient {
         }
     }
 
-    pub fn set_report_os(&self, os: &str) -> OpenConnectResult<()> {
+    pub fn set_report_os(&self, os: &str) -> OpenconnectResult<()> {
         let os = CString::new(os).unwrap();
         let ret = unsafe { openconnect_set_reported_os(self.vpninfo, os.as_ptr()) };
         match ret {
             0 => Ok(()),
-            _ => Err(OpenConnectError::SetReportOSError(ret)),
+            _ => Err(OpenconnectError::SetReportOSError(ret)),
         }
     }
 
-    pub fn obtain_cookie(&self) -> OpenConnectResult<()> {
+    pub fn obtain_cookie(&self) -> OpenconnectResult<()> {
         let ret = unsafe {
             println!();
             println!("obtain_cookie");
             println!();
-            openconnect_clear_cookie(self.vpninfo);
             openconnect_obtain_cookie(self.vpninfo)
         };
         match ret {
             0 => Ok(()),
-            _ => Err(result::OpenConnectError::ObtainCookieError(ret)),
+            _ => Err(result::OpenconnectError::ObtainCookieError(ret)),
+        }
+    }
+
+    pub fn clear_cookie(&self) {
+        unsafe {
+            openconnect_clear_cookie(self.vpninfo);
         }
     }
 
@@ -215,12 +184,12 @@ impl VpnClient {
         }
     }
 
-    pub fn setup_cmd_pipe(&self) -> OpenConnectResult<()> {
+    pub fn setup_cmd_pipe(&self) -> OpenconnectResult<()> {
         unsafe {
             let cmd_fd = openconnect_setup_cmd_pipe(self.vpninfo);
             self.cmd_fd.store(cmd_fd, Ordering::Relaxed);
             if cmd_fd < 0 {
-                return Err(result::OpenConnectError::CmdPipeError(cmd_fd));
+                return Err(result::OpenconnectError::CmdPipeError(cmd_fd));
             }
             libc::fcntl(
                 cmd_fd,
@@ -231,37 +200,43 @@ impl VpnClient {
         Ok(())
     }
 
-    pub fn make_cstp_connection(&self) -> OpenConnectResult<()> {
+    pub fn reset_ssl(&self) {
+        unsafe {
+            openconnect_reset_ssl(self.vpninfo);
+        }
+    }
+
+    pub fn make_cstp_connection(&self) -> OpenconnectResult<()> {
         let ret = unsafe { openconnect_make_cstp_connection(self.vpninfo) };
         match ret {
             0 => Ok(()),
-            _ => Err(result::OpenConnectError::MakeCstpError(ret)),
+            _ => Err(result::OpenconnectError::MakeCstpError(ret)),
         }
     }
 
-    pub fn disable_dtls(&self) -> OpenConnectResult<()> {
+    pub fn disable_dtls(&self) -> OpenconnectResult<()> {
         let ret = unsafe { openconnect_disable_dtls(self.vpninfo) };
         match ret {
             0 => Ok(()),
-            _ => Err(result::OpenConnectError::DisableDTLSError(ret)),
+            _ => Err(result::OpenconnectError::DisableDTLSError(ret)),
         }
     }
 
-    pub fn set_http_proxy(&self, proxy: &str) -> OpenConnectResult<()> {
-        let proxy = CString::new(proxy).map_err(|_| OpenConnectError::SetProxyError(libc::EIO))?;
+    pub fn set_http_proxy(&self, proxy: &str) -> OpenconnectResult<()> {
+        let proxy = CString::new(proxy).map_err(|_| OpenconnectError::SetProxyError(libc::EIO))?;
         let ret = unsafe { openconnect_set_http_proxy(self.vpninfo, proxy.as_ptr()) };
         match ret {
             0 => Ok(()),
-            _ => Err(OpenConnectError::SetProxyError(ret)),
+            _ => Err(OpenconnectError::SetProxyError(ret)),
         }
     }
 
-    pub fn parse_url(&self, url: &str) -> OpenConnectResult<()> {
-        let url = CString::new(url).map_err(|_| OpenConnectError::ParseUrlError(libc::EIO))?;
+    pub fn parse_url(&self, url: &str) -> OpenconnectResult<()> {
+        let url = CString::new(url).map_err(|_| OpenconnectError::ParseUrlError(libc::EIO))?;
         let ret = unsafe { openconnect_parse_url(self.vpninfo, url.as_ptr()) };
         match ret {
             0 => Ok(()),
-            _ => Err(OpenConnectError::ParseUrlError(ret)),
+            _ => Err(OpenconnectError::ParseUrlError(ret)),
         }
     }
 
@@ -279,26 +254,26 @@ impl VpnClient {
         }
     }
 
-    pub fn set_client_cert(&self, cert: &str, sslkey: &str) -> OpenConnectResult<()> {
+    pub fn set_client_cert(&self, cert: &str, sslkey: &str) -> OpenconnectResult<()> {
         let cert =
-            CString::new(cert).map_err(|_| OpenConnectError::SetClientCertError(libc::EIO))?;
+            CString::new(cert).map_err(|_| OpenconnectError::SetClientCertError(libc::EIO))?;
         let sslkey =
-            CString::new(sslkey).map_err(|_| OpenConnectError::SetClientCertError(libc::EIO))?;
+            CString::new(sslkey).map_err(|_| OpenconnectError::SetClientCertError(libc::EIO))?;
         let ret =
             unsafe { openconnect_set_client_cert(self.vpninfo, cert.as_ptr(), sslkey.as_ptr()) };
         match ret {
             0 => Ok(()),
-            _ => Err(OpenConnectError::SetClientCertError(ret)),
+            _ => Err(OpenconnectError::SetClientCertError(ret)),
         }
     }
 
-    pub fn set_mca_cert(&self, cert: &str, key: &str) -> OpenConnectResult<()> {
-        let cert = CString::new(cert).map_err(|_| OpenConnectError::SetMCACertError(libc::EIO))?;
-        let key = CString::new(key).map_err(|_| OpenConnectError::SetMCACertError(libc::EIO))?;
+    pub fn set_mca_cert(&self, cert: &str, key: &str) -> OpenconnectResult<()> {
+        let cert = CString::new(cert).map_err(|_| OpenconnectError::SetMCACertError(libc::EIO))?;
+        let key = CString::new(key).map_err(|_| OpenconnectError::SetMCACertError(libc::EIO))?;
         let ret = unsafe { openconnect_set_mca_cert(self.vpninfo, cert.as_ptr(), key.as_ptr()) };
         match ret {
             0 => Ok(()),
-            _ => Err(OpenConnectError::SetMCACertError(ret)),
+            _ => Err(OpenconnectError::SetMCACertError(ret)),
         }
     }
 
@@ -306,13 +281,13 @@ impl VpnClient {
         &self,
         reconnect_timeout: i32,
         reconnect_interval: u32,
-    ) -> OpenConnectResult<()> {
+    ) -> OpenconnectResult<()> {
         let ret = unsafe {
             openconnect_mainloop(self.vpninfo, reconnect_timeout, reconnect_interval as i32)
         };
         match ret {
             0 => Ok(()),
-            _ => Err(OpenConnectError::MainLoopError(ret)),
+            _ => Err(OpenconnectError::MainLoopError(ret)),
         }
     }
 
@@ -332,14 +307,14 @@ impl Drop for VpnClient {
 }
 
 pub trait Connectable {
-    fn new(config: Config, callbacks: EventHandlers) -> OpenConnectResult<Arc<Self>>;
-    fn connect(&self, entrypoint: Entrypoint) -> OpenConnectResult<()>;
+    fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>>;
+    fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()>;
     fn disconnect(&self);
     fn get_state(&self) -> Status;
 }
 
 impl Connectable for VpnClient {
-    fn new(config: Config, callbacks: EventHandlers) -> OpenConnectResult<Arc<Self>> {
+    fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>> {
         let useragent =
             std::ffi::CString::new("AnyConnect-compatible OpenConnect VPN Agent").unwrap();
 
@@ -347,7 +322,7 @@ impl Connectable for VpnClient {
             vpninfo: std::ptr::null_mut(),
             config,
             cmd_fd: (-1).into(),
-            status: Status::Initialized.into(),
+            status: RwLock::new(Status::Initialized),
             callbacks,
             entrypoint: RwLock::new(None),
             form_context: FormContext::default(),
@@ -385,7 +360,9 @@ impl Connectable for VpnClient {
         instance.set_setup_tun_handler();
 
         if let Some(proxy) = &instance.config.http_proxy {
-            instance.set_http_proxy(proxy.as_str())?;
+            instance
+                .set_http_proxy(proxy.as_str())
+                .emit_error(&instance)?;
         }
 
         instance.emit_state_change(Status::Initialized);
@@ -393,37 +370,43 @@ impl Connectable for VpnClient {
         Ok(instance)
     }
 
-    fn connect(&self, entrypoint: Entrypoint) -> OpenConnectResult<()> {
+    fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
         self.emit_state_change(Status::Connecting);
-
         self.form_context.reset();
 
-        self.set_protocol(&entrypoint.protocol.name)?;
-        self.setup_cmd_pipe()?;
+        self.set_protocol(&entrypoint.protocol.name)
+            .emit_error(self)?;
+        self.setup_cmd_pipe().emit_error(self)?;
         self.set_stats_handler();
-        self.set_report_os("linux-64")?;
+        self.set_report_os("linux-64").emit_error(self)?;
 
         {
-            let mut entrypoint_write_guard = self.entrypoint.write().map_err(|_| {
-                OpenConnectError::EntrypointConfigError("write entrypoint lock failed".to_string())
-            })?;
+            let mut entrypoint_write_guard = self
+                .entrypoint
+                .write()
+                .map_err(|_| {
+                    OpenconnectError::EntrypointConfigError(
+                        "write entrypoint lock failed".to_string(),
+                    )
+                })
+                .emit_error(self)?;
 
             *entrypoint_write_guard = Some(entrypoint.clone());
             // drop entrypoint_write_guard
         }
 
         if !entrypoint.enable_udp {
-            self.disable_dtls()?;
+            self.disable_dtls().emit_error(self)?;
         }
 
-        self.parse_url(&entrypoint.server)?;
+        self.parse_url(&entrypoint.server).emit_error(self)?;
         let hostname = self.get_hostname();
         if let Some(hostname) = hostname {
             println!("connecting: {}", hostname);
         }
 
-        self.obtain_cookie()?;
-        self.make_cstp_connection()?;
+        self.obtain_cookie().emit_error(self)?;
+        self.make_cstp_connection().emit_error(self)?;
 
         self.emit_state_change(Status::Connected);
 
@@ -432,6 +415,9 @@ impl Connectable for VpnClient {
                 break;
             }
         }
+
+        self.reset_ssl();
+        self.clear_cookie();
 
         Ok(())
     }
@@ -461,23 +447,27 @@ impl Connectable for VpnClient {
     }
 
     fn get_state(&self) -> Status {
-        Status::from(&self.status)
+        self.status
+            .read()
+            .ok()
+            .map_or(Status::Initialized, |r| r.clone())
     }
 }
 
 pub trait Shutdown {
-    fn with_ctrlc_shutdown(self) -> OpenConnectResult<Self>
+    fn with_ctrlc_shutdown(self) -> OpenconnectResult<Self>
     where
         Self: std::marker::Sized;
 }
 
 impl Shutdown for Arc<VpnClient> {
-    fn with_ctrlc_shutdown(self) -> OpenConnectResult<Self> {
+    fn with_ctrlc_shutdown(self) -> OpenconnectResult<Self> {
         let cloned_client = self.clone();
 
         ctrlc::set_handler(move || {
             cloned_client.disconnect();
-        })?;
+        })
+        .map_err(|e| OpenconnectError::SetupShutdownError(e.to_string()))?;
 
         Ok(self)
     }
@@ -485,10 +475,23 @@ impl Shutdown for Arc<VpnClient> {
 
 impl Events for VpnClient {
     fn emit_state_change(&self, status: Status) {
-        self.status.store(status.into(), Ordering::Relaxed);
+        {
+            let status_write_guard = self.status.write();
+            if let Ok(mut write) = status_write_guard {
+                *write = status.clone();
+            } else {
+                // FIXME: handle error?
+                return;
+            }
+        }
 
         if let Some(ref handler) = self.callbacks.handle_connection_state_change {
             handler(status);
         }
+    }
+
+    /// Change state and emit error to state change handler
+    fn emit_error(&self, error: &OpenconnectError) {
+        self.emit_state_change(Status::Error(error.clone()));
     }
 }

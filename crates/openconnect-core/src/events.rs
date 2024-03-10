@@ -1,4 +1,4 @@
-use crate::Status;
+use crate::{result::OpenconnectError, Status};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -29,6 +29,7 @@ impl Default for EventHandlers {
     }
 }
 
-pub trait Events {
+pub(crate) trait Events {
     fn emit_state_change(&self, status: Status);
+    fn emit_error(&self, error: &OpenconnectError);
 }

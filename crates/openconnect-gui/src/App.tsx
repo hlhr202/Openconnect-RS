@@ -14,9 +14,22 @@ import { listen } from "@tauri-apps/api/event";
 import { useEffect } from "react";
 import { atom, useAtom } from "jotai";
 
-const vpnStatusAtom = atom<string>("Initialized");
+enum EStatus {
+  Initialized = "initialized",
+  Disconnecting = "disconnecting",
+  Disconnected = "disconnected",
+  Connecting = "connecting",
+  Connected = "connected",
+  Error = "error",
+}
+interface VpnStatus {
+  status: EStatus;
+  message?: string;
+}
+
+const vpnStatusAtom = atom<VpnStatus>({ status: EStatus.Initialized });
 vpnStatusAtom.onMount = (set) => {
-  listen<string>("vpnStatus", (event) => {
+  listen<VpnStatus>("vpnStatus", (event) => {
     set(event.payload);
   });
 };
@@ -64,9 +77,9 @@ function App() {
         <Card className="max-w-[800px] min-w-[400px] max-h-[800px] min-h-[400px]">
           <CardBody>
             {(() => {
-              switch (vpnStatus) {
-                case "Initialized":
-                case "Disconnected":
+              switch (vpnStatus.status) {
+                case EStatus.Initialized:
+                case EStatus.Disconnected:
                   return (
                     <form
                       onSubmit={handleSubmit(onSubmit)}
@@ -107,21 +120,31 @@ function App() {
                       </Button>
                     </form>
                   );
-                case "Connecting":
-                  return <div>Connecting...</div>;
-
-                case "Disconnecting":
-                  return <div>Disconnecting...</div>;
-
-                case "Connected":
+                case EStatus.Connecting:
                   return (
-                    <Button
-                      color="primary"
-                      className="m-3"
-                      onClick={handleDisconnect}
-                    >
-                      Disconnect
-                    </Button>
+                    <div className="flex w-full h-full items-center justify-center">
+                      Connecting...
+                    </div>
+                  );
+
+                case EStatus.Disconnecting:
+                  return (
+                    <div className="flex w-full h-full items-center justify-center">
+                      Disconnecting...
+                    </div>
+                  );
+
+                case EStatus.Connected:
+                  return (
+                    <div className="flex w-full h-full items-center justify-center">
+                      <Button
+                        color="primary"
+                        className="m-3"
+                        onClick={handleDisconnect}
+                      >
+                        Disconnect
+                      </Button>
+                    </div>
                   );
               }
             })()}

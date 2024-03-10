@@ -1,6 +1,6 @@
 use crate::{
     protocols::{get_anyconnect_protocol, Protocol},
-    result::{OpenConnectError, OpenConnectResult},
+    result::{OpenconnectError, OpenconnectResult},
 };
 use openconnect_sys::{PRG_DEBUG, PRG_ERR, PRG_INFO, PRG_TRACE};
 
@@ -49,7 +49,7 @@ impl ConfigBuilder {
         self
     }
 
-    pub fn build(&self) -> OpenConnectResult<Config> {
+    pub fn build(&self) -> OpenconnectResult<Config> {
         Ok(Config {
             http_proxy: self.http_proxy.clone(),
             vpncscript: self.vpncscript.clone(),
@@ -123,11 +123,11 @@ impl EntrypointBuilder {
         self
     }
 
-    pub fn build(&self) -> OpenConnectResult<Entrypoint> {
+    pub fn build(&self) -> OpenconnectResult<Entrypoint> {
         let server = self
             .server
             .clone()
-            .ok_or(OpenConnectError::EntrypointConfigError(
+            .ok_or(OpenconnectError::EntrypointConfigError(
                 "Server is required".to_string(),
             ))?;
 

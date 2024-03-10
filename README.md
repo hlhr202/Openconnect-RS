@@ -12,7 +12,7 @@
 - [ ] implement oidc login
 - [ ] implement logs
 
-### Server
+### Auth server
 
 - [ ] implement ocserv pub key login
 - [ ] implement saml authentication

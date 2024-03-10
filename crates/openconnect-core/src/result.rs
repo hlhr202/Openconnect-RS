@@ -1,7 +1,9 @@
 use thiserror::Error;
 
-#[derive(Error, Debug)]
-pub enum OpenConnectError {
+use crate::{events::Events, VpnClient};
+
+#[derive(Error, Debug, Clone, PartialEq, Eq)]
+pub enum OpenconnectError {
     #[error("Failed to create new VPN config: {0}")]
     ConfigError(String),
 
@@ -9,7 +11,7 @@ pub enum OpenConnectError {
     EntrypointConfigError(String),
 
     #[error("Failed to setup shutdown error: {0}")]
-    SetupShutdownError(#[from] ctrlc::Error),
+    SetupShutdownError(String),
 
     #[error("Failed to obtain cookie from server. Error code: {0}")]
     ObtainCookieError(i32),
@@ -45,4 +47,14 @@ pub enum OpenConnectError {
     MainLoopError(i32),
 }
 
-pub type OpenConnectResult<T> = std::result::Result<T, OpenConnectError>;
+pub type OpenconnectResult<T> = std::result::Result<T, OpenconnectError>;
+
+pub trait EmitError<T> {
+    fn emit_error(self, client: &VpnClient) -> OpenconnectResult<T>;
+}
+
+impl<T> EmitError<T> for OpenconnectResult<T> {
+    fn emit_error(self, client: &VpnClient) -> OpenconnectResult<T> {
+        self.inspect_err(|e| client.emit_error(e))
+    }
+}
