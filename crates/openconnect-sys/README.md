@@ -49,6 +49,25 @@ brew install libtool # for libtool
 brew install gettext # for msgfmt
 ```
 
+### For Windows (MSYS2 CLANG64)
+
+You have to use MSYS2 CLANG64 shell to build the library for 64-bit Windows.
+
+```bash
+pacman -S base-devel
+pacman -S automake
+pacman -S libtool
+pacman -S gettext
+pacman -S autotools
+pacman -S pkg-config
+
+pacman -S libxml2 libxml2-devel
+pacman -S zlib
+pacman -S openssl openssl-devel
+pacman -S clang
+pacman -S icu icu-devel
+```
+
 ## Download source
 
 ```bash
@@ -68,7 +87,7 @@ cd openconnect
     --without-libpcsclite \
     --without-libpskc \
     --without-gnutls
-    # --with-vpnc-script=/opt/vpnc-scripts/vpnc-script
-# probably you need to add --with-vpnc-script=/opt/vpnc-scripts/vpnc-script
+    # --with-vpnc-script=./vpnc-script-win.js # for windows
+    # --with-vpnc-script=/opt/vpnc-scripts/vpnc-script # for *nix without vpnc-script installed
 make
 ```

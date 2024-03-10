@@ -1,8 +1,14 @@
 use std::env;
 use std::path::PathBuf;
 
-// TODO: windows support
+// TODO: optimize path search
 fn main() {
+    #[cfg(not(target_os = "windows"))]
+    let link = "static";
+
+    #[cfg(target_os = "windows")]
+    let link = "dylib";
+
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let openconnect_lib = format!("{}/openconnect/.libs", dir);
     // Tell cargo to look for shared libraries in the specified directory
@@ -17,54 +23,76 @@ fn main() {
     // macOS search path end
 
     // Linux search path
-    println!("cargo:rustc-link-search=/usr/lib/x86_64-linux-gnu");
-    // TODO: for stdc++, optimize auto search
-    println!("cargo:rustc-link-search=/usr/lib/gcc/x86_64-linux-gnu/11");
+    #[cfg(target_os = "linux")]
+    {
+        println!("cargo:rustc-link-search=/usr/lib/x86_64-linux-gnu");
+        // TODO: for stdc++, optimize auto search
+        println!("cargo:rustc-link-search=/usr/lib/gcc/x86_64-linux-gnu/11");
+    }
+
+    // windows search path
+    #[cfg(target_os = "windows")]
+    {
+        println!("cargo:rustc-link-search=C:\\msys64\\clang64\\lib");
+        println!("cargo:rustc-link-search=C:\\msys64\\clang64\\bin");
+    }
 
     // Tell cargo to tell rustc to link the openconnect shared library.
-    println!("cargo:rustc-link-lib=static=openconnect");
-
-    // link for xml2
-    println!("cargo:rustc-link-lib=static=xml2");
-    println!("cargo:rustc-link-lib=static=z");
-    println!("cargo:rustc-link-lib=static=icui18n");
-    println!("cargo:rustc-link-lib=static=lzma");
-    println!("cargo:rustc-link-lib=static=icudata");
-    println!("cargo:rustc-link-lib=static=icuuc");
+    println!("cargo:rustc-link-lib={}=openconnect", link);
 
     // link for openssl
-    println!("cargo:rustc-link-lib=static=crypto");
-    println!("cargo:rustc-link-lib=static=ssl");
+    println!("cargo:rustc-link-lib={}=crypto", link);
+    println!("cargo:rustc-link-lib={}=ssl", link);
+
+    // link for xml2
+    println!("cargo:rustc-link-lib={}=xml2", link);
+    println!("cargo:rustc-link-lib={}=z", link);
+    println!("cargo:rustc-link-lib={}=lzma", link);
+    #[cfg(not(target_os = "windows"))]
+    {
+        println!("cargo:rustc-link-lib={}=icui18n", link);
+        println!("cargo:rustc-link-lib={}=icudata", link);
+        println!("cargo:rustc-link-lib={}=icuuc", link);
+    }
 
     // link c++ stdlib
     #[cfg(target_os = "linux")]
     {
-        println!("cargo:rustc-link-lib=static=stdc++");
+        println!("cargo:rustc-link-lib={}=stdc++", link);
     }
 
     #[cfg(target_os = "macos")]
     {
         // link for iconv
-        println!("cargo:rustc-link-lib=static=iconv");
+        println!("cargo:rustc-link-lib={}=iconv", link);
 
         // link for lz4
-        println!("cargo:rustc-link-lib=static=lz4");
+        println!("cargo:rustc-link-lib={}=lz4", link);
 
         // link for c++ stdlib
-        println!("cargo:rustc-link-lib=static=c++");
-        println!("cargo:rustc-link-lib=static=c++abi");
+        println!("cargo:rustc-link-lib={}=c++", link);
+        println!("cargo:rustc-link-lib={}=c++abi", link);
     }
 
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=c-src/helper.h");
     println!("cargo:rerun-if-changed=c-src/helper.c");
 
-    // Compile helper.c
-    cc::Build::new()
+    // ===== compile helper.c start =====
+    let mut build = cc::Build::new();
+    let mut build = build
         .file("c-src/helper.c")
         .include("c-src")
-        .include("openconnect") // maybe not needed
-        .compile("helper");
+        .include("openconnect"); // maybe not needed
+
+    #[cfg(target_os = "windows")]
+    {
+        build = build.include("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.37.32822\\include")
+            .include("C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.22621.0\\ucrt");
+    }
+
+    build.compile("helper");
+    // ===== compile helper.c end =====
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for

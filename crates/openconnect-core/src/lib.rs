@@ -191,11 +191,25 @@ impl VpnClient {
             if cmd_fd < 0 {
                 return Err(result::OpenconnectError::CmdPipeError(cmd_fd));
             }
-            libc::fcntl(
-                cmd_fd,
-                libc::F_SETFL,
-                libc::fcntl(cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK,
-            );
+
+            #[cfg(not(target_os = "windows"))]
+            {
+                libc::fcntl(
+                    cmd_fd,
+                    libc::F_SETFL,
+                    libc::fcntl(cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK,
+                );
+            }
+
+            #[cfg(target_os = "windows")]
+            {
+                let mut mode: u32 = 0;
+                windows_sys::Win32::Networking::WinSock::ioctlsocket(
+                    cmd_fd as usize,
+                    windows_sys::Win32::Networking::WinSock::FIONBIO,
+                    &mut mode,
+                );
+            }
         }
         Ok(())
     }
