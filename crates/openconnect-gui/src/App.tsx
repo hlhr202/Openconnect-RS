@@ -70,8 +70,8 @@ function App() {
   return (
     <NextUIProvider>
       <TauriTitleBar />
-      <main className="select-none dark text-foreground bg-background h-[calc(100vh-30px)] flex justify-center flex-col items-center mt-[30px]">
-        <h1 className="font-thin pb-8 text-3xl select-none cursor-pointer">
+      <main className="border-none select-none dark text-foreground bg-background h-[calc(100vh-30px)] flex justify-center flex-col items-center mt-[30px]">
+        <h1 className="font-thin pb-8 text-3xl select-none cursor-default">
           Openconnect RS
         </h1>
         <Card className="max-w-[800px] min-w-[400px] max-h-[800px] min-h-[400px]">
@@ -80,6 +80,7 @@ function App() {
               switch (vpnStatus.status) {
                 case EStatus.Initialized:
                 case EStatus.Disconnected:
+                case EStatus.Error:
                   return (
                     <form
                       onSubmit={handleSubmit(onSubmit)}
@@ -150,10 +151,10 @@ function App() {
             })()}
           </CardBody>
         </Card>
-        <div className="font-thin pt-8 text-xs select-none cursor-none">
+        <div className="font-thin pt-8 text-xs select-none cursor-default">
           Source codes license - LGPL
         </div>
-        <div className="font-thin pt-2 text-xs select-none cursor-none">
+        <div className="font-thin pt-2 text-xs select-none cursor-default">
           Copyright @2024 hlhr202
         </div>
       </main>

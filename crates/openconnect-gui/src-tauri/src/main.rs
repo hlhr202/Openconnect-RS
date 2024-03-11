@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod state;
+mod oidc;
 use state::{AppState, VpnCommand};
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
@@ -31,6 +32,11 @@ fn destory(app_state: tauri::State<AppState>) {
     app_state.send(VpnCommand::Destory).unwrap_or_default();
 }
 
+#[tauri::command]
+fn get_current_state(app_state: tauri::State<AppState>) {
+    app_state.send(VpnCommand::GetState).unwrap_or_default();
+}
+
 fn main() {
     sudo::escalate_if_needed().unwrap();
 
@@ -40,7 +46,7 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet, connect, disconnect, destory
+            greet, connect, disconnect, destory, get_current_state
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

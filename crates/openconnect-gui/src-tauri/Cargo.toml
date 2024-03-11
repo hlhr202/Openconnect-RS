@@ -27,6 +27,8 @@ serde_json = "1.0.114"
 openconnect-core = { path = "../../openconnect-core" }
 lazy_static = { workspace = true }
 sudo = "0.6.0"
+reqwest = { workspace = true }
+tokio = { workspace = true }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

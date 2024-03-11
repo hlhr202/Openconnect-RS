@@ -15,6 +15,7 @@ pub enum VpnCommand {
     },
     Disconnect,
     Destory,
+    GetState,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +127,15 @@ impl AppState {
                         client.disconnect();
                     }
                     break 'event_loop;
+                }
+                Ok(VpnCommand::GetState) => {
+                    if let Some(client) = client.clone() {
+                        let state = client.get_state();
+                        let result = event_tx.send(VpnEvent::Status(state.into()));
+                        if let Err(e) = result {
+                            eprintln!("Error while emitting event: {:?}", e);
+                        }
+                    }
                 }
                 Err(_) => break 'event_loop,
             }

@@ -5,6 +5,7 @@ pub mod form;
 pub mod protocols;
 pub mod result;
 pub mod stats;
+pub mod token;
 
 use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
@@ -19,6 +20,7 @@ use std::{
         Arc, RwLock,
     },
 };
+use token::Token;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
@@ -134,6 +136,14 @@ impl VpnClient {
         }
     }
 
+    pub fn init_token(&self, token: Token) -> OpenconnectResult<()> {
+        let ret = token::init_token(self, token);
+        match ret {
+            0 => Ok(()),
+            _ => Err(OpenconnectError::SetTokenError(ret)),
+        }
+    }
+
     pub fn set_stats_handler(&self) {
         unsafe {
             openconnect_set_stats_handler(self.vpninfo, Some(stats::stats_fn));
@@ -210,7 +220,7 @@ impl VpnClient {
         let ret = unsafe { openconnect_make_cstp_connection(self.vpninfo) };
         match ret {
             0 => Ok(()),
-            _ => Err(result::OpenconnectError::MakeCstpError(ret)),
+            _ => Err(OpenconnectError::MakeCstpError(ret)),
         }
     }
 
@@ -218,7 +228,7 @@ impl VpnClient {
         let ret = unsafe { openconnect_disable_dtls(self.vpninfo) };
         match ret {
             0 => Ok(()),
-            _ => Err(result::OpenconnectError::DisableDTLSError(ret)),
+            _ => Err(OpenconnectError::DisableDTLSError(ret)),
         }
     }
 
@@ -376,6 +386,9 @@ impl Connectable for VpnClient {
 
         self.set_protocol(&entrypoint.protocol.name)
             .emit_error(self)?;
+        if let Some(token) = entrypoint.token.clone() {
+            self.init_token(token).emit_error(self)?;
+        }
         self.setup_cmd_pipe().emit_error(self)?;
         self.set_stats_handler();
         self.set_report_os("linux-64").emit_error(self)?;
