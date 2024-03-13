@@ -1,13 +1,15 @@
 use std::env;
 use std::path::PathBuf;
 
+// mod find_lib;
+
 // TODO: optimize path search
 fn main() {
     #[cfg(not(target_os = "windows"))]
     let link = "static";
 
     #[cfg(target_os = "windows")]
-    let link = "dylib";
+    let link = "static";
 
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
     let openconnect_lib = format!("{}/openconnect/.libs", dir);
@@ -33,26 +35,42 @@ fn main() {
     // windows search path
     #[cfg(target_os = "windows")]
     {
-        println!("cargo:rustc-link-search=C:\\msys64\\clang64\\lib");
-        println!("cargo:rustc-link-search=C:\\msys64\\clang64\\bin");
+        println!("cargo:rustc-link-search=C:\\msys64\\mingw64\\lib");
+        println!(
+            "cargo:rustc-link-search=C:\\msys64\\mingw64\\lib\\gcc\\x86_64-w64-mingw32\\13.2.0"
+        );
     }
 
-    // Tell cargo to tell rustc to link the openconnect shared library.
-    println!("cargo:rustc-link-lib={}=openconnect", link);
-
-    // link for openssl
-    println!("cargo:rustc-link-lib={}=crypto", link);
-    println!("cargo:rustc-link-lib={}=ssl", link);
-
-    // link for xml2
-    println!("cargo:rustc-link-lib={}=xml2", link);
-    println!("cargo:rustc-link-lib={}=z", link);
-    println!("cargo:rustc-link-lib={}=lzma", link);
     #[cfg(not(target_os = "windows"))]
     {
+        // link for openssl
+        println!("cargo:rustc-link-lib={}=crypto", link);
+        println!("cargo:rustc-link-lib={}=ssl", link);
+
+        // link for xml2
+        println!("cargo:rustc-link-lib={}=xml2", link);
+        println!("cargo:rustc-link-lib={}=z", link);
+        println!("cargo:rustc-link-lib={}=lzma", link);
         println!("cargo:rustc-link-lib={}=icui18n", link);
         println!("cargo:rustc-link-lib={}=icudata", link);
         println!("cargo:rustc-link-lib={}=icuuc", link);
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        println!("cargo:rustc-link-lib={}=crypto", link);
+        println!("cargo:rustc-link-lib={}=ssl", link);
+
+        // link for xml2
+        println!("cargo:rustc-link-lib={}=xml2", link);
+        println!("cargo:rustc-link-lib={}=iconv", link);
+        println!("cargo:rustc-link-lib={}=z", link);
+        println!("cargo:rustc-link-lib={}=lz4", link);
+        println!("cargo:rustc-link-lib={}=lzma", link);
+        println!("cargo:rustc-link-lib={}=intl", link);
+        println!("cargo:rustc-link-lib={}=gcc", link);
+        println!("cargo:rustc-link-lib={}=mingw32", link);
+        println!("cargo:rustc-link-lib={}=mingwex", link);
     }
 
     // link c++ stdlib
@@ -74,23 +92,19 @@ fn main() {
         println!("cargo:rustc-link-lib={}=c++abi", link);
     }
 
+    // Tell cargo to tell rustc to link the openconnect shared library.
+    println!("cargo:rustc-link-lib=static=openconnect");
+
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=c-src/helper.h");
     println!("cargo:rerun-if-changed=c-src/helper.c");
 
     // ===== compile helper.c start =====
     let mut build = cc::Build::new();
-    let mut build = build
+    let build = build
         .file("c-src/helper.c")
         .include("c-src")
         .include("openconnect"); // maybe not needed
-
-    #[cfg(target_os = "windows")]
-    {
-        build = build.include("C:\\Program Files\\Microsoft Visual Studio\\2022\\Community\\VC\\Tools\\MSVC\\14.37.32822\\include")
-            .include("C:\\Program Files (x86)\\Windows Kits\\10\\Include\\10.0.22621.0\\ucrt");
-    }
-
     build.compile("helper");
     // ===== compile helper.c end =====
 

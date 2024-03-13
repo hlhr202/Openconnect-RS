@@ -49,9 +49,17 @@ brew install libtool # for libtool
 brew install gettext # for msgfmt
 ```
 
-### For Windows (MSYS2 CLANG64)
+### For Windows (MSYS2 MINGW64)
 
-You have to use MSYS2 CLANG64 shell to build the library for 64-bit Windows.
+Download MSYS2
+
+Switch rust toolchain to windows-gnu
+
+```bash
+rustup default stable-x86_64-pc-windows-gnu
+```
+
+You have to use MSYS2 MINGW64 shell to build the library for 64-bit Windows.
 
 ```bash
 pacman -S base-devel
@@ -66,6 +74,22 @@ pacman -S zlib
 pacman -S openssl openssl-devel
 pacman -S clang
 pacman -S icu icu-devel
+```
+
+### Minor changes for Windows
+
+- in config.h, you may add
+
+```c
+// TODO: check if it's necessary when building under MSYS2 MINGW64
+#define LIBXML_STATIC
+```
+
+- for cargo build, you have to use CFLAGS under MSYS2 MINGW64 shell, this avoid error when building rustls.
+  See details here: https://github.com/aws/aws-lc-rs/issues/370
+
+```bash
+export CFLAGS="-D_ISOC11_SOURCE" && cargo build
 ```
 
 ## Download source

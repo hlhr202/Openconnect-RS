@@ -32,6 +32,7 @@ fn destory(app_state: tauri::State<AppState>) {
 }
 
 fn main() {
+    #[cfg(not(target_os = "windows"))]
     sudo::escalate_if_needed().unwrap();
 
     tauri::Builder::default()

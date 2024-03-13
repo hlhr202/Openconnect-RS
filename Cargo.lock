@@ -2013,6 +2013,7 @@ dependencies = [
  "bindgen",
  "cc",
  "home",
+ "vcpkg",
 ]
 
 [[package]]
