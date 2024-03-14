@@ -13,6 +13,9 @@ pub enum OpenconnectError {
     #[error("Failed to setup shutdown error: {0}")]
     SetupShutdownError(String),
 
+    #[error("Failed to setup cookie manually: {0}")]
+    SetCookieError(i32),
+
     #[error("Failed to obtain cookie from server. Error code: {0}")]
     ObtainCookieError(i32),
 

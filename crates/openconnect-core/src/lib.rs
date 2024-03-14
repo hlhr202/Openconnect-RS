@@ -178,6 +178,16 @@ impl VpnClient {
         }
     }
 
+    pub fn set_cookie(&self, cookie: &str) -> OpenconnectResult<()> {
+        let cookie =
+            CString::new(cookie).map_err(|_| OpenconnectError::SetCookieError(libc::EIO))?;
+        let ret = unsafe { openconnect_set_cookie(self.vpninfo, cookie.as_ptr()) };
+        match ret {
+            0 => Ok(()),
+            _ => Err(OpenconnectError::SetCookieError(ret)),
+        }
+    }
+
     pub fn clear_cookie(&self) {
         unsafe {
             openconnect_clear_cookie(self.vpninfo);
@@ -418,7 +428,11 @@ impl Connectable for VpnClient {
             println!("connecting: {}", hostname);
         }
 
-        self.obtain_cookie().emit_error(self)?;
+        if let Some(cookie) = entrypoint.cookie.clone() {
+            self.set_cookie(&cookie).emit_error(self)?;
+        } else {
+            self.obtain_cookie().emit_error(self)?;
+        }
         self.make_cstp_connection().emit_error(self)?;
 
         self.emit_state_change(Status::Connected);

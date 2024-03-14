@@ -63,6 +63,10 @@ function App() {
     invoke("disconnect");
   };
 
+  const handleSSO = () => {
+    invoke("connect_with_oidc", { server: data?.server });
+  };
+
   useEffect(() => {
     console.log(vpnStatus);
   }, [vpnStatus]);
@@ -82,44 +86,53 @@ function App() {
                 case EStatus.Disconnected:
                 case EStatus.Error:
                   return (
-                    <form
-                      onSubmit={handleSubmit(onSubmit)}
-                      className="flex flex-col w-full"
-                    >
-                      <Input
-                        label="Server:"
-                        labelPlacement="outside"
-                        placeholder="https://"
-                        className="p-3"
-                        size="md"
-                        defaultValue={getValues("server")}
-                        {...register("server", { required: true })}
-                      />
-                      <Input
-                        label="Username:"
-                        labelPlacement="outside"
-                        placeholder="admin"
-                        className="p-3"
-                        size="md"
-                        defaultValue={getValues("username")}
-                        {...register("username", { required: true })}
-                      />
-                      <Input
-                        label="Password:"
-                        labelPlacement="outside"
-                        placeholder="password"
-                        className="p-3"
-                        type="password"
-                        size="md"
-                        defaultValue={getValues("password")}
-                        {...register("password", { required: true })}
-                      />
+                    <>
+                      <form
+                        onSubmit={handleSubmit(onSubmit)}
+                        className="flex flex-col w-full"
+                      >
+                        <Input
+                          label="Server:"
+                          labelPlacement="outside"
+                          placeholder="https://"
+                          className="p-3"
+                          size="md"
+                          defaultValue={getValues("server")}
+                          {...register("server", { required: true })}
+                        />
+                        <Input
+                          label="Username:"
+                          labelPlacement="outside"
+                          placeholder="admin"
+                          className="p-3"
+                          size="md"
+                          defaultValue={getValues("username")}
+                          {...register("username", { required: true })}
+                        />
+                        <Input
+                          label="Password:"
+                          labelPlacement="outside"
+                          placeholder="password"
+                          className="p-3"
+                          type="password"
+                          size="md"
+                          defaultValue={getValues("password")}
+                          {...register("password", { required: true })}
+                        />
 
-                      <Divider className="mt-4"></Divider>
-                      <Button type="submit" color="primary" className="m-3">
-                        Connect
+                        <Divider className="mt-4"></Divider>
+                        <Button type="submit" color="primary" className="m-3">
+                          Connect
+                        </Button>
+                      </form>
+                      <Button
+                        onClick={handleSSO}
+                        color="primary"
+                        className="m-3"
+                      >
+                        SSO
                       </Button>
-                    </form>
+                    </>
                   );
                 case EStatus.Connecting:
                   return (

@@ -78,6 +78,7 @@ pub struct Entrypoint {
     pub password: Option<String>,
     pub protocol: Protocol,
     pub token: Option<Token>,
+    pub cookie: Option<String>,
     pub enable_udp: bool,
 }
 
@@ -87,6 +88,7 @@ pub struct EntrypointBuilder {
     password: Option<String>,
     protocol: Option<Protocol>,
     token: Option<Token>,
+    cookie: Option<String>,
     enable_udp: bool,
 }
 
@@ -98,6 +100,7 @@ impl EntrypointBuilder {
             password: None,
             protocol: None,
             token: None,
+            cookie: None,
             enable_udp: true,
         }
     }
@@ -127,6 +130,11 @@ impl EntrypointBuilder {
         self
     }
 
+    pub fn cookie(&mut self, cookie: &str) -> &mut Self {
+        self.cookie = Some(cookie.to_string());
+        self
+    }
+
     pub fn enable_udp(&mut self, enable_udp: bool) -> &mut Self {
         self.enable_udp = enable_udp;
         self
@@ -151,6 +159,7 @@ impl EntrypointBuilder {
             password: self.password.clone(),
             protocol,
             token: self.token.clone(),
+            cookie: self.cookie.clone(),
             enable_udp: self.enable_udp,
         })
     }

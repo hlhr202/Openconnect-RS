@@ -1,8 +1,8 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod state;
 mod oidc;
+mod state;
 use state::{AppState, VpnCommand};
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
@@ -19,6 +19,13 @@ fn connect(app_state: tauri::State<AppState>, server: String, username: String, 
             username,
             password,
         })
+        .unwrap_or_default();
+}
+
+#[tauri::command(rename_all = "snake_case")]
+fn connect_with_oidc(app_state: tauri::State<AppState>, server: String) {
+    app_state
+        .send(VpnCommand::ConnectOpenID { server })
         .unwrap_or_default();
 }
 
@@ -39,6 +46,7 @@ fn get_current_state(app_state: tauri::State<AppState>) {
 
 fn main() {
     sudo::escalate_if_needed().unwrap();
+    dotenvy::from_path(".env.local").unwrap();
 
     tauri::Builder::default()
         .setup(|app| {
@@ -46,7 +54,12 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            greet, connect, disconnect, destory, get_current_state
+            greet,
+            connect,
+            disconnect,
+            destory,
+            get_current_state,
+            connect_with_oidc
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
