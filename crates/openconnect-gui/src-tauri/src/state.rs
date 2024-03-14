@@ -1,10 +1,10 @@
-use crate::oidc::{OpenID, OpenIDConfig};
+use crate::oidc::{OpenID, OpenIDConfig, OIDC_REDIRECT_URI};
 use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
+    storage::StoredConfigs,
     Connectable, Status, VpnClient,
 };
-use std::env;
 use std::sync::Arc;
 use tauri::{
     async_runtime::{channel, RwLock, Sender},
@@ -117,19 +117,23 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn connect_with_oidc(&self, server: &str) -> anyhow::Result<()> {
+    pub async fn connect_with_oidc(&self, server_name: &str) -> anyhow::Result<()> {
+        let mut stored_server = StoredConfigs::default();
+        let stored_server = stored_server
+            .read_from_file()
+            .await?
+            .get_server_as_oidc(server_name)
+            .ok_or(anyhow::anyhow!("Server not found"))?;
+
         let openid_config = OpenIDConfig {
-            issuer_url: env::var("OIDC_ISSUER")?,
-            redirect_uri: env::var("OIDC_REDIRECT_URI")?,
-            client_id: env::var("OIDC_CLIENT_ID")?,
-            client_secret: Some(env::var("OIDC_CLIENT_SECRET")?),
+            issuer_url: stored_server.issuer.clone(),
+            redirect_uri: OIDC_REDIRECT_URI.to_string(),
+            client_id: stored_server.client_id.clone(),
+            client_secret: stored_server.client_secret.clone(),
         };
 
         let openid = OpenID::new(openid_config).await?;
         let (authorize_url, req_state, _) = openid.auth_request()?;
-        println!("Connecting with OpenID");
-
-        println!();
 
         open::that(authorize_url.to_string())?;
         let (code, callback_state) = openid.wait_for_callback().await?;
@@ -140,14 +144,14 @@ impl AppState {
 
         let token = openid.exchange_token(code).await?;
         let cookie = openid
-            .obtain_cookie_by_oidc(server, &token)
+            .obtain_cookie_by_oidc(&stored_server.server, &token)
             .await
             .ok_or(anyhow::anyhow!("Failed to obtain cookie from server"))?;
 
         let config = ConfigBuilder::default().loglevel(LogLevel::Info).build()?;
 
         let entrypoint = EntrypointBuilder::new()
-            .server(server)
+            .server(&stored_server.server)
             .cookie(&cookie)
             .build()?;
 

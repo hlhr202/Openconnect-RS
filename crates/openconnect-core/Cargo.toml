@@ -16,9 +16,11 @@ lazy_static = "1.4.0"
 libc = "0.2.153"
 openconnect-sys = { path = "../openconnect-sys" }
 reqwest = { workspace = true }
-rustls = { version = "0.23.1", features = ["ring"] }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+home = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }

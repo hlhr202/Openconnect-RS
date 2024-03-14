@@ -4,3 +4,4 @@
 ._*
 .DS_Store
 vpnc-script-win.js
+*.example.json

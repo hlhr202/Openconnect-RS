@@ -12,5 +12,4 @@ crate-type = ["lib"]
 [build-dependencies]
 bindgen = "0.69.4"
 cc = "1.0.90"
-home = "0.5.9"
-vcpkg = "0.2.15"
+home = { workspace = true }

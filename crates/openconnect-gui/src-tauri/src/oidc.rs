@@ -5,10 +5,11 @@ use openidconnect::{
     AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
     RedirectUrl,
 };
-use std::env;
 use std::str::FromStr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use url::Url;
+
+pub const OIDC_REDIRECT_URI: &str = "http://localhost:8080";
 
 pub struct OpenID {
     client: CoreClient,
@@ -95,7 +96,7 @@ impl OpenID {
                 std::io::ErrorKind::InvalidInput,
                 "Invalid request",
             ))?;
-        let url = Url::parse(&(env::var("OIDC_REDIRECT_URI")? + redirect_url))?;
+        let url = Url::parse(&format!("{},{}", OIDC_REDIRECT_URI, redirect_url))?;
 
         let (code, state) = self.parse_code_and_state(url).ok_or(anyhow::anyhow!(
             "Failed to parse code and state from redirect URL"

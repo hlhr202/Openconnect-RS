@@ -5,6 +5,7 @@ pub mod form;
 pub mod protocols;
 pub mod result;
 pub mod stats;
+pub mod storage;
 
 use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
@@ -41,8 +42,6 @@ pub struct VpnClient {
     form_context: FormContext,
 }
 
-// make openconnect_info thread shareable/tranferable
-// TODO: check if it's safe to share openconnect_info between threads
 unsafe impl Send for VpnClient {}
 unsafe impl Sync for VpnClient {}
 
@@ -462,11 +461,27 @@ impl Connectable for VpnClient {
         unsafe {
             let cmd_fd = self.cmd_fd.load(Ordering::Relaxed);
             if cmd_fd != -1 {
-                // TODO: implement under windows, should use libc::send
-                let ret = libc::write(cmd_fd, std::ptr::from_ref(&cmd) as *const _, 1);
+                let ret = {
+                    #[cfg(not(target_os = "windows"))]
+                    {
+                        libc::write(cmd_fd, std::ptr::from_ref(&cmd) as *const _, 1)
+                    }
+
+                    #[cfg(target_os = "windows")]
+                    {
+                        windows_sys::Win32::Networking::WinSock::send(
+                            cmd_fd as usize,
+                            std::ptr::from_ref(&cmd) as *const _,
+                            1,
+                            0,
+                        )
+                    }
+                };
+
                 if ret < 0 {
                     println!("write cmd_fd failed");
                 }
+
                 self.cmd_fd.store(-1, Ordering::Relaxed);
             }
         }
