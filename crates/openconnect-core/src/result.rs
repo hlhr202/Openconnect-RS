@@ -40,9 +40,6 @@ pub enum OpenconnectError {
     #[error("Failed to parse URL. Error code: {0}")]
     ParseUrlError(i32),
 
-    #[error("Failed to set Token. Error code: {0}")]
-    SetTokenError(i32),
-
     #[error("Failed to set client certificate. Error code: {0}")]
     SetClientCertError(i32),
 

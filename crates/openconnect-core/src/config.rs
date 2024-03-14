@@ -1,7 +1,6 @@
 use crate::{
     protocols::{get_anyconnect_protocol, Protocol},
     result::{OpenconnectError, OpenconnectResult},
-    token::Token,
 };
 use openconnect_sys::{PRG_DEBUG, PRG_ERR, PRG_INFO, PRG_TRACE};
 
@@ -77,7 +76,6 @@ pub struct Entrypoint {
     pub username: Option<String>,
     pub password: Option<String>,
     pub protocol: Protocol,
-    pub token: Option<Token>,
     pub cookie: Option<String>,
     pub enable_udp: bool,
 }
@@ -87,7 +85,6 @@ pub struct EntrypointBuilder {
     username: Option<String>,
     password: Option<String>,
     protocol: Option<Protocol>,
-    token: Option<Token>,
     cookie: Option<String>,
     enable_udp: bool,
 }
@@ -99,7 +96,6 @@ impl EntrypointBuilder {
             username: None,
             password: None,
             protocol: None,
-            token: None,
             cookie: None,
             enable_udp: true,
         }
@@ -122,11 +118,6 @@ impl EntrypointBuilder {
 
     pub fn protocol(&mut self, protocol: Protocol) -> &mut Self {
         self.protocol = Some(protocol);
-        self
-    }
-
-    pub fn token(&mut self, token: Token) -> &mut Self {
-        self.token = Some(token);
         self
     }
 
@@ -158,7 +149,6 @@ impl EntrypointBuilder {
             username: self.username.clone(),
             password: self.password.clone(),
             protocol,
-            token: self.token.clone(),
             cookie: self.cookie.clone(),
             enable_udp: self.enable_udp,
         })

@@ -3,7 +3,7 @@
 
 mod oidc;
 mod state;
-use state::{AppState, VpnCommand};
+use state::AppState;
 
 // Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
 #[tauri::command]
@@ -12,41 +12,50 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-fn connect(app_state: tauri::State<AppState>, server: String, username: String, password: String) {
+async fn connect(
+    app_state: tauri::State<'_, AppState>,
+    server: String,
+    username: String,
+    password: String,
+) -> anyhow::Result<(), String> {
     app_state
-        .send(VpnCommand::Connect {
-            server,
-            username,
-            password,
-        })
-        .unwrap_or_default();
+        .connect_with_user_pass(&server, &username, &password)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command(rename_all = "snake_case")]
-fn connect_with_oidc(app_state: tauri::State<AppState>, server: String) {
+async fn connect_with_oidc(
+    app_state: tauri::State<'_, AppState>,
+    server: String,
+) -> anyhow::Result<(), String> {
     app_state
-        .send(VpnCommand::ConnectOpenID { server })
-        .unwrap_or_default();
+        .connect_with_oidc(&server)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn disconnect(app_state: tauri::State<AppState>) {
-    app_state.send(VpnCommand::Disconnect).unwrap_or_default();
+async fn disconnect(app_state: tauri::State<'_, AppState>) -> anyhow::Result<(), String> {
+    app_state.disconnect().await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn destory(app_state: tauri::State<AppState>) {
-    app_state.send(VpnCommand::Destory).unwrap_or_default();
-}
-
-#[tauri::command]
-fn get_current_state(app_state: tauri::State<AppState>) {
-    app_state.send(VpnCommand::GetState).unwrap_or_default();
+async fn trigger_state_retrieve(
+    app_state: tauri::State<'_, AppState>,
+) -> anyhow::Result<(), String> {
+    app_state
+        .trigger_state_retrieve()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 fn main() {
     #[cfg(not(target_os = "windows"))]
-    sudo::escalate_if_needed().unwrap();
+    {
+        sudo::escalate_if_needed().unwrap();
+    }
+
     dotenvy::from_path(".env.local").unwrap();
 
     tauri::Builder::default()
@@ -58,8 +67,7 @@ fn main() {
             greet,
             connect,
             disconnect,
-            destory,
-            get_current_state,
+            trigger_state_retrieve,
             connect_with_oidc
         ])
         .run(tauri::generate_context!())
