@@ -72,7 +72,6 @@ pacman -S pkg-config
 pacman -S libxml2 libxml2-devel
 pacman -S zlib
 pacman -S openssl openssl-devel
-pacman -S clang
 pacman -S icu icu-devel
 ```
 
@@ -80,17 +79,25 @@ pacman -S icu icu-devel
 
 - in config.h, you may add
 
-```c
-// TODO: check if it's necessary when building under MSYS2 MINGW64
-#define LIBXML_STATIC
-```
+  ```c
+  // TODO: check if it's necessary when building under MSYS2 MINGW64
+  #define LIBXML_STATIC
+  ```
 
 - for cargo build, you have to use CFLAGS under MSYS2 MINGW64 shell, this avoid error when building rustls.
   See details here: https://github.com/aws/aws-lc-rs/issues/370
 
-```bash
-export CFLAGS="-D_ISOC11_SOURCE" && cargo build
-```
+  For bash:
+
+  ```bash
+  export CFLAGS="-D_ISOC11_SOURCE" && cargo build
+  ```
+
+  For powershell:
+
+  ```powershell
+  $env:CFLAGS="-D_ISOC11_SOURCE"; cargo build
+  ```
 
 ## Download source
 
