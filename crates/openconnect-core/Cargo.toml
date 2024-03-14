@@ -19,3 +19,6 @@ reqwest = { workspace = true }
 rustls = { version = "0.23.1", features = ["ring"] }
 thiserror = "1.0.57"
 tokio = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = "0.52.0"

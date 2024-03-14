@@ -2,7 +2,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <helper.h>
-#include <openconnect.h>
+// #include <openconnect.h>
 
 static void (*global_buf_cb_t)(void *privdata, int level, const char *buf) = NULL;
 

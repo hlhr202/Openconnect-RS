@@ -2434,6 +2434,7 @@ dependencies = [
  "rustls 0.23.1",
  "thiserror",
  "tokio",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -2469,6 +2470,7 @@ dependencies = [
  "bindgen",
  "cc",
  "home",
+ "vcpkg",
 ]
 
 [[package]]

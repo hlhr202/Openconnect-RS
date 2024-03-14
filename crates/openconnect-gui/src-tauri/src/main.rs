@@ -45,6 +45,7 @@ fn get_current_state(app_state: tauri::State<AppState>) {
 }
 
 fn main() {
+    #[cfg(not(target_os = "windows"))]
     sudo::escalate_if_needed().unwrap();
     dotenvy::from_path(".env.local").unwrap();
 
