@@ -52,7 +52,7 @@ function App() {
         <h1 className="font-thin pb-8 text-3xl select-none cursor-default">
           Openconnect RS
         </h1>
-        <Card className="max-w-[800px] min-w-[400px] max-h-[800px] min-h-[400px]">
+        <Card className="max-w-[800px] min-w-[600px] max-h-[800px] min-h-[400px]">
           <CardBody>
             {(() => {
               switch (vpnStatus.status) {

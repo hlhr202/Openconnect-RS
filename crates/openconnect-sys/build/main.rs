@@ -17,16 +17,23 @@ fn main() {
     println!("cargo:rustc-link-search={}", openconnect_lib);
 
     // macOS search path
-    println!("cargo:rustc-link-search=/opt/local/lib");
-    println!("cargo:rustc-link-search=/usr/local/lib");
-    println!("cargo:rustc-link-search=/usr/lib");
-    // TODO: for stdc++, optimize auto search
-    println!("cargo:rustc-link-search=/opt/homebrew/opt/llvm/lib/c++");
-    // macOS search path end
+    #[cfg(target_os = "macos")]
+    {
+        // the order is important!!!
+        println!("cargo:rustc-link-search=/usr/lib");
+        println!("cargo:rustc-link-search=/usr/local/lib");
+        // TODO: for stdc++, optimize auto search
+        println!("cargo:rustc-link-search=/opt/homebrew/opt/llvm/lib/c++");
+        println!("cargo:rustc-link-search=/opt/homebrew/opt/libiconv/lib");
+        println!("cargo:rustc-link-search=/opt/homebrew/lib");
+        println!("cargo:rustc-link-search=/opt/local/lib");
+    }
 
     // Linux search path
     #[cfg(target_os = "linux")]
     {
+        println!("cargo:rustc-link-search=/usr/local/lib");
+        println!("cargo:rustc-link-search=/usr/lib");
         println!("cargo:rustc-link-search=/usr/lib/x86_64-linux-gnu");
         // TODO: for stdc++, optimize auto search
         println!("cargo:rustc-link-search=/usr/lib/gcc/x86_64-linux-gnu/11");
@@ -117,7 +124,6 @@ fn main() {
         .header("wrapper.h")
         .header("c-src/helper.h")
         .clang_arg("-I./openconnect")
-        .clang_arg("-static")
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)
         // Tell cargo to invalidate the built crate whenever any of the

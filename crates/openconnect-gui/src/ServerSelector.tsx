@@ -1,6 +1,7 @@
 import {
   Button,
   Divider,
+  // Modal,
   Select,
   SelectItem,
   Table,
@@ -65,21 +66,25 @@ export const ServerSelector = (props: IProps) => {
   }, [getStoredConfigs]);
 
   return (
-    <section className="h-full flex flex-col">
-      {!!serverList?.length && (
-        <Select
-          size="lg"
-          color="success"
-          selectionMode="single"
-          selectedKeys={selectedName ? [selectedName] : []}
-        >
-          {serverList?.map((server) => (
-            <SelectItem color="default" key={server.name} value={server.name}>
-              {server.name}
-            </SelectItem>
-          ))}
-        </Select>
-      )}
+    <section className="h-full w-full flex flex-col">
+      <div className="w-full flex">
+        {!!serverList?.length && (
+          <Select
+            size="md"
+            color="success"
+            className="flex-1"
+            selectionMode="single"
+            selectedKeys={selectedName ? [selectedName] : []}
+          >
+            {serverList?.map((server) => (
+              <SelectItem color="default" key={server.name} value={server.name}>
+                {server.name}
+              </SelectItem>
+            ))}
+          </Select>
+        )}
+        <Button size="md" color="primary" className="ml-2">Manage Server</Button>
+      </div>
       <Divider className="mt-3 mb-3"></Divider>
       <Table removeWrapper>
         <TableHeader>
@@ -103,3 +108,13 @@ export const ServerSelector = (props: IProps) => {
     </section>
   );
 };
+
+// export const ServerEditorModal = () => {
+//   return (
+//     <Modal>
+//       {(onclose) => {
+
+//       }}
+//     </Modal>
+//   )
+// }

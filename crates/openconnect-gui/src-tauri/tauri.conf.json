@@ -12,6 +12,9 @@
   "tauri": {
     "macOSPrivateApi": true,
     "allowlist": {
+      "fs": {
+        "scope": ["$RESOURCE/*"]
+      },
       "all": false,
       "shell": {
         "all": false,
@@ -51,6 +54,9 @@
         "icons/128x128@2x.png",
         "icons/icon.icns",
         "icons/icon.ico"
+      ],
+      "resources": [
+        "vpnc-scripts/*"
       ]
     }
   }

@@ -180,7 +180,8 @@ impl AppState {
 
     pub async fn disconnect(&self) -> anyhow::Result<()> {
         if let Some(client) = self.client.read().await.as_ref() {
-            client.disconnect();
+            let client = client.clone();
+            tauri::async_runtime::spawn_blocking(move || client.disconnect()).await?;
         }
 
         // self.client.write().await.take(); // TODO: wait a few seconds and drop the client

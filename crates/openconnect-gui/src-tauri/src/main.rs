@@ -3,6 +3,8 @@
 
 mod oidc;
 mod state;
+use std::os::unix::fs::PermissionsExt;
+
 use openconnect_core::storage::{StoredConfigs, StoredConfigsJson};
 use state::AppState;
 use tauri::Manager;
@@ -63,9 +65,21 @@ async fn get_stored_configs() -> anyhow::Result<StoredConfigsJson, String> {
 }
 
 fn main() {
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "linux")]
     {
         sudo::escalate_if_needed().unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        #[cfg(debug_assertions)]
+        sudo::escalate_if_needed().unwrap();
+
+        unsafe {
+            if libc::geteuid() != 0 && openconnect_core::helper_reluanch_as_root() == 1 {
+                std::process::exit(0);
+            }
+        }
     }
 
     tauri::Builder::default()
@@ -78,6 +92,30 @@ fn main() {
                 .body(b"Authenticated, close this window and return to the application.".to_vec())
         })
         .setup(|app| {
+            #[cfg(not(target_os = "windows"))]
+            {
+                let resource_path = app
+                    .path_resolver()
+                    .resolve_resource("vpnc-scripts/vpnc-script")
+                    .expect("failed to resolve resource");
+
+                let file = std::fs::OpenOptions::new()
+                    .write(false)
+                    .create(false)
+                    .append(false)
+                    .read(true)
+                    .open(resource_path)
+                    .expect("failed to open file");
+
+                let permissions = file.metadata().unwrap().permissions();
+                let is_executable = permissions.mode() & 0o111 != 0;
+                if !is_executable {
+                    let mut permissions = permissions;
+                    permissions.set_mode(0o755);
+                    file.set_permissions(permissions).unwrap();
+                }
+            }
+
             AppState::handle(app);
             Ok(())
         })

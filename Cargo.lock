@@ -2301,6 +2301,7 @@ dependencies = [
  "anyhow",
  "dotenvy",
  "lazy_static",
+ "libc",
  "open 5.1.2",
  "openconnect-core",
  "openidconnect",
