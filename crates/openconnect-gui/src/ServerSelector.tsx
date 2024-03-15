@@ -13,7 +13,7 @@ import {
 import { invoke } from "@tauri-apps/api";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-interface OidcServer {
+export interface OidcServer {
   name: string;
   authType: "oidc";
   server: string;
@@ -22,7 +22,7 @@ interface OidcServer {
   clientSecret?: string | null;
 }
 
-interface PasswordServer {
+export interface PasswordServer {
   name: string;
   authType: "password";
   server: string;
@@ -30,12 +30,16 @@ interface PasswordServer {
   password: string;
 }
 
-interface StoredConfigs {
+export interface StoredConfigs {
   default?: string | null;
   servers: (OidcServer | PasswordServer)[];
 }
 
-export const ServerSelector = () => {
+interface IProps {
+  onConnect: (server: OidcServer | PasswordServer) => void;
+}
+
+export const ServerSelector = (props: IProps) => {
   const [selectedName, setSelectedName] = useState<string | null>(null);
 
   const [serverList, setServerList] = useState<StoredConfigs["servers"]>();
@@ -49,6 +53,12 @@ export const ServerSelector = () => {
   const selectedServer = useMemo(() => {
     return serverList?.find((server) => server.name === selectedName);
   }, [selectedName, serverList]);
+
+  const handleConnect = useCallback(() => {
+    if (selectedServer) {
+      props.onConnect(selectedServer);
+    }
+  }, [props, selectedServer]);
 
   useEffect(() => {
     getStoredConfigs();
@@ -83,7 +93,11 @@ export const ServerSelector = () => {
           </TableRow>
         </TableBody>
       </Table>
-      <Button color="primary" className="w-full mt-auto">
+      <Button
+        color="primary"
+        className="w-full mt-auto"
+        onClick={handleConnect}
+      >
         Connect
       </Button>
     </section>

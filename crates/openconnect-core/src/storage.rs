@@ -122,7 +122,7 @@ impl StoredConfigs {
 
         let config_file = config_folder.join("config.json");
         if !config_file.exists() {
-            tokio::fs::write(&config_file, br#"{"default":null,"server":[]}"#)
+            tokio::fs::write(&config_file, br#"{"default":null,"servers":[]}"#)
                 .await
                 .map_err(|e| {
                     StoredConfigError::FileSystemError(format!(

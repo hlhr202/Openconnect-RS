@@ -2,9 +2,9 @@ import { NextUIProvider, Button, Card, CardBody } from "@nextui-org/react";
 import { TauriTitleBar } from "./Titlebar";
 import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
-import { useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { atom, useAtom } from "jotai";
-import { ServerSelector } from "./ServerSelector";
+import { OidcServer, PasswordServer, ServerSelector } from "./ServerSelector";
 
 enum EStatus {
   Initialized = "initialized",
@@ -29,6 +29,14 @@ vpnStatusAtom.onMount = (set) => {
 function App() {
   const [vpnStatus] = useAtom(vpnStatusAtom);
 
+  const handleConnect = useCallback((server: OidcServer | PasswordServer) => {
+    if (server.authType === "oidc") {
+      invoke("connect_with_oidc", { server_name: server.name });
+    } else {
+      // invoke("connect_password", server);
+    }
+  }, []);
+
   const handleDisconnect = () => {
     invoke("disconnect");
   };
@@ -51,7 +59,7 @@ function App() {
                 case EStatus.Initialized:
                 case EStatus.Disconnected:
                 case EStatus.Error:
-                  return <ServerSelector />;
+                  return <ServerSelector onConnect={handleConnect} />;
                 case EStatus.Connecting:
                   return (
                     <div className="flex w-full h-full items-center justify-center">

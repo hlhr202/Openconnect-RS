@@ -9,7 +9,7 @@ use std::str::FromStr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use url::Url;
 
-pub const OIDC_REDIRECT_URI: &str = "http://localhost:8080";
+pub const OIDC_REDIRECT_URI: &str = "http://localhost:8080/callback";
 
 pub struct OpenID {
     client: CoreClient,

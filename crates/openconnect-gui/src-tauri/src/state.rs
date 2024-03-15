@@ -183,7 +183,7 @@ impl AppState {
             client.disconnect();
         }
 
-        self.client.write().await.take(); // drop the client
+        // self.client.write().await.take(); // TODO: wait a few seconds and drop the client
 
         Ok(())
     }

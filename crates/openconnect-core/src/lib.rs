@@ -451,6 +451,7 @@ impl Connectable for VpnClient {
 
     /// Gracefully stop the main loop
     fn disconnect(&self) {
+        // TODO: fix status change disordered (disconnected triggered first, then disconnecting)
         if self.get_state() != Status::Connected {
             return;
         }
@@ -459,7 +460,7 @@ impl Connectable for VpnClient {
 
         let cmd = OC_CMD_CANCEL;
         unsafe {
-            let cmd_fd = self.cmd_fd.load(Ordering::Relaxed);
+            let cmd_fd = self.cmd_fd.load(Ordering::SeqCst);
             if cmd_fd != -1 {
                 let ret = {
                     #[cfg(not(target_os = "windows"))]
@@ -482,7 +483,7 @@ impl Connectable for VpnClient {
                     println!("write cmd_fd failed");
                 }
 
-                self.cmd_fd.store(-1, Ordering::Relaxed);
+                self.cmd_fd.store(-1, Ordering::SeqCst);
             }
         }
 
@@ -518,18 +519,17 @@ impl Shutdown for Arc<VpnClient> {
 
 impl Events for VpnClient {
     fn emit_state_change(&self, status: Status) {
+        if let Some(ref handler) = self.callbacks.handle_connection_state_change {
+            handler(status.clone());
+        }
+
         {
             let status_write_guard = self.status.write();
             if let Ok(mut write) = status_write_guard {
-                *write = status.clone();
+                *write = status;
             } else {
                 // FIXME: handle error?
-                return;
             }
-        }
-
-        if let Some(ref handler) = self.callbacks.handle_connection_state_change {
-            handler(status);
         }
     }
 
