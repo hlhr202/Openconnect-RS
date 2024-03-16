@@ -189,6 +189,12 @@ impl StoredConfigs {
     }
 
     pub async fn remove_server(&mut self, name: &str) -> Result<&mut Self, StoredConfigError> {
+        if self.default.as_ref().is_some_and(|d| d == name) {
+            return Err(StoredConfigError::FileSystemError(format!(
+                "Cannot remove default server {}",
+                name
+            )));
+        }
         self.servers.remove(name);
         self.save_to_file().await?;
         Ok(self)

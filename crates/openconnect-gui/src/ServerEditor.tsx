@@ -6,7 +6,7 @@ import {
   Controller,
   FieldErrors,
 } from "react-hook-form";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api";
 import { OidcServer, PasswordServer, useStoredConfigs } from "./state";
 
@@ -16,7 +16,7 @@ export interface FormParams {
 }
 
 export const ServerEditor = (props: FormParams) => {
-  const { getStoredConfigs, serverList } = useStoredConfigs();
+  const { getStoredConfigs, serverList, defaultName } = useStoredConfigs();
 
   const initialData = useMemo(() => {
     const initial = {
@@ -66,6 +66,16 @@ export const ServerEditor = (props: FormParams) => {
     await getStoredConfigs();
   };
 
+  const setDefaultServer = useCallback(async () => {
+    await invoke("set_default_server", { serverName: initialData.name });
+    await getStoredConfigs();
+  }, [initialData.name, getStoredConfigs]);
+
+  const removeServer = useCallback(async () => {
+    await invoke("remove_server", { serverName: initialData.name });
+    await getStoredConfigs();
+  }, [initialData.name, getStoredConfigs]);
+
   const watchedAuthType = useWatch({ control, name: "authType" });
 
   useEffect(() => {
@@ -84,164 +94,194 @@ export const ServerEditor = (props: FormParams) => {
   }, [initialData, register]);
 
   return (
-    <form onSubmit={handleSubmit(save)} className="flex flex-col w-full gap-4">
-      <Controller
-        name="name"
-        control={control}
-        rules={{ required: "This field is required" }}
-        render={({ field, formState }) => (
-          <Input
-            label="Name:"
-            labelPlacement="inside"
-            placeholder="My Server"
-            size="sm"
-            errorMessage={formState.errors.name?.message}
-            {...field}
-          />
-        )}
-      />
+    <form
+      onSubmit={handleSubmit(save)}
+      className="flex flex-col w-full gap-4 h-full"
+    >
+      <div className="flex flex-col w-full gap-4 h-[350px] overflow-auto p-2">
+        <Controller
+          name="name"
+          disabled
+          control={control}
+          rules={{ required: "This field is required" }}
+          render={({ field, formState }) => (
+            <Input
+              label="Name:"
+              labelPlacement="inside"
+              placeholder="My Server"
+              size="sm"
+              isDisabled
+              disabled
+              errorMessage={formState.errors.name?.message}
+              {...field}
+            />
+          )}
+        />
 
-      <Controller
-        name="authType"
-        control={control}
-        rules={{ required: "This field is required" }}
-        render={({ field, formState }) => (
-          <Select
-            label="Authentication Type:"
-            labelPlacement="inside"
-            placeholder="Select an authentication type"
-            selectionMode="single"
-            unselectable="off"
-            size="sm"
-            errorMessage={formState.errors.authType?.message}
-            selectedKeys={[field.value]}
-            {...field}
-          >
-            <SelectItem key="oidc" value="oidc">
-              OIDC Server
-            </SelectItem>
-            <SelectItem key="password" value="password">
-              Password Server
-            </SelectItem>
-          </Select>
-        )}
-      />
+        <Controller
+          name="authType"
+          control={control}
+          rules={{ required: "This field is required" }}
+          render={({ field, formState }) => (
+            <Select
+              label="Authentication Type:"
+              labelPlacement="inside"
+              placeholder="Select an authentication type"
+              selectionMode="single"
+              unselectable="off"
+              size="sm"
+              errorMessage={formState.errors.authType?.message}
+              selectedKeys={[field.value]}
+              {...field}
+            >
+              <SelectItem key="oidc" value="oidc">
+                OIDC Server
+              </SelectItem>
+              <SelectItem key="password" value="password">
+                Password Server
+              </SelectItem>
+            </Select>
+          )}
+        />
 
-      <Controller
-        name="server"
-        control={control}
-        rules={{ required: "This field is required" }}
-        render={({ field, formState }) => (
-          <Input
-            label="Server:"
-            labelPlacement="inside"
-            placeholder="https://"
-            size="sm"
-            errorMessage={formState.errors.server?.message}
-            {...field}
-          />
+        <Controller
+          name="server"
+          control={control}
+          rules={{ required: "This field is required" }}
+          render={({ field, formState }) => (
+            <Input
+              label="Server:"
+              labelPlacement="inside"
+              placeholder="https://"
+              size="sm"
+              errorMessage={formState.errors.server?.message}
+              {...field}
+            />
+          )}
+        />
+        {watchedAuthType === "password" && (
+          <>
+            <Controller
+              name="username"
+              control={control}
+              rules={{ required: "This field is required" }}
+              render={({ field, formState }) => (
+                <Input
+                  label="Username:"
+                  labelPlacement="inside"
+                  placeholder="username"
+                  size="sm"
+                  errorMessage={
+                    (formState.errors as FieldErrors<PasswordServer>).username
+                      ?.message
+                  }
+                  {...field}
+                />
+              )}
+            />
+            <Controller
+              name="password"
+              control={control}
+              rules={{ required: "This field is required" }}
+              render={({ field, formState }) => (
+                <Input
+                  label="Password:"
+                  labelPlacement="inside"
+                  placeholder="password"
+                  size="sm"
+                  type="password"
+                  errorMessage={
+                    (formState.errors as FieldErrors<PasswordServer>).password
+                      ?.message
+                  }
+                  {...field}
+                />
+              )}
+            />
+          </>
         )}
-      />
-      {watchedAuthType === "password" && (
-        <>
-          <Controller
-            name="username"
-            control={control}
-            rules={{ required: "This field is required" }}
-            render={({ field, formState }) => (
-              <Input
-                label="Username:"
-                labelPlacement="inside"
-                placeholder="username"
-                size="sm"
-                errorMessage={
-                  (formState.errors as FieldErrors<PasswordServer>).username
-                    ?.message
-                }
-                {...field}
-              />
-            )}
-          />
-          <Controller
-            name="password"
-            control={control}
-            rules={{ required: "This field is required" }}
-            render={({ field, formState }) => (
-              <Input
-                label="Password:"
-                labelPlacement="inside"
-                placeholder="password"
-                size="sm"
-                type="password"
-                errorMessage={
-                  (formState.errors as FieldErrors<PasswordServer>).password
-                    ?.message
-                }
-                {...field}
-              />
-            )}
-          />
-        </>
-      )}
-      {watchedAuthType === "oidc" && (
-        <>
-          <Controller
-            name="issuer"
-            control={control}
-            rules={{ required: "This field is required" }}
-            render={({ field, formState }) => (
-              <Input
-                label="Issuer:"
-                labelPlacement="inside"
-                placeholder="https://"
-                size="sm"
-                errorMessage={
-                  (formState.errors as FieldErrors<OidcServer>).issuer?.message
-                }
-                {...field}
-              />
-            )}
-          />
-          <Controller
-            name="clientId"
-            control={control}
-            rules={{ required: "This field is required" }}
-            render={({ field, formState }) => (
-              <Input
-                label="Client ID:"
-                labelPlacement="inside"
-                placeholder="client_id"
-                size="sm"
-                errorMessage={
-                  (formState.errors as FieldErrors<OidcServer>).clientId
-                    ?.message
-                }
-                {...field}
-              />
-            )}
-          />
-          <Controller
-            name="clientSecret"
-            control={control}
-            render={({ field }) => (
-              <Input
-                label="Client Secret:"
-                labelPlacement="inside"
-                placeholder="client_secret"
-                size="sm"
-                {...field}
-              />
-            )}
-          />
-        </>
-      )}
-      <div className="flex gap-4 w-full">
+        {watchedAuthType === "oidc" && (
+          <>
+            <Controller
+              name="issuer"
+              control={control}
+              rules={{ required: "This field is required" }}
+              render={({ field, formState }) => (
+                <Input
+                  label="Issuer:"
+                  labelPlacement="inside"
+                  placeholder="https://"
+                  size="sm"
+                  errorMessage={
+                    (formState.errors as FieldErrors<OidcServer>).issuer
+                      ?.message
+                  }
+                  {...field}
+                />
+              )}
+            />
+            <Controller
+              name="clientId"
+              control={control}
+              rules={{ required: "This field is required" }}
+              render={({ field, formState }) => (
+                <Input
+                  label="Client ID:"
+                  labelPlacement="inside"
+                  placeholder="client_id"
+                  size="sm"
+                  errorMessage={
+                    (formState.errors as FieldErrors<OidcServer>).clientId
+                      ?.message
+                  }
+                  {...field}
+                />
+              )}
+            />
+            <Controller
+              name="clientSecret"
+              control={control}
+              render={({ field }) => (
+                <Input
+                  label="Client Secret:"
+                  labelPlacement="inside"
+                  placeholder="client_secret"
+                  size="sm"
+                  {...field}
+                />
+              )}
+            />
+          </>
+        )}
+      </div>
+      <div className="flex gap-4 w-full self-end items-end pl-2 pr-2">
         {props.mode === "edit" && (
-          <Button type="button" color="danger" size="sm" className="flex-1">
-            Delete
-          </Button>
+          <>
+            <Button
+              type="button"
+              color="danger"
+              size="sm"
+              className="flex-1"
+              disabled={defaultName === initialData.name}
+              isDisabled={defaultName === initialData.name}
+              onClick={removeServer}
+            >
+              Delete
+            </Button>
+            <Button
+              type="button"
+              color="primary"
+              size="sm"
+              className="flex-1"
+              disabled={defaultName === initialData.name}
+              isDisabled={defaultName === initialData.name}
+              onClick={setDefaultServer}
+            >
+              Set Default
+            </Button>
+          </>
         )}
-        <Button type="submit" color="primary" size="sm" className="flex-1">
+        <Button type="submit" color="success" size="sm" className="flex-1">
           Save
         </Button>
       </div>

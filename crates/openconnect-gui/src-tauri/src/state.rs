@@ -26,7 +26,7 @@ impl From<Status> for StatusPayload {
     fn from(status: Status) -> Self {
         let (status, message) = match status {
             Status::Initialized => ("initialized".to_string(), None),
-            Status::Connecting => ("connecting".to_string(), None),
+            Status::Connecting(msg) => ("connecting".to_string(), Some(msg)),
             Status::Connected => ("connected".to_string(), None),
             Status::Disconnecting => ("disconnecting".to_string(), None),
             Status::Disconnected => ("disconnected".to_string(), None),
@@ -40,14 +40,18 @@ impl From<Status> for StatusPayload {
 pub struct AppState {
     pub(crate) event_tx: Sender<VpnEvent>,
     pub(crate) client: RwLock<Option<Arc<VpnClient>>>,
+    pub(crate) stored_configs: RwLock<StoredConfigs>,
     #[allow(dead_code)]
     pub(crate) vpnc_sciprt: String,
 }
 
 impl AppState {
-    pub fn handle_with_vpnc_script(app: &mut tauri::App, vpnc_scipt: &str) {
+    pub async fn handle_with_vpnc_script(
+        app: &mut tauri::App,
+        vpnc_scipt: &str,
+    ) -> anyhow::Result<()> {
         let (event_tx, mut event_rx) = channel::<VpnEvent>(100);
-        let app_state = AppState::new(event_tx, vpnc_scipt);
+        let app_state = AppState::new(event_tx, vpnc_scipt).await?;
         app.manage(app_state);
 
         let handle = app.app_handle();
@@ -65,6 +69,8 @@ impl AppState {
                 }
             }
         });
+
+        Ok(())
     }
 
     pub async fn trigger_state_retrieve(&self) -> anyhow::Result<()> {
@@ -203,11 +209,14 @@ impl AppState {
         Ok(())
     }
 
-    pub fn new(event_tx: Sender<VpnEvent>, vpnc_scipt: &str) -> Self {
-        Self {
+    pub async fn new(event_tx: Sender<VpnEvent>, vpnc_scipt: &str) -> anyhow::Result<Self> {
+        let mut stored_configs = StoredConfigs::new();
+        stored_configs.read_from_file().await?;
+        Ok(Self {
             event_tx,
             client: RwLock::new(None),
+            stored_configs: RwLock::new(stored_configs),
             vpnc_sciprt: vpnc_scipt.to_string(),
-        }
+        })
     }
 }

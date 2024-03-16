@@ -3,23 +3,13 @@ import {
   Divider,
   Select,
   SelectItem,
-  Table,
-  TableBody,
-  TableCell,
-  TableColumn,
-  TableHeader,
-  TableRow,
   useDisclosure,
 } from "@nextui-org/react";
-import { useCallback, useEffect } from "react";
+import { FC, PropsWithChildren, useEffect } from "react";
 import { ServerEditorModal } from "./ServerEditorModal";
-import { OidcServer, PasswordServer, useStoredConfigs } from "./state";
+import { useStoredConfigs } from "./state";
 
-interface IProps {
-  onConnect: (server: OidcServer | PasswordServer) => void;
-}
-
-export const ServerSelector = (props: IProps) => {
+export const ServerSelector = () => {
   const {
     getStoredConfigs,
     selectedServer,
@@ -27,12 +17,6 @@ export const ServerSelector = (props: IProps) => {
     serverList,
     setSelectedName,
   } = useStoredConfigs();
-
-  const handleConnect = useCallback(() => {
-    if (selectedServer) {
-      props.onConnect(selectedServer);
-    }
-  }, [props, selectedServer]);
 
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
@@ -46,7 +30,7 @@ export const ServerSelector = (props: IProps) => {
         {!!serverList?.length && (
           <Select
             size="md"
-            color="success"
+            // color="success"
             className="flex-1"
             selectionMode="single"
             selectedKeys={selectedName ? [selectedName] : []}
@@ -69,25 +53,22 @@ export const ServerSelector = (props: IProps) => {
         </Button>
       </div>
       <Divider className="mt-3 mb-3"></Divider>
-      <Table removeWrapper>
-        <TableHeader>
-          <TableColumn>Type</TableColumn>
-          <TableColumn>Server</TableColumn>
-        </TableHeader>
-        <TableBody>
-          <TableRow>
-            <TableCell>{selectedServer?.authType}</TableCell>
-            <TableCell>{selectedServer?.server}</TableCell>
-          </TableRow>
-        </TableBody>
-      </Table>
-      <Button
-        color="primary"
-        className="w-full mt-auto"
-        onClick={handleConnect}
-      >
-        Connect
-      </Button>
+      <div className="flex flex-col gap-6 p-1">
+        <InfoRow label="Server Type">{selectedServer?.authType}</InfoRow>
+        <InfoRow label="Server URL">{selectedServer?.server}</InfoRow>
+        {selectedServer?.authType === "password" && (
+          <>
+            <InfoRow label="Username">{selectedServer?.username}</InfoRow>
+            <InfoRow label="Password">{"********"}</InfoRow>
+          </>
+        )}
+        {selectedServer?.authType === "oidc" && (
+          <>
+            <InfoRow label="Issuer">{selectedServer?.issuer}</InfoRow>
+            <InfoRow label="Client ID">{selectedServer?.clientId}</InfoRow>
+          </>
+        )}
+      </div>
 
       <ServerEditorModal
         isOpen={isOpen}
@@ -95,5 +76,17 @@ export const ServerSelector = (props: IProps) => {
         onOpenChange={onOpenChange}
       />
     </section>
+  );
+};
+
+const InfoRow: FC<PropsWithChildren<{ label: string }>> = (props) => {
+  return (
+    <div className="flex gap-4">
+      <div className="w-[100px]">{props.label}:</div>
+      <Divider orientation="vertical" />
+      <div className="max-w-[400px] overflow-hidden text-ellipsis whitespace-nowrap">
+        {props.children}
+      </div>
+    </div>
   );
 };

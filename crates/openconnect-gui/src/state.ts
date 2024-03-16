@@ -25,16 +25,19 @@ export interface StoredConfigs {
 }
 
 export const storedConfigsAtom = atom<StoredConfigs["servers"]>([]);
-export const defaultServerAtom = atom<string | null>(null);
+export const selectedNameAtom = atom<string | null>(null);
+export const defaultNameAtom = atom<string | null>(null);
 
 export const useStoredConfigs = () => {
   const [serverList, setServerList] = useAtom(storedConfigsAtom);
-  const [selectedName, setSelectedName] = useAtom(defaultServerAtom);
+  const [selectedName, setSelectedName] = useAtom(selectedNameAtom);
+  const [defaultName, setDefaultName] = useAtom(defaultNameAtom);
 
   const getStoredConfigs = useCallback(async () => {
     const configs = await invoke<StoredConfigs>("get_stored_configs");
     setServerList(configs.servers);
     setSelectedName(configs.default ?? configs.servers[0].name);
+    setDefaultName(configs.default ?? null);
   }, [setServerList, setSelectedName]);
 
   const selectedServer = useMemo(() => {
@@ -42,6 +45,7 @@ export const useStoredConfigs = () => {
   }, [selectedName, serverList]);
 
   return {
+    defaultName,
     serverList,
     selectedName,
     getStoredConfigs,

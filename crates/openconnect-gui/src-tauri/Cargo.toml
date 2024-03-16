@@ -37,6 +37,7 @@ thiserror = { workspace = true }
 tokio = { workspace = true }
 libc = { workspace = true }
 url = "2.5.0"
+window-shadows = "0.2.2"
 
 [patch.crates-io]
 winres = { git = "https://github.com/Nilstrieb/winres", branch = "linking-flags" }

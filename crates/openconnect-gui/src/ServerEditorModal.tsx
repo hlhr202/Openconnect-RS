@@ -9,6 +9,7 @@ import {
   Card,
   CardBody,
   ModalFooter,
+  Divider,
 } from "@nextui-org/react";
 import { useAtom } from "jotai";
 import { useState } from "react";
@@ -38,34 +39,55 @@ export const ServerEditorModal = (props: IModalProps) => {
   return (
     <Modal
       size="sm"
+      backdrop="blur"
+      shadow="lg"
+      hideCloseButton
       isOpen={props.isOpen}
       onOpenChange={props.onOpenChange}
       onClose={handleClose}
-      className="min-w-[800px] dark bg-background text-foreground bg-opacity-90"
+      className="min-w-[800px] min-h-[620px] dark bg-background text-foreground bg-opacity-90"
     >
       <ModalContent>
         {(closeModal) => {
           return (
             <>
-              <ModalHeader>Manager Servers</ModalHeader>
+              <ModalHeader className="select-none">Manager Servers</ModalHeader>
               <ModalBody>
-                <Button
-                  size="sm"
-                  color="primary"
-                  onClick={() => {
-                    setSelectedName(null);
-                    setFormParams({ mode: "add" });
-                  }}
-                >
-                  Add New Server Config
-                </Button>
-                <div className="flex gap-1">
+                <div className="flex gap-4">
+                  <Button
+                    size="sm"
+                    color="secondary"
+                    className="flex-1"
+                    isDisabled
+                    disabled
+                  >
+                    Import config from clipboard (Not implemented yet)
+                  </Button>
+                  <Button
+                    size="sm"
+                    color="primary"
+                    className="flex-1"
+                    onClick={() => {
+                      setSelectedName(null);
+                      setFormParams({ mode: "add" });
+                    }}
+                  >
+                    Add New Server Config
+                  </Button>
+                </div>
+                <div className="flex gap-1 flex-1">
                   <Card>
-                    <CardBody className="min-w-[200px]">
+                    <CardBody className="min-w-[200px] overflow-auto">
                       <Listbox
-                        variant="flat"
+                        variant="shadow"
                         color="primary"
-                        topContent="Server List"
+                        disallowEmptySelection
+                        topContent={
+                          <>
+                            <span className="select-none p-1">Server List</span>
+                            <Divider />
+                          </>
+                        }
                         selectedKeys={selectedName ? [selectedName] : []}
                         selectionMode="single"
                         onSelectionChange={(keys) => {
@@ -80,24 +102,24 @@ export const ServerEditorModal = (props: IModalProps) => {
                         }}
                       >
                         {serverList.map((server) => (
-                          <ListboxItem key={server.name} value={server.name}>
-                            {server.name}
-                          </ListboxItem>
+                          <ListboxItem
+                            key={server.name}
+                            value={server.name}
+                            title={server.name}
+                          />
                         ))}
                       </Listbox>
                     </CardBody>
                   </Card>
-                  {formParams ? (
-                    <Card className="flex-1 ml-5">
-                      <CardBody>
-                        <ServerEditor {...formParams} />
-                      </CardBody>
-                    </Card>
-                  ) : null}
+                  <Card className="flex-1 ml-5 min-h-full">
+                    <CardBody>
+                      {formParams && <ServerEditor {...formParams} />}
+                    </CardBody>
+                  </Card>
                 </div>
               </ModalBody>
               <ModalFooter>
-                <Button onClick={closeModal} size="sm">
+                <Button onClick={closeModal} size="sm" className="w-full">
                   Close
                 </Button>
               </ModalFooter>

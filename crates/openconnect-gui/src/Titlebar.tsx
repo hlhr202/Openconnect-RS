@@ -8,7 +8,7 @@ const TitleBarButton: FC<
     <div
       onClick={onClick}
       id={id}
-      className={`${className} inline-flex justify-center items-center w-[45px] h-[38px] hover:bg-[#888] transition-colors`}
+      className={`${className} inline-flex justify-center items-center w-[45px] h-[38px] hover:bg-gray-600 transition-colors`}
     >
       {children}
     </div>
@@ -32,32 +32,26 @@ export const TauriTitleBar = () => {
   return (
     <div
       data-tauri-drag-region
-      className="titlebar dark h-[200px] bg-gradient-to-b from-gray-900 to-transparent select-none flex justify-end fixed top-0 left-0 right-0 rounded-t-lg"
+      className="titlebar dark z-[51] h-[15vh] bg-gradient-to-b from-gray-900 to-transparent select-none flex justify-end fixed top-0 left-0 right-0 rounded-t-lg"
     >
       <TitleBarButton id="titlebar-minimize" onClick={minimize}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width="1em"
-          height="1em"
-          viewBox="0 0 512 512"
+          width="1.2em"
+          height="1.2em"
+          viewBox="0 0 24 24"
         >
-          <path
-            fill="white"
-            d="M480 480H32c-17.7 0-32-14.3-32-32s14.3-32 32-32h448c17.7 0 32 14.3 32 32s-14.3 32-32 32"
-          />
+          <path fill="white" d="M20 14H4v-4h16" />
         </svg>
       </TitleBarButton>
       <TitleBarButton id="titlebar-maximize" onClick={maximize}>
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width="1em"
-          height="1em"
-          viewBox="0 0 512 512"
+          width="1.2em"
+          height="1.2em"
+          viewBox="0 0 24 24"
         >
-          <path
-            fill="white"
-            d="M464 32H48C21.5 32 0 53.5 0 80v352c0 26.5 21.5 48 48 48h416c26.5 0 48-21.5 48-48V80c0-26.5-21.5-48-48-48m0 394c0 3.3-2.7 6-6 6H54c-3.3 0-6-2.7-6-6V192h416z"
-          />
+          <path fill="white" d="M4 4h16v16H4zm2 4v10h12V8z" />
         </svg>
       </TitleBarButton>
       <TitleBarButton
@@ -67,13 +61,13 @@ export const TauriTitleBar = () => {
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
-          width="1em"
-          height="1em"
-          viewBox="0 0 512 512"
+          width="1.2em"
+          height="1.2em"
+          viewBox="0 0 24 24"
         >
           <path
             fill="white"
-            d="M464 32H48C21.5 32 0 53.5 0 80v352c0 26.5 21.5 48 48 48h416c26.5 0 48-21.5 48-48V80c0-26.5-21.5-48-48-48m0 394c0 3.3-2.7 6-6 6H54c-3.3 0-6-2.7-6-6V86c0-3.3 2.7-6 6-6h404c3.3 0 6 2.7 6 6zM356.5 194.6L295.1 256l61.4 61.4c4.6 4.6 4.6 12.1 0 16.8l-22.3 22.3c-4.6 4.6-12.1 4.6-16.8 0L256 295.1l-61.4 61.4c-4.6 4.6-12.1 4.6-16.8 0l-22.3-22.3c-4.6-4.6-4.6-12.1 0-16.8l61.4-61.4l-61.4-61.4c-4.6-4.6-4.6-12.1 0-16.8l22.3-22.3c4.6-4.6 12.1-4.6 16.8 0l61.4 61.4l61.4-61.4c4.6-4.6 12.1-4.6 16.8 0l22.3 22.3c4.7 4.6 4.7 12.1 0 16.8"
+            d="M13.46 12L19 17.54V19h-1.46L12 13.46L6.46 19H5v-1.46L10.54 12L5 6.46V5h1.46L12 10.54L17.54 5H19v1.46z"
           />
         </svg>
       </TitleBarButton>

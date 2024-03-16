@@ -47,6 +47,9 @@ pub enum OpenconnectError {
 
     #[error("Failed to set MCA private key. Error code: {0}")]
     MainLoopError(i32),
+
+    #[error("Failed to get IP info. Error code: {0}")]
+    GetIpInfoError(i32),
 }
 
 pub type OpenconnectResult<T> = std::result::Result<T, OpenconnectError>;

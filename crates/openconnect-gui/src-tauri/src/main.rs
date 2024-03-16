@@ -4,7 +4,7 @@
 mod oidc;
 mod state;
 
-use openconnect_core::storage::{StoredConfigs, StoredConfigsJson, StoredServer};
+use openconnect_core::storage::{StoredConfigsJson, StoredServer};
 use state::AppState;
 use tauri::Manager;
 
@@ -14,7 +14,7 @@ fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 async fn connect_with_password(
     app_state: tauri::State<'_, AppState>,
     server_name: String,
@@ -25,7 +25,7 @@ async fn connect_with_password(
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command(rename_all = "snake_case")]
+#[tauri::command]
 async fn connect_with_oidc(
     app_state: tauri::State<'_, AppState>,
     server_name: String,
@@ -52,24 +52,46 @@ async fn trigger_state_retrieve(
 }
 
 #[tauri::command]
-async fn get_stored_configs() -> anyhow::Result<StoredConfigsJson, String> {
-    let mut stored_configs = StoredConfigs::new();
-    stored_configs
-        .read_from_file()
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(stored_configs.into())
+async fn get_stored_configs(
+    app_state: tauri::State<'_, AppState>,
+) -> anyhow::Result<StoredConfigsJson, String> {
+    Ok(app_state.stored_configs.read().await.clone().into())
 }
 
 #[tauri::command]
-async fn upsert_stored_server(server: StoredServer) -> anyhow::Result<(), String> {
-    let mut stored_configs = StoredConfigs::new();
-    stored_configs
-        .read_from_file()
-        .await
-        .map_err(|e| e.to_string())?;
+async fn upsert_stored_server(
+    app_state: tauri::State<'_, AppState>,
+    server: StoredServer,
+) -> anyhow::Result<(), String> {
+    let mut stored_configs = app_state.stored_configs.write().await;
     stored_configs
         .upsert_server(server)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn set_default_server(
+    app_state: tauri::State<'_, AppState>,
+    server_name: String,
+) -> anyhow::Result<(), String> {
+    let mut stored_configs = app_state.stored_configs.write().await;
+    stored_configs
+        .set_default_server(&server_name)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn remove_server(
+    app_state: tauri::State<'_, AppState>,
+    server_name: String,
+) -> anyhow::Result<(), String> {
+    let mut stored_configs = app_state.stored_configs.write().await;
+    stored_configs
+        .remove_server(&server_name)
         .await
         .map_err(|e| e.to_string())?;
     Ok(())
@@ -78,6 +100,7 @@ async fn upsert_stored_server(server: StoredServer) -> anyhow::Result<(), String
 fn main() {
     #[cfg(target_os = "linux")]
     {
+        // TODO: add support for GUI escalation
         sudo::escalate_if_needed().unwrap();
     }
 
@@ -145,8 +168,14 @@ fn main() {
                 }
             };
 
-            AppState::handle_with_vpnc_script(app, &vpnc_script);
-            Ok(())
+            let window = app.get_window("main").expect("no main window");
+
+            #[cfg(any(windows, target_os = "macos"))]
+            window_shadows::set_shadow(&window, true).unwrap();
+
+            Ok(tauri::async_runtime::block_on(async {
+                AppState::handle_with_vpnc_script(app, &vpnc_script).await
+            })?)
         })
         .invoke_handler(tauri::generate_handler![
             greet,
@@ -154,6 +183,8 @@ fn main() {
             trigger_state_retrieve,
             get_stored_configs,
             upsert_stored_server,
+            set_default_server,
+            remove_server,
             connect_with_password,
             connect_with_oidc,
         ])

@@ -2,6 +2,7 @@ pub mod cert;
 pub mod config;
 pub mod events;
 pub mod form;
+pub mod ip_info;
 pub mod protocols;
 pub mod result;
 pub mod stats;
@@ -10,6 +11,7 @@ pub mod storage;
 use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
 use form::FormContext;
+use ip_info::IpInfo;
 pub use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
 use stats::Stats;
@@ -26,7 +28,7 @@ pub enum Status {
     Initialized,
     Disconnecting,
     Disconnected,
-    Connecting,
+    Connecting(String),
     Connected,
     Error(OpenconnectError),
 }
@@ -327,6 +329,26 @@ impl VpnClient {
         }
     }
 
+    pub fn get_info(&self) -> OpenconnectResult<Option<IpInfo>> {
+        unsafe {
+            let info = std::ptr::null_mut();
+            let ret = openconnect_get_ip_info(
+                self.vpninfo,
+                info,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+            );
+
+            match ret {
+                0 => Ok(info
+                    .as_ref()
+                    .and_then(|info| info.as_ref())
+                    .map(IpInfo::from)),
+                _ => Err(OpenconnectError::GetIpInfoError(ret)),
+            }
+        }
+    }
+
     pub(crate) fn main_loop(
         &self,
         reconnect_timeout: i32,
@@ -421,11 +443,12 @@ impl Connectable for VpnClient {
     }
 
     fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
-        self.emit_state_change(Status::Connecting);
+        self.emit_state_change(Status::Connecting("Initializing connection".to_string()));
         self.form_context.reset();
 
         self.set_protocol(&entrypoint.protocol.name)
             .emit_error(self)?;
+        self.emit_state_change(Status::Connecting("Setting up system pipe".to_string()));
         self.setup_cmd_pipe().emit_error(self)?;
         self.set_stats_handler();
         self.set_report_os("linux-64").emit_error(self)?;
@@ -449,19 +472,22 @@ impl Connectable for VpnClient {
             self.disable_dtls().emit_error(self)?;
         }
 
+        self.emit_state_change(Status::Connecting("Parsing URL".to_string()));
         self.parse_url(&entrypoint.server).emit_error(self)?;
         let hostname = self.get_hostname();
-        if let Some(hostname) = hostname {
-            println!("connecting: {}", hostname);
-        }
 
+        self.emit_state_change(Status::Connecting(format!(
+            "Obtaining cookie from: {}",
+            hostname.unwrap_or("".to_string())
+        )));
         if let Some(cookie) = entrypoint.cookie.clone() {
             self.set_cookie(&cookie).emit_error(self)?;
         } else {
             self.obtain_cookie().emit_error(self)?;
         }
-        self.make_cstp_connection().emit_error(self)?;
 
+        self.emit_state_change(Status::Connecting("Make CSTP connection".to_string()));
+        self.make_cstp_connection().emit_error(self)?;
         self.emit_state_change(Status::Connected);
 
         loop {
@@ -472,6 +498,7 @@ impl Connectable for VpnClient {
 
         self.reset_ssl();
         self.clear_cookie();
+        self.emit_state_change(Status::Disconnected);
 
         Ok(())
     }
@@ -514,7 +541,7 @@ impl Connectable for VpnClient {
             }
         }
 
-        self.emit_state_change(Status::Disconnected);
+        std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
     fn get_state(&self) -> Status {
