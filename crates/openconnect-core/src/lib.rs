@@ -84,14 +84,41 @@ impl VpnClient {
                     .map(|s| CString::new(s).unwrap())
                     .map_or_else(|| DEFAULT_VPNCSCRIPT.as_ptr() as *const i8, |s| s.as_ptr());
 
-                let ret = openconnect_setup_tun_device(
-                    (*client).vpninfo,
-                    vpnc_script,
-                    std::ptr::null_mut(),
-                );
+                #[cfg(target_os = "windows")]
+                {
+                    // currently use wintun on windows
+                    // https://gitlab.com/openconnect/openconnect-gui/-/blob/main/src/vpninfo.cpp?ref_type=heads#L407
+                    // TODO: investigate tap ip address allocation, since it works well in Openconnect-GUI
+                    let hostname = (*client).get_hostname();
+                    let ifname = hostname.and_then(|hostname| {
+                        let ifname = format!("tun_{}", hostname);
+                        CString::new(ifname).ok()
+                    });
 
-                // TODO: handle ret
-                println!("setup_tun_device ret: {}", ret);
+                    if let Some(ifname) = ifname {
+                        let ret = openconnect_setup_tun_device(
+                            (*client).vpninfo,
+                            vpnc_script,
+                            ifname.as_ptr(),
+                        );
+                        // TODO: handle ret
+                        println!("setup_tun_device ret: {}", ret);
+                    } else {
+                        panic!("setup_tun_device failed: ifname is None");
+                    }
+                }
+
+                #[cfg(not(target_os = "windows"))]
+                {
+                    let ret = openconnect_setup_tun_device(
+                        (*client).vpninfo,
+                        vpnc_script,
+                        std::ptr::null(), // currently use tun/tap on linux
+                    );
+
+                    // TODO: handle ret
+                    println!("setup_tun_device ret: {}", ret);
+                }
             }
         }
     }

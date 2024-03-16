@@ -2300,6 +2300,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "dotenvy",
+ "dunce",
  "lazy_static",
  "libc",
  "open 5.1.2",

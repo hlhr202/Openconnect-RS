@@ -4,7 +4,9 @@ import { invoke } from "@tauri-apps/api/tauri";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect } from "react";
 import { atom, useAtom } from "jotai";
-import { OidcServer, PasswordServer, ServerSelector } from "./ServerSelector";
+import { ServerSelector } from "./ServerSelector";
+import bg from "./assets/bg.webp";
+import { OidcServer, PasswordServer } from "./state";
 
 enum EStatus {
   Initialized = "initialized",
@@ -33,7 +35,7 @@ function App() {
     if (server.authType === "oidc") {
       invoke("connect_with_oidc", { server_name: server.name });
     } else {
-      // invoke("connect_password", server);
+      invoke("connect_with_password", { server_name: server.name });
     }
   }, []);
 
@@ -47,12 +49,20 @@ function App() {
 
   return (
     <NextUIProvider>
-      <TauriTitleBar />
-      <main className="border-none select-none dark text-foreground bg-background h-[calc(100vh-30px)] flex justify-center flex-col items-center mt-[30px]">
-        <h1 className="font-thin pb-8 text-3xl select-none cursor-default">
+      <main className="dark border-none select-none text-foreground h-[100vh] flex justify-center flex-col items-center">
+        <div className="fixed z-[-5] overflow-hidden w-full h-full rounded-lg">
+          <img
+            src={bg}
+            alt="bg"
+            style={{ objectFit: "cover" }}
+            className="relative h-full w-full scale-[120%] blur-sm brightness-60"
+          />
+        </div>
+        <TauriTitleBar />
+        <h1 className="font-thin pb-8 text-3xl select-none cursor-default z-[1]">
           Openconnect RS
         </h1>
-        <Card className="max-w-[800px] min-w-[600px] max-h-[800px] min-h-[400px]">
+        <Card className="max-w-[800px] min-w-[600px] max-h-[800px] min-h-[400px] bg-opacity-85">
           <CardBody>
             {(() => {
               switch (vpnStatus.status) {

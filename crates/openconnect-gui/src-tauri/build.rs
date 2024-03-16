@@ -1,21 +1,39 @@
 fn main() {
-    // this requires signing the app
-    let _windows_attributes = tauri_build::WindowsAttributes::new().app_manifest(
-        r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+    let profile = std::env::var("PROFILE").unwrap();
+
+    match profile.as_str() {
+        "release" => {
+            let mut windows = tauri_build::WindowsAttributes::new();
+
+            windows = windows.app_manifest(
+                r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity
+        type="win32"
+        name="Microsoft.Windows.Common-Controls"
+        version="6.0.0.0"
+        processorArchitecture="*"
+        publicKeyToken="6595b64144ccf1df"
+        language="*"
+      />
+    </dependentAssembly>
+  </dependency>
   <trustInfo xmlns="urn:schemas-microsoft-com:asm.v3">
     <security>
         <requestedPrivileges>
-            <requestedExecutionLevel level="requireAdministrator" uiAccess="true" />
+            <requestedExecutionLevel level="requireAdministrator" uiAccess="false" />
         </requestedPrivileges>
     </security>
   </trustInfo>
-</assembly>
-"#,
-    );
-
-    // this requires signing the app
-    // tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows_attributes))
-    //     .expect("error while building tauri application")
-
-    tauri_build::build();
+</assembly>"#,
+            );
+            tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
+                .expect("failed to run build script");
+        }
+        "debug" => {
+            tauri_build::build();
+        }
+        _ => {}
+    }
 }

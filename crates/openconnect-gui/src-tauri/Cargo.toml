@@ -47,3 +47,4 @@ custom-protocol = ["tauri/custom-protocol"]
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }
+dunce = { workspace = true }

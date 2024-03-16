@@ -1,6 +1,12 @@
 use std::env;
 use std::path::PathBuf;
 
+macro_rules! print_build_warning {
+    ($($arg:tt)*) => {
+        println!("cargo:warning={}", format_args!($($arg)*));
+    };
+}
+
 // mod find_lib;
 
 // TODO: optimize path search
@@ -46,6 +52,17 @@ fn main() {
         println!(
             "cargo:rustc-link-search=C:\\msys64\\mingw64\\lib\\gcc\\x86_64-w64-mingw32\\13.2.0"
         );
+
+        let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+        let target_path = out_path
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
+        print_build_warning!("target_path: {:?}", target_path.display());
+        println!("cargo:rustc-link-search={}", target_path.display());
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -78,6 +95,8 @@ fn main() {
         println!("cargo:rustc-link-lib={}=gcc", link);
         println!("cargo:rustc-link-lib={}=mingw32", link);
         println!("cargo:rustc-link-lib={}=mingwex", link);
+
+        println!("cargo:rustc-link-lib=dylib=wintun")
     }
 
     // link c++ stdlib

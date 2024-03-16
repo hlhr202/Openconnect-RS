@@ -3,9 +3,8 @@
 
 mod oidc;
 mod state;
-use std::os::unix::fs::PermissionsExt;
 
-use openconnect_core::storage::{StoredConfigs, StoredConfigsJson};
+use openconnect_core::storage::{StoredConfigs, StoredConfigsJson, StoredServer};
 use state::AppState;
 use tauri::Manager;
 
@@ -16,14 +15,12 @@ fn greet(name: &str) -> String {
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn connect(
+async fn connect_with_password(
     app_state: tauri::State<'_, AppState>,
-    server: String,
-    username: String,
-    password: String,
+    server_name: String,
 ) -> anyhow::Result<(), String> {
     app_state
-        .connect_with_user_pass(&server, &username, &password)
+        .connect_with_user_pass(&server_name)
         .await
         .map_err(|e| e.to_string())
 }
@@ -64,6 +61,20 @@ async fn get_stored_configs() -> anyhow::Result<StoredConfigsJson, String> {
     Ok(stored_configs.into())
 }
 
+#[tauri::command]
+async fn upsert_stored_server(server: StoredServer) -> anyhow::Result<(), String> {
+    let mut stored_configs = StoredConfigs::new();
+    stored_configs
+        .read_from_file()
+        .await
+        .map_err(|e| e.to_string())?;
+    stored_configs
+        .upsert_server(server)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
 fn main() {
     #[cfg(target_os = "linux")]
     {
@@ -92,40 +103,59 @@ fn main() {
                 .body(b"Authenticated, close this window and return to the application.".to_vec())
         })
         .setup(|app| {
-            #[cfg(not(target_os = "windows"))]
-            {
-                let resource_path = app
-                    .path_resolver()
-                    .resolve_resource("vpnc-scripts/vpnc-script")
-                    .expect("failed to resolve resource");
+            let vpnc_script = {
+                #[cfg(target_os = "windows")]
+                {
+                    let resource_path = app
+                        .path_resolver()
+                        .resolve_resource("vpnc-script-win.js")
+                        .expect("failed to resolve resource");
 
-                let file = std::fs::OpenOptions::new()
-                    .write(false)
-                    .create(false)
-                    .append(false)
-                    .read(true)
-                    .open(resource_path)
-                    .expect("failed to open file");
-
-                let permissions = file.metadata().unwrap().permissions();
-                let is_executable = permissions.mode() & 0o111 != 0;
-                if !is_executable {
-                    let mut permissions = permissions;
-                    permissions.set_mode(0o755);
-                    file.set_permissions(permissions).unwrap();
+                    dunce::canonicalize(resource_path)
+                        .expect("failed to canonicalize path")
+                        .to_string_lossy()
+                        .to_string()
                 }
-            }
 
-            AppState::handle(app);
+                #[cfg(not(target_os = "windows"))]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let resource_path = app
+                        .path_resolver()
+                        .resolve_resource("vpnc-script")
+                        .expect("failed to resolve resource");
+
+                    let file = std::fs::OpenOptions::new()
+                        .write(false)
+                        .create(false)
+                        .append(false)
+                        .read(true)
+                        .open(resource_path)
+                        .expect("failed to open file");
+
+                    let permissions = file.metadata().unwrap().permissions();
+                    let is_executable = permissions.mode() & 0o111 != 0;
+                    if !is_executable {
+                        let mut permissions = permissions;
+                        permissions.set_mode(0o755);
+                        file.set_permissions(permissions).unwrap();
+                    }
+
+                    resource_path.to_string_lossy().to_string()
+                }
+            };
+
+            AppState::handle_with_vpnc_script(app, &vpnc_script);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             greet,
-            connect,
             disconnect,
             trigger_state_retrieve,
+            get_stored_configs,
+            upsert_stored_server,
+            connect_with_password,
             connect_with_oidc,
-            get_stored_configs
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

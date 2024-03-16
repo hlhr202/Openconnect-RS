@@ -62,17 +62,20 @@ rustup default stable-x86_64-pc-windows-gnu
 You have to use MSYS2 MINGW64 shell to build the library for 64-bit Windows.
 
 ```bash
-pacman -S base-devel
+pacman -S base-devel mingw-w64-x86_64-toolchain
 pacman -S automake
 pacman -S libtool
 pacman -S gettext
 pacman -S autotools
 pacman -S pkg-config
 
-pacman -S libxml2 libxml2-devel
-pacman -S zlib
-pacman -S openssl openssl-devel
-pacman -S icu icu-devel
+pacman -S openssl openssl-devel mingw-w64-x86_64-openssl
+pacman -S libxml2 libxml2-devel mingw-w64-x86_64-libxml2
+pacman -S libiconv libiconv-devel mingw-w64-x86_64-libiconv
+pacman -S zlib zlib-devel mingw-w64-x86_64-zlib
+pacman -S liblz4 liblz4-devel mingw-w64-x86_64-lz4
+pacman -S liblzma liblzma-devel mingw-w64-x86_64-xz
+pacman -S icu icu-devel mingw-w64-x86_64-icu
 ```
 
 ### Minor changes for Windows
@@ -80,7 +83,6 @@ pacman -S icu icu-devel
 - in config.h, you may add
 
   ```c
-  // TODO: check if it's necessary when building under MSYS2 MINGW64
   #define LIBXML_STATIC
   ```
 

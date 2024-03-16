@@ -8,7 +8,7 @@ const TitleBarButton: FC<
     <div
       onClick={onClick}
       id={id}
-      className={`${className} inline-flex justify-center items-center w-[30px] h-[30px] hover:bg-[#888]`}
+      className={`${className} inline-flex justify-center items-center w-[45px] h-[38px] hover:bg-[#888] transition-colors`}
     >
       {children}
     </div>
@@ -32,7 +32,7 @@ export const TauriTitleBar = () => {
   return (
     <div
       data-tauri-drag-region
-      className="titlebar dark h-[30px] bg-[#111] to-background select-none flex justify-end fixed top-0 left-0 right-0 pr-[5px] rounded-t-md"
+      className="titlebar dark h-[200px] bg-gradient-to-b from-gray-900 to-transparent select-none flex justify-end fixed top-0 left-0 right-0 rounded-t-lg"
     >
       <TitleBarButton id="titlebar-minimize" onClick={minimize}>
         <svg
@@ -60,7 +60,11 @@ export const TauriTitleBar = () => {
           />
         </svg>
       </TitleBarButton>
-      <TitleBarButton id="titlebar-close" onClick={close}>
+      <TitleBarButton
+        id="titlebar-close"
+        onClick={close}
+        className="rounded-tr-lg"
+      >
         <svg
           xmlns="http://www.w3.org/2000/svg"
           width="1em"

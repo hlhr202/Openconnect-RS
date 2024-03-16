@@ -1,7 +1,6 @@
 import {
   Button,
   Divider,
-  // Modal,
   Select,
   SelectItem,
   Table,
@@ -10,56 +9,32 @@ import {
   TableColumn,
   TableHeader,
   TableRow,
+  useDisclosure,
 } from "@nextui-org/react";
-import { invoke } from "@tauri-apps/api";
-import { useCallback, useEffect, useMemo, useState } from "react";
-
-export interface OidcServer {
-  name: string;
-  authType: "oidc";
-  server: string;
-  issuer: string;
-  clientId: string;
-  clientSecret?: string | null;
-}
-
-export interface PasswordServer {
-  name: string;
-  authType: "password";
-  server: string;
-  username: string;
-  password: string;
-}
-
-export interface StoredConfigs {
-  default?: string | null;
-  servers: (OidcServer | PasswordServer)[];
-}
+import { useCallback, useEffect } from "react";
+import { ServerEditorModal } from "./ServerEditorModal";
+import { OidcServer, PasswordServer, useStoredConfigs } from "./state";
 
 interface IProps {
   onConnect: (server: OidcServer | PasswordServer) => void;
 }
 
 export const ServerSelector = (props: IProps) => {
-  const [selectedName, setSelectedName] = useState<string | null>(null);
-
-  const [serverList, setServerList] = useState<StoredConfigs["servers"]>();
-
-  const getStoredConfigs = useCallback(async () => {
-    const configs = await invoke<StoredConfigs>("get_stored_configs");
-    setServerList(configs.servers);
-    setSelectedName(configs.default ?? configs.servers[0].name);
-  }, []);
-
-  const selectedServer = useMemo(() => {
-    return serverList?.find((server) => server.name === selectedName);
-  }, [selectedName, serverList]);
+  const {
+    getStoredConfigs,
+    selectedServer,
+    selectedName,
+    serverList,
+    setSelectedName,
+  } = useStoredConfigs();
 
   const handleConnect = useCallback(() => {
     if (selectedServer) {
       props.onConnect(selectedServer);
     }
   }, [props, selectedServer]);
+
+  const { isOpen, onOpen, onOpenChange } = useDisclosure();
 
   useEffect(() => {
     getStoredConfigs();
@@ -75,6 +50,12 @@ export const ServerSelector = (props: IProps) => {
             className="flex-1"
             selectionMode="single"
             selectedKeys={selectedName ? [selectedName] : []}
+            onSelectionChange={(keys) => {
+              const name = Array.from(keys as Set<string>)[0];
+              if (name) {
+                setSelectedName(name);
+              }
+            }}
           >
             {serverList?.map((server) => (
               <SelectItem color="default" key={server.name} value={server.name}>
@@ -83,7 +64,9 @@ export const ServerSelector = (props: IProps) => {
             ))}
           </Select>
         )}
-        <Button size="md" color="primary" className="ml-2">Manage Server</Button>
+        <Button size="md" color="primary" className="ml-2" onClick={onOpen}>
+          Manage Server
+        </Button>
       </div>
       <Divider className="mt-3 mb-3"></Divider>
       <Table removeWrapper>
@@ -105,16 +88,12 @@ export const ServerSelector = (props: IProps) => {
       >
         Connect
       </Button>
+
+      <ServerEditorModal
+        isOpen={isOpen}
+        onOpen={onOpen}
+        onOpenChange={onOpenChange}
+      />
     </section>
   );
 };
-
-// export const ServerEditorModal = () => {
-//   return (
-//     <Modal>
-//       {(onclose) => {
-
-//       }}
-//     </Modal>
-//   )
-// }

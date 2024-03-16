@@ -40,12 +40,14 @@ impl From<Status> for StatusPayload {
 pub struct AppState {
     pub(crate) event_tx: Sender<VpnEvent>,
     pub(crate) client: RwLock<Option<Arc<VpnClient>>>,
+    #[allow(dead_code)]
+    pub(crate) vpnc_sciprt: String,
 }
 
 impl AppState {
-    pub fn handle(app: &mut tauri::App) {
+    pub fn handle_with_vpnc_script(app: &mut tauri::App, vpnc_scipt: &str) {
         let (event_tx, mut event_rx) = channel::<VpnEvent>(100);
-        let app_state = AppState::new(event_tx);
+        let app_state = AppState::new(event_tx, vpnc_scipt);
         app.manage(app_state);
 
         let handle = app.app_handle();
@@ -79,18 +81,25 @@ impl AppState {
         }
     }
 
-    pub async fn connect_with_user_pass(
-        &self,
-        server: &str,
-        username: &str,
-        password: &str,
-    ) -> anyhow::Result<()> {
-        let config = ConfigBuilder::default().loglevel(LogLevel::Info).build()?;
+    pub async fn connect_with_user_pass(&self, server_name: &str) -> anyhow::Result<()> {
+        let mut stored_server = StoredConfigs::default();
+        let stored_server = stored_server
+            .read_from_file()
+            .await?
+            .get_server_as_password(server_name)
+            .ok_or(anyhow::anyhow!("Server not found"))?;
+
+        let mut config = ConfigBuilder::default();
+
+        #[cfg(not(target_os = "windows"))]
+        let mut config = config.vpncscript(&self.vpnc_sciprt);
+
+        let config = config.loglevel(LogLevel::Info).build()?;
 
         let entrypoint = EntrypointBuilder::new()
-            .server(server)
-            .username(username)
-            .password(password)
+            .server(&stored_server.server)
+            .username(&stored_server.username)
+            .password(&stored_server.password)
             .enable_udp(true)
             .build()?;
 
@@ -148,7 +157,12 @@ impl AppState {
             .await
             .ok_or(anyhow::anyhow!("Failed to obtain cookie from server"))?;
 
-        let config = ConfigBuilder::default().loglevel(LogLevel::Info).build()?;
+        let mut config = ConfigBuilder::default();
+
+        #[cfg(not(target_os = "windows"))]
+        let mut config = config.vpncscript(&self.vpnc_sciprt);
+
+        let config = config.loglevel(LogLevel::Info).build()?;
 
         let entrypoint = EntrypointBuilder::new()
             .server(&stored_server.server)
@@ -189,10 +203,11 @@ impl AppState {
         Ok(())
     }
 
-    pub fn new(event_tx: Sender<VpnEvent>) -> Self {
+    pub fn new(event_tx: Sender<VpnEvent>, vpnc_scipt: &str) -> Self {
         Self {
             event_tx,
             client: RwLock::new(None),
+            vpnc_sciprt: vpnc_scipt.to_string(),
         }
     }
 }
