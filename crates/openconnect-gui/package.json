@@ -15,10 +15,12 @@
     "@tauri-apps/api": "^1",
     "framer-motion": "^11.0.8",
     "jotai": "^2.7.0",
+    "lottie-react": "^2.4.0",
     "next-themes": "^0.2.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-hook-form": "^7.51.0",
+    "react-toastify": "^10.0.5",
     "react-use": "^17.5.0"
   },
   "devDependencies": {

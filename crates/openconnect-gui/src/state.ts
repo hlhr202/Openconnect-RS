@@ -9,6 +9,7 @@ export interface OidcServer {
   issuer: string;
   clientId: string;
   clientSecret?: string;
+  updatedAt?: string;
 }
 
 export interface PasswordServer {
@@ -17,6 +18,7 @@ export interface PasswordServer {
   server: string;
   username: string;
   password: string;
+  updatedAt?: string;
 }
 
 export interface StoredConfigs {
@@ -35,6 +37,9 @@ export const useStoredConfigs = () => {
 
   const getStoredConfigs = useCallback(async () => {
     const configs = await invoke<StoredConfigs>("get_stored_configs");
+    configs.servers.sort(
+      (a, b) => b.updatedAt?.localeCompare(a.updatedAt ?? "") ?? 0
+    );
     setServerList(configs.servers);
     setSelectedName(configs.default ?? configs.servers[0].name);
     setDefaultName(configs.default ?? null);

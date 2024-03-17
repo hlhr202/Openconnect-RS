@@ -1,5 +1,6 @@
 pub mod cert;
 pub mod config;
+pub mod elevator;
 pub mod events;
 pub mod form;
 pub mod ip_info;
@@ -12,7 +13,7 @@ use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
 use form::FormContext;
 use ip_info::IpInfo;
-pub use openconnect_sys::*;
+use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
 use stats::Stats;
 use std::{
@@ -63,7 +64,7 @@ impl VpnClient {
             _ => "UNKNOWN",
         };
         if buf.is_some() {
-            println!("{}: {}", level, buf.unwrap());
+            println!("{}: {}", level, buf.unwrap_or(""));
         }
     }
 
@@ -83,7 +84,7 @@ impl VpnClient {
                     .config
                     .vpncscript
                     .clone()
-                    .map(|s| CString::new(s).unwrap())
+                    .and_then(|s| CString::new(s).ok())
                     .map_or_else(|| DEFAULT_VPNCSCRIPT.as_ptr() as *const i8, |s| s.as_ptr());
 
                 #[cfg(target_os = "windows")]
@@ -154,7 +155,8 @@ impl VpnClient {
     }
 
     pub fn set_protocol(&self, protocol: &str) -> OpenconnectResult<()> {
-        let protocol = CString::new(protocol).unwrap();
+        let protocol =
+            CString::new(protocol).map_err(|_| OpenconnectError::SetProtocolError(libc::EIO))?;
         let ret = unsafe { openconnect_set_protocol(self.vpninfo, protocol.as_ptr()) };
         match ret {
             0 => Ok(()),
@@ -175,7 +177,7 @@ impl VpnClient {
     }
 
     pub fn set_report_os(&self, os: &str) -> OpenconnectResult<()> {
-        let os = CString::new(os).unwrap();
+        let os = CString::new(os).map_err(|_| OpenconnectError::SetReportOSError(libc::EIO))?;
         let ret = unsafe { openconnect_set_reported_os(self.vpninfo, os.as_ptr()) };
         match ret {
             0 => Ok(()),
@@ -387,8 +389,8 @@ pub trait Connectable {
 
 impl Connectable for VpnClient {
     fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>> {
-        let useragent =
-            std::ffi::CString::new("AnyConnect-compatible OpenConnect VPN Agent").unwrap();
+        let useragent = std::ffi::CString::new("AnyConnect-compatible OpenConnect VPN Agent")
+            .map_err(|_| OpenconnectError::OtherError("useragent is not valid".to_string()))?;
 
         let instance = Arc::new(Self {
             vpninfo: std::ptr::null_mut(),
@@ -451,7 +453,23 @@ impl Connectable for VpnClient {
         self.emit_state_change(Status::Connecting("Setting up system pipe".to_string()));
         self.setup_cmd_pipe().emit_error(self)?;
         self.set_stats_handler();
-        self.set_report_os("linux-64").emit_error(self)?;
+
+        #[cfg(target_os = "windows")]
+        const OS_NAME: &str = "win";
+
+        #[cfg(target_os = "macos")]
+        {
+            // #[cfg(target_arch = "x86_64")]
+            const OS_NAME: &str = "mac-intel";
+
+            // #[cfg(target_arch = "aarch64")]
+            // const OS_NAME: &str = "mac-arm64";
+        }
+
+        #[cfg(target_os = "linux")]
+        const OS_NAME: &str = "linux-64";
+
+        self.set_report_os(OS_NAME).emit_error(self)?;
 
         {
             let mut entrypoint_write_guard = self
@@ -505,7 +523,6 @@ impl Connectable for VpnClient {
 
     /// Gracefully stop the main loop
     fn disconnect(&self) {
-        // TODO: fix status change disordered (disconnected triggered first, then disconnecting)
         if self.get_state() != Status::Connected {
             return;
         }

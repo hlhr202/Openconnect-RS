@@ -101,7 +101,6 @@ export const ServerEditor = (props: FormParams) => {
       <div className="flex flex-col w-full gap-4 h-[350px] overflow-auto p-2">
         <Controller
           name="name"
-          disabled
           control={control}
           rules={{ required: "This field is required" }}
           render={({ field, formState }) => (

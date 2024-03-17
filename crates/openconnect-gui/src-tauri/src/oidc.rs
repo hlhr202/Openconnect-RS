@@ -1,4 +1,3 @@
-use anyhow::Ok;
 use openidconnect::core::{CoreClient, CoreProviderMetadata, CoreResponseType};
 use openidconnect::{reqwest, TokenResponse};
 use openidconnect::{
@@ -22,12 +21,35 @@ pub struct OpenIDConfig {
     pub client_secret: Option<String>,
 }
 
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, thiserror::Error)]
+pub enum OpenIDError {
+    #[error("Channel error: {0}")]
+    ChannelError(String),
+
+    #[error("Failed to initialize OpenID client: {0}")]
+    InitError(String),
+
+    #[error("IO error: {0}")]
+    IoError(#[from] tokio::io::Error),
+
+    #[error("URL parse error: {0}")]
+    UrlParseError(#[from] url::ParseError),
+
+    #[error("OpenID state validation error: {0}")]
+    StateValidationError(String),
+
+    #[error("Token exchange error: {0}")]
+    TokenExchangeError(String),
+}
+
 impl OpenID {
-    pub async fn new(config: OpenIDConfig) -> anyhow::Result<Self> {
+    pub async fn new(config: OpenIDConfig) -> Result<Self, OpenIDError> {
         tauri::async_runtime::spawn_blocking(|| {
             let issuer_url = IssuerUrl::new(config.issuer_url)?;
             let provider_metadata =
-                CoreProviderMetadata::discover(&issuer_url, openidconnect::reqwest::http_client)?;
+                CoreProviderMetadata::discover(&issuer_url, openidconnect::reqwest::http_client)
+                    .map_err(|e| OpenIDError::InitError(e.to_string()))?;
             let redirect_uri = RedirectUrl::new(config.redirect_uri)?;
             let client_id = ClientId::new(config.client_id);
             let client_secret = config.client_secret.map(ClientSecret::new);
@@ -38,10 +60,11 @@ impl OpenID {
 
             Ok(OpenID { client })
         })
-        .await?
+        .await
+        .map_err(|e| OpenIDError::ChannelError(e.to_string()))?
     }
 
-    pub fn auth_request(&self) -> anyhow::Result<(Url, CsrfToken, Nonce)> {
+    pub fn auth_request(&self) -> (Url, CsrfToken, Nonce) {
         let (authorize_url, csrf_state, nonce) = self
             .client
             .authorize_url(
@@ -51,7 +74,7 @@ impl OpenID {
             )
             .url();
 
-        Ok((authorize_url, csrf_state, nonce))
+        (authorize_url, csrf_state, nonce)
     }
 
     pub fn parse_code_and_state(&self, url: Url) -> Option<(AuthorizationCode, CsrfToken)> {
@@ -68,22 +91,26 @@ impl OpenID {
         Some((code, state))
     }
 
-    pub async fn exchange_token(&self, code: AuthorizationCode) -> anyhow::Result<String> {
+    pub async fn exchange_token(&self, code: AuthorizationCode) -> Result<String, OpenIDError> {
         let client = self.client.clone();
         tauri::async_runtime::spawn_blocking(move || {
-            let token_response = client.exchange_code(code).request(reqwest::http_client)?;
+            let token_response = client
+                .exchange_code(code)
+                .request(reqwest::http_client)
+                .map_err(|e| OpenIDError::TokenExchangeError(e.to_string()))?;
 
             let token = token_response
                 .id_token()
-                .ok_or(anyhow::anyhow!("Response token is empty"))?
+                .ok_or(OpenIDError::TokenExchangeError("No ID token".to_string()))?
                 .to_string();
 
             Ok(token)
         })
-        .await?
+        .await
+        .map_err(|e| OpenIDError::ChannelError(e.to_string()))?
     }
 
-    pub async fn wait_for_callback(&self) -> anyhow::Result<(AuthorizationCode, CsrfToken)> {
+    pub async fn wait_for_callback(&self) -> Result<(AuthorizationCode, CsrfToken), OpenIDError> {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await?;
         let (mut stream, _) = listener.accept().await?;
         let mut reader = tokio::io::BufReader::new(&mut stream);
@@ -98,8 +125,9 @@ impl OpenID {
             ))?;
         let url = Url::parse(&format!("{},{}", OIDC_REDIRECT_URI, redirect_url))?;
 
-        let (code, state) = self.parse_code_and_state(url).ok_or(anyhow::anyhow!(
-            "Failed to parse code and state from redirect URL"
+        let (code, state) = self.parse_code_and_state(url).ok_or(tokio::io::Error::new(
+            tokio::io::ErrorKind::InvalidInput,
+            "Failed to parse code and state",
         ))?;
         let message = "Authenticated, close this window and return to the application.";
         let response = format!(

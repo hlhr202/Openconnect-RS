@@ -1,4 +1,4 @@
-use crate::oidc::{OpenID, OpenIDConfig, OIDC_REDIRECT_URI};
+use crate::oidc::{OpenID, OpenIDConfig, OpenIDError, OIDC_REDIRECT_URI};
 use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
@@ -10,6 +10,29 @@ use tauri::{
     async_runtime::{channel, RwLock, Sender},
     Manager,
 };
+use tokio::sync::mpsc::error::SendError;
+
+#[allow(clippy::enum_variant_names)]
+#[derive(Debug, thiserror::Error)]
+pub enum StateError {
+    #[error("Config error: {0}")]
+    ConfigError(#[from] openconnect_core::storage::StoredConfigError),
+
+    #[error("Openconnect error: {0}")]
+    OpenconnectError(#[from] openconnect_core::result::OpenconnectError),
+
+    #[error("Channel error: {0}")]
+    ChannelError(#[from] SendError<VpnEvent>),
+
+    #[error("Tauri error: {0}")]
+    TauriError(#[from] tauri::Error),
+
+    #[error("OpenID error: {0}")]
+    OpenIdError(#[from] crate::oidc::OpenIDError),
+
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+}
 
 #[derive(Debug, Clone)]
 pub enum VpnEvent {
@@ -25,12 +48,12 @@ pub struct StatusPayload {
 impl From<Status> for StatusPayload {
     fn from(status: Status) -> Self {
         let (status, message) = match status {
-            Status::Initialized => ("initialized".to_string(), None),
-            Status::Connecting(msg) => ("connecting".to_string(), Some(msg)),
-            Status::Connected => ("connected".to_string(), None),
-            Status::Disconnecting => ("disconnecting".to_string(), None),
-            Status::Disconnected => ("disconnected".to_string(), None),
-            Status::Error(err) => ("error".to_string(), Some(err.to_string())),
+            Status::Initialized => ("INITIALIZED".to_string(), None),
+            Status::Connecting(msg) => ("CONNECTING".to_string(), Some(msg)),
+            Status::Connected => ("CONNECTED".to_string(), None),
+            Status::Disconnecting => ("DISCONNECTING".to_string(), None),
+            Status::Disconnected => ("DISCONNECTED".to_string(), None),
+            Status::Error(err) => ("ERROR".to_string(), Some(err.to_string())),
         };
 
         Self { status, message }
@@ -49,7 +72,7 @@ impl AppState {
     pub async fn handle_with_vpnc_script(
         app: &mut tauri::App,
         vpnc_scipt: &str,
-    ) -> anyhow::Result<()> {
+    ) -> Result<(), StateError> {
         let (event_tx, mut event_rx) = channel::<VpnEvent>(100);
         let app_state = AppState::new(event_tx, vpnc_scipt).await?;
         app.manage(app_state);
@@ -73,7 +96,7 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn trigger_state_retrieve(&self) -> anyhow::Result<()> {
+    pub async fn trigger_state_retrieve(&self) -> Result<(), StateError> {
         let client = self.client.read().await;
         match client.as_ref() {
             Some(client) => {
@@ -87,13 +110,9 @@ impl AppState {
         }
     }
 
-    pub async fn connect_with_user_pass(&self, server_name: &str) -> anyhow::Result<()> {
-        let mut stored_server = StoredConfigs::default();
-        let stored_server = stored_server
-            .read_from_file()
-            .await?
-            .get_server_as_password(server_name)
-            .ok_or(anyhow::anyhow!("Server not found"))?;
+    pub async fn connect_with_user_pass(&self, server_name: &str) -> Result<(), StateError> {
+        let stored_server = self.stored_configs.read().await;
+        let stored_server = stored_server.get_server_as_password_server(server_name)?;
 
         let mut config = ConfigBuilder::default();
 
@@ -115,30 +134,25 @@ impl AppState {
             EventHandlers::default().with_handle_connection_state_change(move |state| {
                 let event_tx = event_tx.clone();
                 tauri::async_runtime::spawn(async move {
-                    event_tx
-                        .send(VpnEvent::Status(state.into()))
-                        .await
-                        .unwrap_or_default();
+                    let _ = event_tx.send(VpnEvent::Status(state.into())).await;
+                    // ignore the result
                 });
             });
 
         let client = VpnClient::new(config, event_handlers)?;
-        self.client.write().await.replace(client.clone());
-
+        {
+            self.client.write().await.replace(client.clone());
+        }
         tauri::async_runtime::spawn_blocking(move || {
-            client.connect(entrypoint).unwrap();
+            let _ = client.connect(entrypoint); // ignore the result
         });
 
         Ok(())
     }
 
-    pub async fn connect_with_oidc(&self, server_name: &str) -> anyhow::Result<()> {
-        let mut stored_server = StoredConfigs::default();
-        let stored_server = stored_server
-            .read_from_file()
-            .await?
-            .get_server_as_oidc(server_name)
-            .ok_or(anyhow::anyhow!("Server not found"))?;
+    pub async fn connect_with_oidc(&self, server_name: &str) -> Result<(), StateError> {
+        let mut stored_server = self.stored_configs.read().await;
+        let stored_server = stored_server.get_server_as_oidc_server(server_name)?;
 
         let openid_config = OpenIDConfig {
             issuer_url: stored_server.issuer.clone(),
@@ -148,20 +162,25 @@ impl AppState {
         };
 
         let openid = OpenID::new(openid_config).await?;
-        let (authorize_url, req_state, _) = openid.auth_request()?;
+        let (authorize_url, req_state, _) = openid.auth_request();
 
         open::that(authorize_url.to_string())?;
         let (code, callback_state) = openid.wait_for_callback().await?;
 
         if req_state.secret() != callback_state.secret() {
-            return Err(anyhow::anyhow!("Invalid state"));
+            return Err(OpenIDError::StateValidationError(
+                "State validation failed".to_string(),
+            ))?;
         }
 
         let token = openid.exchange_token(code).await?;
         let cookie = openid
             .obtain_cookie_by_oidc(&stored_server.server, &token)
             .await
-            .ok_or(anyhow::anyhow!("Failed to obtain cookie from server"))?;
+            .ok_or(StateError::IoError(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "Failed to obtain cookie",
+            )))?;
 
         let mut config = ConfigBuilder::default();
 
@@ -181,24 +200,23 @@ impl AppState {
             EventHandlers::default().with_handle_connection_state_change(move |state| {
                 let event_tx = event_tx.clone();
                 tauri::async_runtime::spawn(async move {
-                    event_tx
-                        .send(VpnEvent::Status(state.into()))
-                        .await
-                        .unwrap_or_default();
+                    let _ = event_tx.send(VpnEvent::Status(state.into())).await;
+                    // ignore the result
                 });
             });
 
         let client = VpnClient::new(config, event_handlers)?;
-        self.client.write().await.replace(client.clone());
-
+        {
+            self.client.write().await.replace(client.clone());
+        }
         tauri::async_runtime::spawn_blocking(move || {
-            client.connect(entrypoint).unwrap();
+            let _ = client.connect(entrypoint); // ignore the result
         });
 
         Ok(())
     }
 
-    pub async fn disconnect(&self) -> anyhow::Result<()> {
+    pub async fn disconnect(&self) -> Result<(), StateError> {
         if let Some(client) = self.client.read().await.as_ref() {
             let client = client.clone();
             tauri::async_runtime::spawn_blocking(move || client.disconnect()).await?;
@@ -209,7 +227,7 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn new(event_tx: Sender<VpnEvent>, vpnc_scipt: &str) -> anyhow::Result<Self> {
+    pub async fn new(event_tx: Sender<VpnEvent>, vpnc_scipt: &str) -> Result<Self, StateError> {
         let mut stored_configs = StoredConfigs::new();
         stored_configs.read_from_file().await?;
         Ok(Self {

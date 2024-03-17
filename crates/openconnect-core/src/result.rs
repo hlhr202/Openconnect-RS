@@ -3,16 +3,13 @@ use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum OpenconnectError {
-    #[error("Failed to create new VPN config: {0}")]
-    ConfigError(String),
-
     #[error("Failed to create new VPN entry point: {0}")]
     EntrypointConfigError(String),
 
     #[error("Failed to setup shutdown error: {0}")]
     SetupShutdownError(String),
 
-    #[error("Failed to setup cookie manually: {0}")]
+    #[error("Failed to setup cookie manually. Error code: {0}")]
     SetCookieError(i32),
 
     #[error("Failed to obtain cookie from server. Error code: {0}")]
@@ -50,6 +47,9 @@ pub enum OpenconnectError {
 
     #[error("Failed to get IP info. Error code: {0}")]
     GetIpInfoError(i32),
+
+    #[error("Other general error: {0}")]
+    OtherError(String),
 }
 
 pub type OpenconnectResult<T> = std::result::Result<T, OpenconnectError>;

@@ -1,5 +1,5 @@
 fn main() {
-    let profile = std::env::var("PROFILE").unwrap();
+    let profile = std::env::var("PROFILE").expect("PROFILE env var missing");
 
     match profile.as_str() {
         "release" => {

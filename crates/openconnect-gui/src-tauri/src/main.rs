@@ -1,101 +1,13 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod command;
 mod oidc;
 mod state;
 
-use openconnect_core::storage::{StoredConfigsJson, StoredServer};
+use command::*;
 use state::AppState;
 use tauri::Manager;
-
-// Learn more about Tauri commands at https://tauri.app/v1/guides/features/command
-#[tauri::command]
-fn greet(name: &str) -> String {
-    format!("Hello, {}! You've been greeted from Rust!", name)
-}
-
-#[tauri::command]
-async fn connect_with_password(
-    app_state: tauri::State<'_, AppState>,
-    server_name: String,
-) -> anyhow::Result<(), String> {
-    app_state
-        .connect_with_user_pass(&server_name)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn connect_with_oidc(
-    app_state: tauri::State<'_, AppState>,
-    server_name: String,
-) -> anyhow::Result<(), String> {
-    app_state
-        .connect_with_oidc(&server_name)
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn disconnect(app_state: tauri::State<'_, AppState>) -> anyhow::Result<(), String> {
-    app_state.disconnect().await.map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn trigger_state_retrieve(
-    app_state: tauri::State<'_, AppState>,
-) -> anyhow::Result<(), String> {
-    app_state
-        .trigger_state_retrieve()
-        .await
-        .map_err(|e| e.to_string())
-}
-
-#[tauri::command]
-async fn get_stored_configs(
-    app_state: tauri::State<'_, AppState>,
-) -> anyhow::Result<StoredConfigsJson, String> {
-    Ok(app_state.stored_configs.read().await.clone().into())
-}
-
-#[tauri::command]
-async fn upsert_stored_server(
-    app_state: tauri::State<'_, AppState>,
-    server: StoredServer,
-) -> anyhow::Result<(), String> {
-    let mut stored_configs = app_state.stored_configs.write().await;
-    stored_configs
-        .upsert_server(server)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-async fn set_default_server(
-    app_state: tauri::State<'_, AppState>,
-    server_name: String,
-) -> anyhow::Result<(), String> {
-    let mut stored_configs = app_state.stored_configs.write().await;
-    stored_configs
-        .set_default_server(&server_name)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
-
-#[tauri::command]
-async fn remove_server(
-    app_state: tauri::State<'_, AppState>,
-    server_name: String,
-) -> anyhow::Result<(), String> {
-    let mut stored_configs = app_state.stored_configs.write().await;
-    stored_configs
-        .remove_server(&server_name)
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(())
-}
 
 fn main() {
     #[cfg(target_os = "linux")]
@@ -110,9 +22,35 @@ fn main() {
         sudo::escalate_if_needed().unwrap();
 
         unsafe {
+            // TODO: replace with security framework sys bindings
+            // https://github.com/kornelski/rust-security-framework
             if libc::geteuid() != 0 && openconnect_core::helper_reluanch_as_root() == 1 {
                 std::process::exit(0);
             }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use openconnect_core::elevator::windows::{elevate, is_elevated};
+        // get command of current execution
+        let exe_path = std::env::current_exe().expect("failed to get current executable path");
+        let exe_path = exe_path
+            .to_str()
+            .expect("failed to convert exec path to string");
+        let args = std::env::args().skip(1);
+        let mut command = std::process::Command::new(exe_path);
+        let command = command.args(args);
+
+        if !is_elevated() {
+            #[cfg(debug_assertions)]
+            const IS_DEBUG: bool = true;
+
+            #[cfg(not(debug_assertions))]
+            const IS_DEBUG: bool = false;
+
+            elevate(command, IS_DEBUG).unwrap();
+            std::process::exit(0);
         }
     }
 
@@ -178,7 +116,6 @@ fn main() {
             })?)
         })
         .invoke_handler(tauri::generate_handler![
-            greet,
             disconnect,
             trigger_state_retrieve,
             get_stored_configs,

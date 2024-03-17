@@ -1,4 +1,4 @@
-use serde::{de::Error, Deserialize, Serialize};
+use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -19,8 +19,9 @@ impl TryFrom<StoredConfigsJson> for StoredConfigs {
             };
 
             if servers.contains_key(name) {
-                return Err(StoredConfigError::ParseError(serde_json::Error::custom(
-                    format!("Duplicated server name: {}, check your config file", name),
+                return Err(StoredConfigError::ParseError(format!(
+                    "Duplicated server name: {}, check your config file",
+                    name
                 )));
             }
 
@@ -51,6 +52,7 @@ pub struct OidcServer {
     pub issuer: String,
     pub client_id: String,
     pub client_secret: Option<String>,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -60,6 +62,7 @@ pub struct PasswordServer {
     pub server: String,
     pub username: String,
     pub password: String,
+    pub updated_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -81,11 +84,14 @@ pub struct StoredConfigs {
 
 #[derive(Debug, thiserror::Error)]
 pub enum StoredConfigError {
-    #[error("File system error when read/write stored config: {0}")]
-    FileSystemError(String),
+    #[error("Bad input: {0}")]
+    BadInput(String),
 
     #[error("Failed to parse stored config: {0}")]
-    ParseError(#[from] serde_json::Error),
+    ParseError(String),
+
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
 }
 
 impl Default for StoredConfigs {
@@ -109,27 +115,19 @@ impl StoredConfigs {
     }
 
     pub async fn getorinit_config_file(&self) -> Result<PathBuf, StoredConfigError> {
-        let home_dir = home::home_dir().ok_or(StoredConfigError::FileSystemError(
-            "Failed to get home directory".to_string(),
-        ))?;
+        let home_dir = home::home_dir().ok_or(StoredConfigError::IoError(std::io::Error::new(
+            std::io::ErrorKind::NotFound,
+            "Home directory not found",
+        )))?;
 
         let config_folder = home_dir.join(".oidcvpn");
         if !config_folder.exists() {
-            tokio::fs::create_dir(&config_folder).await.map_err(|e| {
-                StoredConfigError::FileSystemError(format!("Failed to create config folder: {}", e))
-            })?
+            tokio::fs::create_dir(&config_folder).await?;
         }
 
         let config_file = config_folder.join("config.json");
         if !config_file.exists() {
-            tokio::fs::write(&config_file, br#"{"default":null,"servers":[]}"#)
-                .await
-                .map_err(|e| {
-                    StoredConfigError::FileSystemError(format!(
-                        "Failed to initialize config file: {}",
-                        e
-                    ))
-                })?;
+            tokio::fs::write(&config_file, br#"{"default":null,"servers":[]}"#).await?;
         }
 
         Ok(config_file)
@@ -137,21 +135,21 @@ impl StoredConfigs {
 
     pub async fn save_to_file(&self) -> Result<&Self, StoredConfigError> {
         let config_file = self.getorinit_config_file().await?;
-        let json = serde_json::to_string(&StoredConfigsJson::from(self.clone()))?;
-
-        tokio::fs::write(&config_file, json).await.map_err(|e| {
-            StoredConfigError::FileSystemError(format!("Failed to write config file: {}", e))
+        let json = serde_json::to_string(&StoredConfigsJson::from(self.clone())).map_err(|e| {
+            StoredConfigError::ParseError(format!("Failed to serialize config: {}", e))
         })?;
+
+        tokio::fs::write(&config_file, json).await?;
 
         Ok(self)
     }
 
     pub async fn read_from_file(&mut self) -> Result<&mut Self, StoredConfigError> {
         let config_file = self.getorinit_config_file().await?;
-        let content = tokio::fs::read(&config_file).await.map_err(|e| {
-            StoredConfigError::FileSystemError(format!("Failed to read config file: {}", e))
+        let content = tokio::fs::read(&config_file).await?;
+        let config_json: StoredConfigsJson = serde_json::from_slice(&content).map_err(|e| {
+            StoredConfigError::ParseError(format!("Failed to parse config file: {}", e))
         })?;
-        let config_json: StoredConfigsJson = serde_json::from_slice(&content)?;
         let config = StoredConfigs::try_from(config_json)?;
 
         self.default = config.default;
@@ -160,37 +158,60 @@ impl StoredConfigs {
         Ok(self)
     }
 
-    pub fn get_server_as_oidc(&self, name: &str) -> Option<&OidcServer> {
-        self.servers.get(name).and_then(|server| match server {
-            StoredServer::Oidc(oidc) => Some(oidc),
-            _ => None,
-        })
+    pub fn get_server_as_oidc_server(&self, name: &str) -> Result<&OidcServer, StoredConfigError> {
+        self.servers
+            .get(name)
+            .and_then(|server| match server {
+                StoredServer::Oidc(oidc) => Some(oidc),
+                _ => None,
+            })
+            .ok_or(StoredConfigError::ParseError(format!(
+                "Server '{}' not found",
+                name
+            )))
     }
 
-    pub fn get_server_as_password(&self, name: &str) -> Option<&PasswordServer> {
-        self.servers.get(name).and_then(|server| match server {
-            StoredServer::Password(password) => Some(password),
-            _ => None,
-        })
+    pub fn get_server_as_password_server(
+        &self,
+        name: &str,
+    ) -> Result<&PasswordServer, StoredConfigError> {
+        self.servers
+            .get(name)
+            .and_then(|server| match server {
+                StoredServer::Password(password) => Some(password),
+                _ => None,
+            })
+            .ok_or(StoredConfigError::ParseError(format!(
+                "Server '{}' not found",
+                name
+            )))
     }
 
     pub async fn upsert_server(
         &mut self,
         server: StoredServer,
     ) -> Result<&mut Self, StoredConfigError> {
-        let name = match &server {
-            StoredServer::Oidc(OidcServer { name, .. }) => name,
-            StoredServer::Password(PasswordServer { name, .. }) => name,
+        let updated_at = chrono::Utc::now().to_rfc3339();
+        let mut server = server.clone();
+        let name = match &mut server {
+            StoredServer::Oidc(oidc) => {
+                oidc.updated_at = Some(updated_at);
+                oidc.name.clone()
+            }
+            StoredServer::Password(password) => {
+                password.updated_at = Some(updated_at);
+                password.name.clone()
+            }
         };
 
-        *self.servers.entry(name.clone()).or_insert(server) = server.clone();
+        *self.servers.entry(name).or_insert(server) = server.clone();
         self.save_to_file().await?;
         Ok(self)
     }
 
     pub async fn remove_server(&mut self, name: &str) -> Result<&mut Self, StoredConfigError> {
         if self.default.as_ref().is_some_and(|d| d == name) {
-            return Err(StoredConfigError::FileSystemError(format!(
+            return Err(StoredConfigError::BadInput(format!(
                 "Cannot remove default server {}",
                 name
             )));
@@ -202,8 +223,9 @@ impl StoredConfigs {
 
     pub async fn set_default_server(&mut self, name: &str) -> Result<&mut Self, StoredConfigError> {
         if !self.servers.contains_key(name) {
-            return Err(StoredConfigError::ParseError(serde_json::Error::custom(
-                format!("Server {} not found", name),
+            return Err(StoredConfigError::ParseError(format!(
+                "Server {} not found",
+                name
             )));
         }
 
@@ -232,6 +254,7 @@ async fn test_save_config() {
         issuer: "https://example.com".to_string(),
         client_id: "client_id".to_string(),
         client_secret: Some("client_secret".to_string()),
+        updated_at: None,
     });
 
     let mut stored_config = StoredConfigs::new();
@@ -261,12 +284,13 @@ async fn test_config_type() {
         issuer: "https://example.com".to_string(),
         client_id: "client_id".to_string(),
         client_secret: None,
+        updated_at: None,
     });
 
     let json = serde_json::to_string(&server).unwrap();
     assert_eq!(
         json,
-        r#"{"authType":"oidc","server":"https://example.com","issuer":"https://example.com","clientId":"client_id","clientSecret":null}"#
+        r#"{"authType":"oidc","server":"https://example.com","issuer":"https://example.com","clientId":"client_id","clientSecret":null,"updatedAt":null}"#
     );
 
     let server = StoredServer::Password(PasswordServer {
@@ -274,11 +298,12 @@ async fn test_config_type() {
         server: "https://example.com".to_string(),
         username: "username".to_string(),
         password: "password".to_string(),
+        updated_at: None,
     });
 
     let json = serde_json::to_string(&server).unwrap();
     assert_eq!(
         json,
-        r#"{"authType":"password","server":"https://example.com","username":"username","password":"password"}"#
+        r#"{"authType":"password","server":"https://example.com","username":"username","password":"password","updatedAt":null}"#
     );
 }

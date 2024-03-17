@@ -11,10 +11,6 @@ macro_rules! print_build_warning {
 
 // TODO: optimize path search
 fn main() {
-    #[cfg(not(target_os = "windows"))]
-    let link = "static";
-
-    #[cfg(target_os = "windows")]
     let link = "static";
 
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
