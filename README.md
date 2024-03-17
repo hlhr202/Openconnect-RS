@@ -11,6 +11,12 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
 - Support for both password and OIDC authentication
 - Built with MSYS2, Tauri, React, and NextUI
 
+## Screenshots
+
+<img src="./doc/openconnect-1.png" width="360px" height="320px" alt="Main">
+<img src="./doc/openconnect-2.png" width="360px" height="320px" alt="Edit">
+<img src="./doc/openconnect-3.png" width="360px" height="320px" alt="Connect">
+
 ## Getting Started
 
 - Read the [System Requirements](./crates/openconnect-sys/README.md) for environment setup

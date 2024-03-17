@@ -109,8 +109,8 @@ export const ServerEditor = (props: FormParams) => {
               labelPlacement="inside"
               placeholder="My Server"
               size="sm"
-              isDisabled
-              disabled
+              isDisabled={props.mode === "edit"}
+              disabled={props.mode === "edit"}
               errorMessage={formState.errors.name?.message}
               {...field}
             />
