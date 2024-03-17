@@ -2,6 +2,8 @@
 name = "openconnect-core"
 version = "0.1.0"
 edition = "2021"
+description = "A library for interacting with OpenConnect VPN"
+license = "LGPL-2.1"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -14,7 +16,7 @@ ctrlc = "3.4.2"
 dotenvy = { workspace = true }
 lazy_static = "1.4.0"
 libc = { workspace = true }
-openconnect-sys = { path = "../openconnect-sys" }
+openconnect-sys = { path = "../openconnect-sys", version = "0.1.0"}
 reqwest = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
