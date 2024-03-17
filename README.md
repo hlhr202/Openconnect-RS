@@ -28,7 +28,7 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
 
 ## License
 
-This project is licensed under the GNU Lesser General Public License (LGPL). See the [LICENSE](./LICENSE_LGPL) file for details.
+This project is licensed under the GNU Lesser General Public License (LGPL). See the [LICENSE](./LICENSE-LGPL) file for details.
 
 ## Acknowledgements
 
