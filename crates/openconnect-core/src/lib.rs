@@ -9,11 +9,13 @@ pub mod result;
 pub mod stats;
 pub mod storage;
 
+#[cfg(target_os = "macos")]
+pub use openconnect_sys::helper_reluanch_as_root;
+
 use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
 use form::FormContext;
 use ip_info::IpInfo;
-pub use openconnect_sys::helper_reluanch_as_root;
 use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
 use stats::Stats;
@@ -106,7 +108,7 @@ impl VpnClient {
                     if let Some(ifname) = ifname {
                         let ret = openconnect_setup_tun_device(
                             (*client).vpninfo,
-                            vpnc_script,
+                            vpnc_script.as_ptr(),
                             ifname.as_ptr(),
                         );
                         // TODO: handle ret

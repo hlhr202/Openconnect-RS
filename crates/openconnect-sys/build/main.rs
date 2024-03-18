@@ -1,11 +1,6 @@
+use openconnect_build::{print_build_warning, resolve_mingw64_lib_path, try_pkg_config};
 use std::env;
 use std::path::PathBuf;
-
-macro_rules! print_build_warning {
-    ($($arg:tt)*) => {
-        println!("cargo:warning={}", format_args!($($arg)*));
-    };
-}
 
 // mod find_lib;
 
@@ -14,9 +9,11 @@ fn main() {
     let link = "static";
 
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+
+    // statically link openconnect
     let openconnect_lib = format!("{}/openconnect/.libs", dir);
-    // Tell cargo to look for shared libraries in the specified directory
     println!("cargo:rustc-link-search={}", openconnect_lib);
+    println!("cargo:rustc-link-lib=static=openconnect");
 
     // macOS search path
     #[cfg(target_os = "macos")]
@@ -41,24 +38,23 @@ fn main() {
         println!("cargo:rustc-link-search=/usr/lib/gcc/x86_64-linux-gnu/11");
     }
 
-    // windows search path
+    // windows linking
     #[cfg(target_os = "windows")]
     {
-        println!("cargo:rustc-link-search=C:\\msys64\\mingw64\\lib");
-        println!(
-            "cargo:rustc-link-search=C:\\msys64\\mingw64\\lib\\gcc\\x86_64-w64-mingw32\\13.2.0"
-        );
+        resolve_mingw64_lib_path();
 
         let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-        let target_path = out_path
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .parent()
-            .unwrap();
-        print_build_warning!("target_path: {:?}", target_path.display());
-        println!("cargo:rustc-link-search={}", target_path.display());
+        let target_path = out_path.ancestors().nth(3).unwrap();
+        print_build_warning!("target_path: {}", target_path.to_string_lossy());
+        println!("cargo:rustc-link-search={}", target_path.to_string_lossy());
+
+        let wintun_dll_source = format!("{}/wintun.dll", dir);
+        let wintun_dll_target = format!("{}/wintun.dll", target_path.to_string_lossy());
+        std::fs::copy(wintun_dll_source, wintun_dll_target).unwrap();
+
+        try_pkg_config(vec!["openssl", "libxml-2.0", "zlib", "liblz4", "iconv"]);
+        println!("cargo:rustc-link-lib={}=intl", link);
+        println!("cargo:rustc-link-lib=dylib=wintun")
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -74,25 +70,6 @@ fn main() {
         println!("cargo:rustc-link-lib={}=icui18n", link);
         println!("cargo:rustc-link-lib={}=icudata", link);
         println!("cargo:rustc-link-lib={}=icuuc", link);
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        println!("cargo:rustc-link-lib={}=crypto", link);
-        println!("cargo:rustc-link-lib={}=ssl", link);
-
-        // link for xml2
-        println!("cargo:rustc-link-lib={}=xml2", link);
-        println!("cargo:rustc-link-lib={}=iconv", link);
-        println!("cargo:rustc-link-lib={}=z", link);
-        println!("cargo:rustc-link-lib={}=lz4", link);
-        println!("cargo:rustc-link-lib={}=lzma", link);
-        println!("cargo:rustc-link-lib={}=intl", link);
-        println!("cargo:rustc-link-lib={}=gcc", link);
-        println!("cargo:rustc-link-lib={}=mingw32", link);
-        println!("cargo:rustc-link-lib={}=mingwex", link);
-
-        println!("cargo:rustc-link-lib=dylib=wintun")
     }
 
     // link c++ stdlib
@@ -113,9 +90,6 @@ fn main() {
         println!("cargo:rustc-link-lib={}=c++", link);
         println!("cargo:rustc-link-lib={}=c++abi", link);
     }
-
-    // Tell cargo to tell rustc to link the openconnect shared library.
-    println!("cargo:rustc-link-lib=static=openconnect");
 
     println!("cargo:rerun-if-changed=wrapper.h");
     println!("cargo:rerun-if-changed=c-src/helper.h");
