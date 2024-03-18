@@ -2332,6 +2332,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "openconnect-build"
+version = "0.1.0"
+dependencies = [
+ "pkg-config",
+]
+
+[[package]]
 name = "openconnect-core"
 version = "0.1.0"
 dependencies = [
@@ -2384,6 +2391,8 @@ dependencies = [
  "bindgen",
  "cc",
  "home",
+ "openconnect-build",
+ "openssl-sys",
 ]
 
 [[package]]

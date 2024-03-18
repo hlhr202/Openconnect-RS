@@ -8,6 +8,8 @@ description = "Rust bindings for OpenConnect"
 license = "LGPL-2.1"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[dependencies]
+openssl-sys = "0.9.101"
 
 [lib]
 crate-type = ["lib"]
@@ -16,3 +18,4 @@ crate-type = ["lib"]
 bindgen = "0.69.4"
 cc = "1.0.90"
 home = { workspace = true }
+openconnect-build = { path = "../openconnect-build", version = "0.1.0" }
