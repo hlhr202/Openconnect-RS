@@ -13,6 +13,7 @@ use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
 use form::FormContext;
 use ip_info::IpInfo;
+pub use openconnect_sys::helper_reluanch_as_root;
 use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
 use stats::Stats;
@@ -80,12 +81,16 @@ impl VpnClient {
         let client = VpnClient::from_c_void(privdata);
         if !client.is_null() {
             unsafe {
-                let vpnc_script = (*client)
-                    .config
-                    .vpncscript
-                    .clone()
-                    .and_then(|s| CString::new(s).ok())
-                    .map_or_else(|| DEFAULT_VPNCSCRIPT.as_ptr() as *const i8, |s| s.as_ptr());
+                let vpnc_script_from_config = (*client).config.vpncscript.clone();
+
+                let vpnc_script = {
+                    if let Some(vpnc_script) = vpnc_script_from_config {
+                        CString::new(vpnc_script).expect("TODO: handle CString::new failed")
+                    } else {
+                        CString::from_vec_with_nul(DEFAULT_VPNCSCRIPT.to_vec())
+                            .expect("TODO: handle CString::from_vec_with_nul failed")
+                    }
+                };
 
                 #[cfg(target_os = "windows")]
                 {
@@ -115,7 +120,7 @@ impl VpnClient {
                 {
                     let ret = openconnect_setup_tun_device(
                         (*client).vpninfo,
-                        vpnc_script,
+                        vpnc_script.as_ptr(),
                         std::ptr::null(), // currently use tun/tap on linux
                     );
 
@@ -458,13 +463,7 @@ impl Connectable for VpnClient {
         const OS_NAME: &str = "win";
 
         #[cfg(target_os = "macos")]
-        {
-            // #[cfg(target_arch = "x86_64")]
-            const OS_NAME: &str = "mac-intel";
-
-            // #[cfg(target_arch = "aarch64")]
-            // const OS_NAME: &str = "mac-arm64";
-        }
+        const OS_NAME: &str = "mac-intel";
 
         #[cfg(target_os = "linux")]
         const OS_NAME: &str = "linux-64";

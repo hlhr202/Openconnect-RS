@@ -91,7 +91,7 @@ fn main() {
                         .create(false)
                         .append(false)
                         .read(true)
-                        .open(resource_path)
+                        .open(resource_path.clone())
                         .expect("failed to open file");
 
                     let permissions = file.metadata().unwrap().permissions();
