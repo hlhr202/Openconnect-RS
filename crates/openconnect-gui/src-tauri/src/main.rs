@@ -24,8 +24,11 @@ fn main() {
         unsafe {
             // TODO: replace with security framework sys bindings
             // https://github.com/kornelski/rust-security-framework
-            if libc::geteuid() != 0 && openconnect_core::helper_reluanch_as_root() == 1 {
-                std::process::exit(0);
+            if libc::geteuid() != 0 {
+                if openconnect_core::helper_reluanch_as_root() == 1 {
+                    std::process::exit(0);
+                }
+                std::process::exit(1);
             }
         }
     }
