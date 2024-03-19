@@ -51,7 +51,7 @@ pub fn try_pkg_config(libs: Vec<&str>) {
     {
         std::env::set_var(
             "PKG_CONFIG_PATH",
-            "/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig",
+            "/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/opt/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig",
         );
     }
 
