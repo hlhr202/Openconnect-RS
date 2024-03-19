@@ -49,8 +49,6 @@ pub fn try_pkg_config(libs: Vec<&str>) {
 
     #[cfg(target_os = "macos")]
     {
-        // TODO: check this
-        // setup pkg-config to be homebrew pkg-config
         std::env::set_var(
             "PKG_CONFIG_PATH",
             "/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig",
@@ -69,5 +67,5 @@ pub fn try_pkg_config(libs: Vec<&str>) {
 
 #[test]
 fn test_prob() {
-    try_pkg_config(vec!["openssl", "libxml-2.0", "zlib", "liblz4", "iconv"])
+    try_pkg_config(vec!["openssl", "libxml-2.0", "zlib", "liblz4"])
 }

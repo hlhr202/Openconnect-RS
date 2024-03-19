@@ -1,42 +1,15 @@
-use openconnect_build::{print_build_warning, resolve_mingw64_lib_path, try_pkg_config};
+use openconnect_build::*;
 use std::env;
 use std::path::PathBuf;
 
-// mod find_lib;
-
 // TODO: optimize path search
 fn main() {
-    let link = "static";
-
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     // statically link openconnect
     let openconnect_lib = format!("{}/openconnect/.libs", dir);
     println!("cargo:rustc-link-search={}", openconnect_lib);
     println!("cargo:rustc-link-lib=static=openconnect");
-
-    // macOS search path
-    #[cfg(target_os = "macos")]
-    {
-        // the order is important!!!
-        println!("cargo:rustc-link-search=/usr/lib");
-        println!("cargo:rustc-link-search=/usr/local/lib");
-        // TODO: for stdc++, optimize auto search
-        println!("cargo:rustc-link-search=/opt/homebrew/opt/llvm/lib/c++");
-        println!("cargo:rustc-link-search=/opt/homebrew/opt/libiconv/lib");
-        println!("cargo:rustc-link-search=/opt/homebrew/lib");
-        println!("cargo:rustc-link-search=/opt/local/lib");
-    }
-
-    // Linux search path
-    #[cfg(target_os = "linux")]
-    {
-        println!("cargo:rustc-link-search=/usr/local/lib");
-        println!("cargo:rustc-link-search=/usr/lib");
-        println!("cargo:rustc-link-search=/usr/lib/x86_64-linux-gnu");
-        // TODO: for stdc++, optimize auto search
-        println!("cargo:rustc-link-search=/usr/lib/gcc/x86_64-linux-gnu/11");
-    }
 
     // windows linking
     #[cfg(target_os = "windows")]
@@ -53,42 +26,51 @@ fn main() {
         std::fs::copy(wintun_dll_source, wintun_dll_target).unwrap();
 
         try_pkg_config(vec!["openssl", "libxml-2.0", "zlib", "liblz4", "iconv"]);
-        println!("cargo:rustc-link-lib={}=intl", link);
+        println!("cargo:rustc-link-lib=static=intl");
         println!("cargo:rustc-link-lib=dylib=wintun")
-    }
-
-    #[cfg(not(target_os = "windows"))]
-    {
-        // link for openssl
-        println!("cargo:rustc-link-lib={}=crypto", link);
-        println!("cargo:rustc-link-lib={}=ssl", link);
-
-        // link for xml2
-        println!("cargo:rustc-link-lib={}=xml2", link);
-        println!("cargo:rustc-link-lib={}=z", link);
-        println!("cargo:rustc-link-lib={}=lzma", link);
-        println!("cargo:rustc-link-lib={}=icui18n", link);
-        println!("cargo:rustc-link-lib={}=icudata", link);
-        println!("cargo:rustc-link-lib={}=icuuc", link);
     }
 
     // link c++ stdlib
     #[cfg(target_os = "linux")]
     {
-        println!("cargo:rustc-link-lib={}=stdc++", link);
+        println!("cargo:rustc-link-search=/usr/local/lib");
+        println!("cargo:rustc-link-search=/usr/lib");
+        println!("cargo:rustc-link-search=/usr/lib/x86_64-linux-gnu");
+        // TODO: for stdc++, optimize auto search
+        println!("cargo:rustc-link-search=/usr/lib/gcc/x86_64-linux-gnu/11");
+
+        // link for openssl
+        println!("cargo:rustc-link-lib=static=crypto");
+        println!("cargo:rustc-link-lib=static=ssl");
+
+        // link for xml2
+        println!("cargo:rustc-link-lib=static=xml2");
+        println!("cargo:rustc-link-lib=static=z");
+        println!("cargo:rustc-link-lib=static=lzma");
+        println!("cargo:rustc-link-lib=static=icui18n");
+        println!("cargo:rustc-link-lib=static=icudata");
+        println!("cargo:rustc-link-lib=static=icuuc");
+
+        // link for stdc++
+        println!("cargo:rustc-link-lib=static=stdc++");
     }
 
     #[cfg(target_os = "macos")]
     {
-        // link for iconv
-        println!("cargo:rustc-link-lib={}=iconv", link);
+        // the order is important!!!
+        println!("cargo:rustc-link-search=/usr/lib");
+        println!("cargo:rustc-link-search=/usr/local/lib");
 
-        // link for lz4
-        println!("cargo:rustc-link-lib={}=lz4", link);
+        try_pkg_config(vec!["openssl", "libxml-2.0", "zlib", "liblz4"]);
 
         // link for c++ stdlib
-        println!("cargo:rustc-link-lib={}=c++", link);
-        println!("cargo:rustc-link-lib={}=c++abi", link);
+        println!("cargo:rustc-link-lib=dylib=c++");
+        println!("cargo:rustc-link-lib=dylib=c++abi");
+
+        // if you want to link c++ stdlib statically, use llvm c++ stdlib
+        // println!("cargo:rustc-link-search=/opt/homebrew/opt/llvm/lib/c++");
+        // println!("cargo:rustc-link-lib=static=c++");
+        // println!("cargo:rustc-link-lib=static=c++abi");
     }
 
     println!("cargo:rerun-if-changed=wrapper.h");
