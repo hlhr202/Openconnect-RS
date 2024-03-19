@@ -39,13 +39,13 @@ The README is based on official documentation from the ocserv project. The offic
 
 ## Build ocserv with OpenID Connect support
 
-In order to use OIDC with ocserv, you will need to build ocserv with the `--enable-oidc` option. This option is not enabled by default.
+In order to use OIDC with ocserv, you will need to build ocserv with the `--enable-oidc-auth` option. This option is not enabled by default.
 
 - clone the ocserv repository `git clone https://gitlab.com/openconnect/ocserv`
 
 - generate the configure script `./autogen.sh`
 
-- generate ocserv Makefile with OIDC support `./configure --enable-oidc`
+- generate ocserv Makefile with OIDC support `./configure --enable-oidc-auth`
 
 - build ocserv `make`
 
