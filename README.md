@@ -13,9 +13,9 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
 
 ## Screenshots
 
-<img src="./doc/openconnect-1.png" width="360px" height="320px" alt="Main">
-<img src="./doc/openconnect-2.png" width="360px" height="320px" alt="Edit">
-<img src="./doc/openconnect-3.png" width="360px" height="320px" alt="Connect">
+<img src="./doc/screenshot/openconnect-1.png" width="360px" height="320px" alt="Main">
+<img src="./doc/screenshot/openconnect-2.png" width="360px" height="320px" alt="Edit">
+<img src="./doc/screenshot/openconnect-3.png" width="360px" height="320px" alt="Connect">
 
 ## Getting Started
 
