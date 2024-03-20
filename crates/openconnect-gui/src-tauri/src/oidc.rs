@@ -8,7 +8,8 @@ use std::str::FromStr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use url::Url;
 
-pub const OIDC_REDIRECT_URI: &str = "http://localhost:8080/callback";
+pub const OIDC_LOCAL_PORT: u16 = 17175;
+pub const OIDC_REDIRECT_URI: &str = "http://localhost:17175/callback";
 
 pub struct OpenID {
     client: CoreClient,
@@ -111,7 +112,8 @@ impl OpenID {
     }
 
     pub async fn wait_for_callback(&self) -> Result<(AuthorizationCode, CsrfToken), OpenIDError> {
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:8080").await?;
+        let listener =
+            tokio::net::TcpListener::bind(format!("127.0.0.1:{}", OIDC_LOCAL_PORT)).await?;
         let (mut stream, _) = listener.accept().await?;
         let mut reader = tokio::io::BufReader::new(&mut stream);
         let mut request_line = String::new();

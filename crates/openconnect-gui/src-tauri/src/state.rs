@@ -112,19 +112,20 @@ impl AppState {
 
     pub async fn connect_with_user_pass(&self, server_name: &str) -> Result<(), StateError> {
         let stored_server = self.stored_configs.read().await;
-        let stored_server = stored_server.get_server_as_password_server(server_name)?;
+        let password_server = stored_server.get_server_as_password_server(server_name)?;
+        let password_server = &password_server.decrypted_by(&stored_server.cipher);
 
         let mut config = ConfigBuilder::default();
 
         #[cfg(not(target_os = "windows"))]
-        let mut config = config.vpncscript(&self.vpnc_sciprt);
+        let config = config.vpncscript(&self.vpnc_sciprt);
 
         let config = config.loglevel(LogLevel::Info).build()?;
 
         let entrypoint = EntrypointBuilder::new()
-            .server(&stored_server.server)
-            .username(&stored_server.username)
-            .password(&stored_server.password)
+            .server(&password_server.server)
+            .username(&password_server.username)
+            .password(&password_server.password.clone().unwrap_or("".to_string()))
             .enable_udp(true)
             .build()?;
 
@@ -151,14 +152,14 @@ impl AppState {
     }
 
     pub async fn connect_with_oidc(&self, server_name: &str) -> Result<(), StateError> {
-        let mut stored_server = self.stored_configs.read().await;
-        let stored_server = stored_server.get_server_as_oidc_server(server_name)?;
+        let stored_server = self.stored_configs.read().await;
+        let oidc_server = stored_server.get_server_as_oidc_server(server_name)?;
 
         let openid_config = OpenIDConfig {
-            issuer_url: stored_server.issuer.clone(),
+            issuer_url: oidc_server.issuer.clone(),
             redirect_uri: OIDC_REDIRECT_URI.to_string(),
-            client_id: stored_server.client_id.clone(),
-            client_secret: stored_server.client_secret.clone(),
+            client_id: oidc_server.client_id.clone(),
+            client_secret: oidc_server.client_secret.clone(),
         };
 
         let openid = OpenID::new(openid_config).await?;
@@ -175,7 +176,7 @@ impl AppState {
 
         let token = openid.exchange_token(code).await?;
         let cookie = openid
-            .obtain_cookie_by_oidc(&stored_server.server, &token)
+            .obtain_cookie_by_oidc(&oidc_server.server, &token)
             .await
             .ok_or(StateError::IoError(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -185,12 +186,12 @@ impl AppState {
         let mut config = ConfigBuilder::default();
 
         #[cfg(not(target_os = "windows"))]
-        let mut config = config.vpncscript(&self.vpnc_sciprt);
+        let config = config.vpncscript(&self.vpnc_sciprt);
 
         let config = config.loglevel(LogLevel::Info).build()?;
 
         let entrypoint = EntrypointBuilder::new()
-            .server(&stored_server.server)
+            .server(&oidc_server.server)
             .cookie(&cookie)
             .build()?;
 
@@ -228,7 +229,7 @@ impl AppState {
     }
 
     pub async fn new(event_tx: Sender<VpnEvent>, vpnc_scipt: &str) -> Result<Self, StateError> {
-        let mut stored_configs = StoredConfigs::new();
+        let mut stored_configs = StoredConfigs::default();
         stored_configs.read_from_file().await?;
         Ok(Self {
             event_tx,

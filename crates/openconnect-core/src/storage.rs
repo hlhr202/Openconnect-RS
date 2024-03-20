@@ -1,10 +1,35 @@
+use chacha20poly1305::{
+    aead::{Aead, AeadCore, KeyInit, OsRng},
+    XChaCha20Poly1305, XNonce,
+};
+use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
+use sha2::Digest;
 use std::{collections::HashMap, path::PathBuf};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredConfigsJson {
     default: Option<String>,
     servers: Vec<StoredServer>,
+}
+
+impl StoredConfigsJson {
+    pub fn decrypted_by(&self, encryptor: &PassEncryptor) -> Self {
+        let servers = self
+            .servers
+            .iter()
+            .map(|server| match server {
+                StoredServer::Oidc(oidc_server) => StoredServer::Oidc(oidc_server.clone()),
+                StoredServer::Password(password_server) => {
+                    StoredServer::Password(password_server.decrypted_by(encryptor))
+                }
+            })
+            .collect();
+        Self {
+            default: self.default.clone(),
+            servers,
+        }
+    }
 }
 
 impl TryFrom<StoredConfigsJson> for StoredConfigs {
@@ -31,6 +56,7 @@ impl TryFrom<StoredConfigsJson> for StoredConfigs {
         Ok(StoredConfigs {
             default: json.default,
             servers,
+            cipher: PassEncryptor::default(),
         })
     }
 }
@@ -61,8 +87,38 @@ pub struct PasswordServer {
     pub name: String,
     pub server: String,
     pub username: String,
-    pub password: String,
+    pub password: Option<String>,
     pub updated_at: Option<String>,
+}
+
+impl PasswordServer {
+    pub fn decrypted_by(&self, encryptor: &PassEncryptor) -> Self {
+        let password = self
+            .password
+            .as_ref()
+            .and_then(|p| encryptor.decrypt(p).ok());
+        Self {
+            name: self.name.clone(),
+            server: self.server.clone(),
+            username: self.username.clone(),
+            password,
+            updated_at: self.updated_at.clone(),
+        }
+    }
+
+    pub fn encrypted_by(&self, encryptor: &PassEncryptor) -> Self {
+        let password = self
+            .password
+            .as_ref()
+            .and_then(|p| encryptor.encrypt(p).ok());
+        Self {
+            name: self.name.clone(),
+            server: self.server.clone(),
+            username: self.username.clone(),
+            password,
+            updated_at: self.updated_at.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -75,11 +131,11 @@ pub enum StoredServer {
     Password(PasswordServer),
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Clone, Debug)]
 pub struct StoredConfigs {
     pub default: Option<String>,
     pub servers: HashMap<String, StoredServer>,
+    pub cipher: PassEncryptor,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -92,19 +148,23 @@ pub enum StoredConfigError {
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
+
+    #[error("Cipher error")]
+    CipherError(#[from] PassEncryptorError),
 }
 
 impl Default for StoredConfigs {
     fn default() -> Self {
-        Self::new()
+        Self::new(None)
     }
 }
 
 impl StoredConfigs {
-    pub fn new() -> Self {
+    pub fn new(pass_key: Option<String>) -> Self {
         Self {
             default: None,
             servers: HashMap::new(),
+            cipher: PassEncryptor::new(pass_key),
         }
     }
 
@@ -178,7 +238,7 @@ impl StoredConfigs {
         self.servers
             .get(name)
             .and_then(|server| match server {
-                StoredServer::Password(password) => Some(password),
+                StoredServer::Password(password_server) => Some(password_server),
                 _ => None,
             })
             .ok_or(StoredConfigError::ParseError(format!(
@@ -194,13 +254,14 @@ impl StoredConfigs {
         let updated_at = chrono::Utc::now().to_rfc3339();
         let mut server = server.clone();
         let name = match &mut server {
-            StoredServer::Oidc(oidc) => {
-                oidc.updated_at = Some(updated_at);
-                oidc.name.clone()
+            StoredServer::Oidc(oidc_server) => {
+                oidc_server.updated_at = Some(updated_at);
+                oidc_server.name.to_owned()
             }
-            StoredServer::Password(password) => {
-                password.updated_at = Some(updated_at);
-                password.name.clone()
+            StoredServer::Password(password_server) => {
+                password_server.updated_at = Some(updated_at);
+                *password_server = password_server.encrypted_by(&self.cipher);
+                password_server.name.to_owned()
             }
         };
 
@@ -235,9 +296,75 @@ impl StoredConfigs {
     }
 }
 
+#[derive(Clone, Debug)]
+pub struct PassEncryptor {
+    secret: chacha20poly1305::Key,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum PassEncryptorError {
+    #[error("Cipher error: {0}")]
+    CipherError(String),
+}
+
+impl Default for PassEncryptor {
+    fn default() -> Self {
+        Self::new(None)
+    }
+}
+
+impl PassEncryptor {
+    pub fn new(unique_key: Option<String>) -> Self {
+        // by default, use machine uid as unique key to generate encryption key
+        let unique_key = unique_key
+            .or_else(|| machine_uid::get().ok())
+            .unwrap_or("openconnect-rs-2024".to_string());
+
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(unique_key.as_bytes());
+        let hash = hasher.finalize(); // hash is absolutely 32 bytes
+        let mut seed = rand::rngs::StdRng::from_seed(hash.into());
+        let key = XChaCha20Poly1305::generate_key(&mut seed);
+        Self { secret: key }
+    }
+
+    pub fn encrypt(&self, plaintext: &str) -> Result<String, PassEncryptorError> {
+        let cipher = XChaCha20Poly1305::new(&self.secret);
+        let nonce = XChaCha20Poly1305::generate_nonce(&mut OsRng);
+        let encypted = cipher.encrypt(&nonce, plaintext.as_ref()).map_err(|e| {
+            PassEncryptorError::CipherError(format!("Failed to encrypt password: {}", e))
+        })?;
+        let combined = [nonce.to_vec(), encypted].concat();
+        Ok(hex::encode(combined))
+    }
+
+    pub fn decrypt(&self, ciphertext: &str) -> Result<String, PassEncryptorError> {
+        let cipher = XChaCha20Poly1305::new(&self.secret);
+        let ciphertext = hex::decode(ciphertext).map_err(|e| {
+            PassEncryptorError::CipherError(format!("Failed to decrypt password: {}", e))
+        })?;
+        let nonce = XNonce::from_slice(&ciphertext[..24]);
+        let plaintext = cipher.decrypt(nonce, &ciphertext[24..]).map_err(|e| {
+            PassEncryptorError::CipherError(format!("Failed to decrypt password: {}", e))
+        })?;
+        String::from_utf8(plaintext).map_err(|e| {
+            PassEncryptorError::CipherError(format!("Failed to decrypt password: {}", e))
+        })
+    }
+}
+
+#[test]
+fn test_pass_enc() {
+    let encryptor = PassEncryptor::default();
+    let password = "password";
+    let encrypted = encryptor.encrypt(password).unwrap();
+    let decrypted = encryptor.decrypt(&encrypted).unwrap();
+    assert_eq!(password, decrypted);
+}
+
 #[tokio::test]
 async fn test_read_config() {
-    let mut stored_configs = StoredConfigs::new();
+    let mut stored_configs = StoredConfigs::default();
     stored_configs.read_from_file().await.unwrap();
     println!("parsed struct: {:#?}", stored_configs);
 
@@ -257,7 +384,7 @@ async fn test_save_config() {
         updated_at: None,
     });
 
-    let mut stored_config = StoredConfigs::new();
+    let mut stored_config = StoredConfigs::default();
     let config = stored_config
         .read_from_file()
         .await
@@ -272,7 +399,7 @@ async fn test_save_config() {
     println!("saved: {:?}", config);
     println!(
         "read: {:?}",
-        StoredConfigs::new().read_from_file().await.unwrap()
+        StoredConfigs::default().read_from_file().await.unwrap()
     );
 }
 
@@ -297,7 +424,7 @@ async fn test_config_type() {
         name: "password_server".to_string(),
         server: "https://example.com".to_string(),
         username: "username".to_string(),
-        password: "password".to_string(),
+        password: Some("password".to_string()),
         updated_at: None,
     });
 

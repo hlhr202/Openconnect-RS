@@ -28,7 +28,7 @@ dotenvy = { workspace = true }
 lazy_static = { workspace = true }
 open = "5.1.2"
 openconnect-core = { path = "../../openconnect-core" }
-openidconnect = { version = "3.5.0", features = ["reqwest"] }
+openidconnect = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -36,7 +36,7 @@ sudo = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 libc = { workspace = true }
-url = "2.5.0"
+url = { workspace = true }
 window-shadows = "0.2.2"
 
 [patch.crates-io]

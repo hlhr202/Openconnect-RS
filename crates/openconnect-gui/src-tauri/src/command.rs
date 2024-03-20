@@ -37,6 +37,7 @@ impl From<StoredConfigError> for ErrorResponse {
             StoredConfigError::BadInput(_) => "BAD_INPUT",
             StoredConfigError::ParseError(_) => "PARSE_ERROR",
             StoredConfigError::IoError(_) => "IO_ERROR",
+            StoredConfigError::CipherError(_) => "CIPHER_ERROR",
         };
         Self {
             code: code.to_string(),
@@ -77,7 +78,10 @@ pub async fn trigger_state_retrieve(
 pub async fn get_stored_configs(
     app_state: tauri::State<'_, AppState>,
 ) -> Result<StoredConfigsJson, ErrorResponse> {
-    Ok(app_state.stored_configs.read().await.clone().into())
+    let stored_config = app_state.stored_configs.read().await;
+    let cipher = &stored_config.cipher;
+    let stored_config_json: StoredConfigsJson = stored_config.clone().into();
+    Ok(stored_config_json.decrypted_by(cipher))
 }
 
 #[tauri::command]

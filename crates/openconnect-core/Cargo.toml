@@ -12,9 +12,8 @@ crate-type = ["lib"]
 
 [dependencies]
 anyhow = { workspace = true }
-ctrlc = "3.4.2"
+ctrlc = "3.4.4"
 dotenvy = { workspace = true }
-lazy_static = "1.4.0"
 libc = { workspace = true }
 openconnect-sys = { path = "../openconnect-sys", version = "0.1.0"}
 reqwest = { workspace = true }
@@ -24,6 +23,11 @@ home = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+rand = { workspace = true }
+machine-uid = { workspace = true }
+chacha20poly1305 = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }
