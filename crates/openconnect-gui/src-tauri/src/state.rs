@@ -160,9 +160,10 @@ impl AppState {
             redirect_uri: OIDC_REDIRECT_URI.to_string(),
             client_id: oidc_server.client_id.clone(),
             client_secret: oidc_server.client_secret.clone(),
+            use_pkce_challenge: true,
         };
 
-        let openid = OpenID::new(openid_config).await?;
+        let mut openid = OpenID::new(openid_config).await?;
         let (authorize_url, req_state, _) = openid.auth_request();
 
         open::that(authorize_url.to_string())?;

@@ -1,5 +1,5 @@
 use openidconnect::core::{CoreClient, CoreProviderMetadata, CoreResponseType};
-use openidconnect::{reqwest, TokenResponse};
+use openidconnect::{reqwest, PkceCodeChallenge, PkceCodeVerifier, TokenResponse};
 use openidconnect::{
     AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
     RedirectUrl,
@@ -13,12 +13,15 @@ pub const OIDC_REDIRECT_URI: &str = "http://localhost:17175/callback";
 
 pub struct OpenID {
     client: CoreClient,
+    pkce_challenge: Option<PkceCodeChallenge>,
+    pkce_verifier: Option<PkceCodeVerifier>,
 }
 
 pub struct OpenIDConfig {
     pub issuer_url: String,
     pub redirect_uri: String,
     pub client_id: String,
+    pub use_pkce_challenge: bool,
     pub client_secret: Option<String>,
 }
 
@@ -46,7 +49,7 @@ pub enum OpenIDError {
 
 impl OpenID {
     pub async fn new(config: OpenIDConfig) -> Result<Self, OpenIDError> {
-        tauri::async_runtime::spawn_blocking(|| {
+        tauri::async_runtime::spawn_blocking(move || {
             let issuer_url = IssuerUrl::new(config.issuer_url)?;
             let provider_metadata =
                 CoreProviderMetadata::discover(&issuer_url, openidconnect::reqwest::http_client)
@@ -59,23 +62,38 @@ impl OpenID {
                 CoreClient::from_provider_metadata(provider_metadata, client_id, client_secret)
                     .set_redirect_uri(redirect_uri);
 
-            Ok(OpenID { client })
+            if config.use_pkce_challenge {
+                let (pkce_challenge, pkce_verifier) = PkceCodeChallenge::new_random_sha256();
+
+                Ok(OpenID {
+                    client,
+                    pkce_challenge: Some(pkce_challenge),
+                    pkce_verifier: Some(pkce_verifier),
+                })
+            } else {
+                Ok(OpenID {
+                    client,
+                    pkce_challenge: None,
+                    pkce_verifier: None,
+                })
+            }
         })
         .await
         .map_err(|e| OpenIDError::ChannelError(e.to_string()))?
     }
 
-    pub fn auth_request(&self) -> (Url, CsrfToken, Nonce) {
-        let (authorize_url, csrf_state, nonce) = self
-            .client
-            .authorize_url(
-                AuthenticationFlow::<CoreResponseType>::AuthorizationCode,
-                CsrfToken::new_random,
-                Nonce::new_random,
-            )
-            .url();
+    pub fn auth_request(&mut self) -> (Url, CsrfToken, Nonce) {
+        let mut auth_request = self.client.authorize_url(
+            AuthenticationFlow::<CoreResponseType>::AuthorizationCode,
+            CsrfToken::new_random,
+            Nonce::new_random,
+        );
 
-        (authorize_url, csrf_state, nonce)
+        if let Some(pkce_challenge) = self.pkce_challenge.take() {
+            auth_request = auth_request.set_pkce_challenge(pkce_challenge);
+        }
+
+        auth_request.url()
     }
 
     pub fn parse_code_and_state(&self, url: Url) -> Option<(AuthorizationCode, CsrfToken)> {
@@ -92,11 +110,18 @@ impl OpenID {
         Some((code, state))
     }
 
-    pub async fn exchange_token(&self, code: AuthorizationCode) -> Result<String, OpenIDError> {
+    pub async fn exchange_token(&mut self, code: AuthorizationCode) -> Result<String, OpenIDError> {
         let client = self.client.clone();
+        let pkce_verifier = self.pkce_verifier.take();
+
         tauri::async_runtime::spawn_blocking(move || {
-            let token_response = client
-                .exchange_code(code)
+            let mut token_response = client.exchange_code(code);
+
+            if let Some(pkce_verifier) = pkce_verifier {
+                token_response = token_response.set_pkce_verifier(pkce_verifier);
+            }
+
+            let token_response = token_response
                 .request(reqwest::http_client)
                 .map_err(|e| OpenIDError::TokenExchangeError(e.to_string()))?;
 
