@@ -5,9 +5,9 @@ interface IError {
   message: string;
 }
 
-export const handleError = (e: unknown) => {
+export const toastError = (e: unknown) => {
   const error = e as IError;
-  console.log(e)
+  console.log(e);
 
   toast.error(
     <div className="flex flex-col gap-4 w-full">
@@ -16,4 +16,8 @@ export const handleError = (e: unknown) => {
     </div>,
     { autoClose: 10000, position: "bottom-center" }
   );
+};
+
+export const toastSuccess = (message: string) => {
+  toast.success(message, { position: "bottom-center", autoClose: 2000 });
 };

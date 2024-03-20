@@ -12,7 +12,7 @@ tauri-build = { version = "1.5.1", features = [] }
 
 [dependencies]
 anyhow = { workspace = true }
-tauri = { version = "1.6.1", features = [
+tauri = { version = "1.6.1", features = [ "system-tray",
     "macos-private-api",
     "window-show",
     "window-unminimize",
@@ -23,6 +23,7 @@ tauri = { version = "1.6.1", features = [
     "window-close",
     "window-hide",
     "shell-open",
+    "icon-png"
 ] }
 dotenvy = { workspace = true }
 lazy_static = { workspace = true }

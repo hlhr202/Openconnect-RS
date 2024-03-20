@@ -13,18 +13,15 @@ import {
 } from "@nextui-org/react";
 import { useAtom } from "jotai";
 import { useState } from "react";
-import { ServerEditor } from "./ServerEditor";
+import { FormParams, ServerEditor } from "./ServerEditor";
 import { storedConfigsAtom } from "./state";
+import { enc } from "crypto-js";
+import { toastError } from "./lib/toast";
 
 interface IModalProps {
   isOpen: boolean;
   onOpen: () => void;
   onOpenChange: (open: boolean) => void;
-}
-
-export interface FormParams {
-  mode: "add" | "edit";
-  name?: string;
 }
 
 export const ServerEditorModal = (props: IModalProps) => {
@@ -36,6 +33,22 @@ export const ServerEditorModal = (props: IModalProps) => {
     setFormParams(null);
     props.onOpenChange(false);
   };
+
+  const handlePaste = (base64: string) => {
+    setSelectedName(null);
+    setFormParams(null);
+    try {
+      const decoded = enc.Base64.parse(base64).toString(enc.Utf8);
+      const server = JSON.parse(decoded);
+      setFormParams({ mode: "add", addFromImport: server });
+    } catch (e) {
+      toastError({
+        code: "PASTE_ERROR",
+        message: "Cannot decode your input to a valid server",
+      });
+    }
+  };
+
   return (
     <Modal
       size="sm"
@@ -58,10 +71,14 @@ export const ServerEditorModal = (props: IModalProps) => {
                     size="sm"
                     color="secondary"
                     className="flex-1"
-                    isDisabled
-                    disabled
+                    onClick={() => {
+                      navigator.clipboard
+                        .readText()
+                        .then(handlePaste)
+                        .catch(() => {});
+                    }}
                   >
-                    Import config from clipboard (Not implemented yet)
+                    Import config from clipboard
                   </Button>
                   <Button
                     size="sm"

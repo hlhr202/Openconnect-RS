@@ -72,6 +72,7 @@ impl Default for ConfigBuilder {
 
 #[derive(Debug, Clone)]
 pub struct Entrypoint {
+    pub name: Option<String>,
     pub server: String,
     pub username: Option<String>,
     pub password: Option<String>,
@@ -81,6 +82,7 @@ pub struct Entrypoint {
 }
 
 pub struct EntrypointBuilder {
+    name: Option<String>,
     server: Option<String>,
     username: Option<String>,
     password: Option<String>,
@@ -92,6 +94,7 @@ pub struct EntrypointBuilder {
 impl EntrypointBuilder {
     pub fn new() -> Self {
         Self {
+            name: None,
             server: None,
             username: None,
             password: None,
@@ -99,6 +102,11 @@ impl EntrypointBuilder {
             cookie: None,
             enable_udp: true,
         }
+    }
+
+    pub fn name(&mut self, name: &str) -> &mut Self {
+        self.name = Some(name.to_string());
+        self
     }
 
     pub fn server(&mut self, server: &str) -> &mut Self {
@@ -145,6 +153,7 @@ impl EntrypointBuilder {
             .unwrap_or_else(get_anyconnect_protocol);
 
         Ok(Entrypoint {
+            name: self.name.clone(),
             server,
             username: self.username.clone(),
             password: self.password.clone(),

@@ -1,42 +1,38 @@
 import { Input, Button, Select, SelectItem } from "@nextui-org/react";
-import {
-  useForm,
-  SubmitHandler,
-  useWatch,
-  Controller,
-  FieldErrors,
-} from "react-hook-form";
+import { useForm, SubmitHandler, useWatch, Controller } from "react-hook-form";
 import { useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api";
 import { OidcServer, PasswordServer, useStoredConfigs } from "./state";
+import { toastError, toastSuccess } from "./lib/toast";
+import { enc } from "crypto-js";
 
 export interface FormParams {
   mode: "add" | "edit";
   name?: string;
+  addFromImport?: Partial<OidcServer | PasswordServer>;
 }
 
 export const ServerEditor = (props: FormParams) => {
   const { getStoredConfigs, serverList, defaultName } = useStoredConfigs();
 
   const initialData = useMemo(() => {
-    const initial = {
+    const empty = {
       name: "",
       authType: undefined,
       server: "",
     };
     switch (props.mode) {
-      case "add":
-        return initial;
+      case "add": {
+        return props.addFromImport ?? empty;
+      }
       case "edit":
-        return (
-          serverList.find((server) => server.name === props.name) ?? initial
-        );
+        return serverList.find((server) => server.name === props.name) ?? empty;
     }
-  }, [props.name, props.mode, serverList]);
+  }, [props.name, props.mode, props.addFromImport, serverList]);
 
-  const { handleSubmit, register, reset, unregister, control } = useForm<
+  const { handleSubmit, reset, unregister, control } = useForm<
     OidcServer | PasswordServer
-  >({ defaultValues: initialData });
+  >();
 
   const save: SubmitHandler<OidcServer | PasswordServer> = async (data) => {
     let toSave: OidcServer | PasswordServer;
@@ -62,21 +58,57 @@ export const ServerEditor = (props: FormParams) => {
         break;
     }
 
-    await invoke("upsert_stored_server", { server: toSave });
-    await getStoredConfigs();
+    try {
+      await invoke("upsert_stored_server", { server: toSave });
+      await getStoredConfigs();
+      toastSuccess("Saved server successfully");
+    } catch (e) {
+      toastError(e);
+    }
   };
 
   const setDefaultServer = useCallback(async () => {
-    await invoke("set_default_server", { serverName: initialData.name });
-    await getStoredConfigs();
+    try {
+      await invoke("set_default_server", { serverName: initialData.name });
+      await getStoredConfigs();
+      toastSuccess("Set default server successfully");
+    } catch (e) {
+      toastError(e);
+    }
   }, [initialData.name, getStoredConfigs]);
 
   const removeServer = useCallback(async () => {
-    await invoke("remove_server", { serverName: initialData.name });
-    await getStoredConfigs();
+    try {
+      await invoke("remove_server", { serverName: initialData.name });
+      await getStoredConfigs();
+      toastSuccess("Removed server successfully");
+    } catch (e) {
+      toastError(e);
+    }
   }, [initialData.name, getStoredConfigs]);
 
   const watchedAuthType = useWatch({ control, name: "authType" });
+
+  const handleShare = useCallback(() => {
+    let toShare: Partial<OidcServer | PasswordServer> = {};
+    switch (initialData.authType) {
+      case "oidc": {
+        const { updatedAt, name, ...rest } = initialData;
+        toShare = rest;
+        break;
+      }
+      case "password": {
+        const { password, username, updatedAt, name, ...rest } = initialData;
+        toShare = rest;
+        break;
+      }
+    }
+    const jsonString = JSON.stringify(toShare);
+    const words = enc.Utf8.parse(jsonString);
+    const base64 = enc.Base64.stringify(words);
+    navigator.clipboard.writeText(base64);
+    toastSuccess("Copied to clipboard successfully");
+  }, [initialData]);
 
   useEffect(() => {
     switch (initialData?.authType) {
@@ -90,8 +122,15 @@ export const ServerEditor = (props: FormParams) => {
         unregister("clientSecret");
         break;
     }
-    reset(initialData);
-  }, [initialData, register]);
+    reset(initialData, {
+      keepValues: false,
+      keepDefaultValues: false,
+      keepDirty: false,
+      keepErrors: false,
+      keepDirtyValues: false,
+      keepTouched: false,
+    });
+  }, [initialData, unregister]);
 
   return (
     <form
@@ -103,15 +142,14 @@ export const ServerEditor = (props: FormParams) => {
           name="name"
           control={control}
           rules={{ required: "This field is required" }}
-          render={({ field, formState }) => (
+          render={({ field, fieldState }) => (
             <Input
               label="Name:"
               labelPlacement="inside"
               placeholder="My Server"
               size="sm"
               isDisabled={props.mode === "edit"}
-              disabled={props.mode === "edit"}
-              errorMessage={formState.errors.name?.message}
+              errorMessage={fieldState.error?.message}
               {...field}
             />
           )}
@@ -121,15 +159,16 @@ export const ServerEditor = (props: FormParams) => {
           name="authType"
           control={control}
           rules={{ required: "This field is required" }}
-          render={({ field, formState }) => (
+          render={({ field, fieldState }) => (
             <Select
               label="Authentication Type:"
               labelPlacement="inside"
               placeholder="Select an authentication type"
               selectionMode="single"
               unselectable="off"
+              disallowEmptySelection
               size="sm"
-              errorMessage={formState.errors.authType?.message}
+              errorMessage={fieldState.error?.message}
               selectedKeys={[field.value]}
               {...field}
             >
@@ -147,13 +186,13 @@ export const ServerEditor = (props: FormParams) => {
           name="server"
           control={control}
           rules={{ required: "This field is required" }}
-          render={({ field, formState }) => (
+          render={({ field, fieldState }) => (
             <Input
               label="Server:"
               labelPlacement="inside"
               placeholder="https://"
               size="sm"
-              errorMessage={formState.errors.server?.message}
+              errorMessage={fieldState.error?.message}
               {...field}
             />
           )}
@@ -164,16 +203,13 @@ export const ServerEditor = (props: FormParams) => {
               name="username"
               control={control}
               rules={{ required: "This field is required" }}
-              render={({ field, formState }) => (
+              render={({ field, fieldState }) => (
                 <Input
                   label="Username:"
                   labelPlacement="inside"
                   placeholder="username"
                   size="sm"
-                  errorMessage={
-                    (formState.errors as FieldErrors<PasswordServer>).username
-                      ?.message
-                  }
+                  errorMessage={fieldState.error?.message}
                   {...field}
                 />
               )}
@@ -182,17 +218,14 @@ export const ServerEditor = (props: FormParams) => {
               name="password"
               control={control}
               rules={{ required: "This field is required" }}
-              render={({ field, formState }) => (
+              render={({ field, fieldState }) => (
                 <Input
                   label="Password:"
                   labelPlacement="inside"
                   placeholder="password"
                   size="sm"
                   type="password"
-                  errorMessage={
-                    (formState.errors as FieldErrors<PasswordServer>).password
-                      ?.message
-                  }
+                  errorMessage={fieldState.error?.message}
                   {...field}
                 />
               )}
@@ -205,16 +238,13 @@ export const ServerEditor = (props: FormParams) => {
               name="issuer"
               control={control}
               rules={{ required: "This field is required" }}
-              render={({ field, formState }) => (
+              render={({ field, fieldState }) => (
                 <Input
                   label="Issuer:"
                   labelPlacement="inside"
                   placeholder="https://"
                   size="sm"
-                  errorMessage={
-                    (formState.errors as FieldErrors<OidcServer>).issuer
-                      ?.message
-                  }
+                  errorMessage={fieldState.error?.message}
                   {...field}
                 />
               )}
@@ -223,16 +253,13 @@ export const ServerEditor = (props: FormParams) => {
               name="clientId"
               control={control}
               rules={{ required: "This field is required" }}
-              render={({ field, formState }) => (
+              render={({ field, fieldState }) => (
                 <Input
                   label="Client ID:"
                   labelPlacement="inside"
                   placeholder="client_id"
                   size="sm"
-                  errorMessage={
-                    (formState.errors as FieldErrors<OidcServer>).clientId
-                      ?.message
-                  }
+                  errorMessage={fieldState.error?.message}
                   {...field}
                 />
               )}
@@ -256,6 +283,15 @@ export const ServerEditor = (props: FormParams) => {
       <div className="flex gap-4 w-full self-end items-end pl-2 pr-2">
         {props.mode === "edit" && (
           <>
+            <Button
+              type="button"
+              color="warning"
+              size="sm"
+              className="flex-1"
+              onClick={handleShare}
+            >
+              Share
+            </Button>
             <Button
               type="button"
               color="danger"

@@ -4,9 +4,11 @@
 mod command;
 mod oidc;
 mod state;
+mod system_tray;
 
 use command::*;
 use state::AppState;
+use system_tray::AppSystemTray;
 use tauri::Manager;
 
 fn main() {
@@ -57,7 +59,12 @@ fn main() {
         }
     }
 
+    let app_system_tray = AppSystemTray::new();
+
+    let app_system_tray_clone = app_system_tray.clone();
     tauri::Builder::default()
+        .system_tray(app_system_tray.create_empty())
+        .on_system_tray_event(move |app, event| app_system_tray_clone.handle(app, event))
         .register_uri_scheme_protocol("oidcvpn", |app, _req| {
             let _app_state: tauri::State<'_, AppState> = app.state();
 
@@ -66,7 +73,11 @@ fn main() {
                 .status(200)
                 .body(b"Authenticated, close this window and return to the application.".to_vec())
         })
-        .setup(|app| {
+        .setup(move |app| {
+            // This is to fully remove dock icon, temp disable
+            // #[cfg(target_os = "macos")]
+            // app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+
             let vpnc_script = {
                 #[cfg(target_os = "windows")]
                 {
@@ -114,8 +125,14 @@ fn main() {
             #[cfg(any(windows, target_os = "macos"))]
             window_shadows::set_shadow(&window, true).unwrap();
 
+            let app_handle = app.app_handle();
+
             Ok(tauri::async_runtime::block_on(async {
-                AppState::handle_with_vpnc_script(app, &vpnc_script).await
+                app_handle.manage(app_system_tray.clone());
+                AppState::handle_with_vpnc_script(app, &vpnc_script)
+                    .await
+                    .unwrap();
+                app_system_tray.recreate(&app_handle).await
             })?)
         })
         .invoke_handler(tauri::generate_handler![

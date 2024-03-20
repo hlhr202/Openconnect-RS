@@ -1,14 +1,17 @@
-use crate::oidc::{OpenID, OpenIDConfig, OpenIDError, OIDC_REDIRECT_URI};
+use crate::{
+    oidc::{OpenID, OpenIDConfig, OpenIDError, OIDC_REDIRECT_URI},
+    system_tray::AppSystemTray,
+};
 use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
-    storage::StoredConfigs,
+    storage::{StoredConfigError, StoredConfigs, StoredServer},
     Connectable, Status, VpnClient,
 };
 use std::sync::Arc;
 use tauri::{
     async_runtime::{channel, RwLock, Sender},
-    Manager,
+    Manager, State,
 };
 use tokio::sync::mpsc::error::SendError;
 
@@ -36,13 +39,16 @@ pub enum StateError {
 
 #[derive(Debug, Clone)]
 pub enum VpnEvent {
-    Status(StatusPayload),
+    Status {
+        status: StatusPayload,
+        server_name: Option<String>,
+    },
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
 pub struct StatusPayload {
-    status: String,
-    message: Option<String>,
+    pub status: String,
+    pub message: Option<String>,
 }
 
 impl From<Status> for StatusPayload {
@@ -82,9 +88,11 @@ impl AppState {
         tauri::async_runtime::spawn(async move {
             while let Some(event) = event_rx.recv().await {
                 let handle = handle.clone();
+                let app_system_tray: State<'_, Arc<AppSystemTray>> = handle.state();
                 match event {
-                    VpnEvent::Status(status) => {
+                    VpnEvent::Status { status, .. } => {
                         let result = handle.emit_all("vpnStatus", Some(status));
+                        app_system_tray.recreate(&handle).await.unwrap();
                         if let Err(e) = result {
                             eprintln!("Error while emitting event: {:?}", e);
                         }
@@ -96,17 +104,37 @@ impl AppState {
         Ok(())
     }
 
-    pub async fn trigger_state_retrieve(&self) -> Result<(), StateError> {
+    pub async fn get_status_and_name(&self) -> Result<(StatusPayload, Option<String>), StateError> {
         let client = self.client.read().await;
-        match client.as_ref() {
-            Some(client) => {
-                let state = client.get_state();
-                Ok(self.event_tx.send(VpnEvent::Status(state.into())).await?)
-            }
-            None => Ok(self
-                .event_tx
-                .send(VpnEvent::Status(Status::Initialized.into()))
-                .await?),
+        let name = match client.as_ref() {
+            Some(client) => client.get_server_name(),
+            None => None,
+        };
+        let state = match client.as_ref() {
+            Some(client) => client.get_status(),
+            None => Status::Initialized,
+        };
+        Ok((state.into(), name))
+    }
+
+    pub async fn trigger_state_retrieve(&self) -> Result<(), StateError> {
+        let (status, server_name) = self.get_status_and_name().await?;
+        Ok(self
+            .event_tx
+            .send(VpnEvent::Status {
+                status,
+                server_name,
+            })
+            .await?)
+    }
+
+    pub async fn connect_with_server_name(&self, server_name: &str) -> Result<(), StateError> {
+        let stored_server = self.stored_configs.read().await;
+        let server = stored_server.servers.get(server_name);
+        match server {
+            Some(StoredServer::Password(_)) => self.connect_with_user_pass(server_name).await,
+            Some(StoredServer::Oidc(_)) => self.connect_with_oidc(server_name).await,
+            None => Err(StoredConfigError::BadInput("Server not found".to_string()).into()),
         }
     }
 
@@ -123,6 +151,7 @@ impl AppState {
         let config = config.loglevel(LogLevel::Info).build()?;
 
         let entrypoint = EntrypointBuilder::new()
+            .name(&password_server.name)
             .server(&password_server.server)
             .username(&password_server.username)
             .password(&password_server.password.clone().unwrap_or("".to_string()))
@@ -130,12 +159,19 @@ impl AppState {
             .build()?;
 
         let event_tx = self.event_tx.clone();
+        let server_name = password_server.name.clone();
 
         let event_handlers =
             EventHandlers::default().with_handle_connection_state_change(move |state| {
                 let event_tx = event_tx.clone();
+                let server_name = Some(server_name.clone());
                 tauri::async_runtime::spawn(async move {
-                    let _ = event_tx.send(VpnEvent::Status(state.into())).await;
+                    let _ = event_tx
+                        .send(VpnEvent::Status {
+                            status: state.into(),
+                            server_name,
+                        })
+                        .await;
                     // ignore the result
                 });
             });
@@ -192,17 +228,25 @@ impl AppState {
         let config = config.loglevel(LogLevel::Info).build()?;
 
         let entrypoint = EntrypointBuilder::new()
+            .name(&oidc_server.name)
             .server(&oidc_server.server)
             .cookie(&cookie)
             .build()?;
 
         let event_tx = self.event_tx.clone();
+        let server_name = oidc_server.name.clone();
 
         let event_handlers =
             EventHandlers::default().with_handle_connection_state_change(move |state| {
                 let event_tx = event_tx.clone();
+                let server_name = Some(server_name.clone());
                 tauri::async_runtime::spawn(async move {
-                    let _ = event_tx.send(VpnEvent::Status(state.into())).await;
+                    let _ = event_tx
+                        .send(VpnEvent::Status {
+                            status: state.into(),
+                            server_name,
+                        })
+                        .await;
                     // ignore the result
                 });
             });

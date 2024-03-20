@@ -15,7 +15,7 @@ import { atom, useAtom } from "jotai";
 import { ServerSelector } from "./ServerSelector";
 import bg from "./assets/bg.webp";
 import { useStoredConfigs } from "./state";
-import { handleError } from "./lib/error";
+import { toastError } from "./lib/toast";
 import { ToastContainer } from "react-toastify";
 import connected from "./assets/connected-animate.json";
 import Lottie from "lottie-react";
@@ -62,7 +62,7 @@ function App() {
             break;
         }
       } catch (e) {
-        handleError(e);
+        toastError(e);
       }
     }
   }, [selectedServer]);
@@ -71,13 +71,13 @@ function App() {
     try {
       await invoke("disconnect");
     } catch (e) {
-      handleError(e);
+      toastError(e);
     }
   };
 
   useEffect(() => {
     if (vpnStatus.status === EStatus.Error) {
-      handleError({ code: "VPN_ERROR", message: vpnStatus.message ?? "" });
+      toastError({ code: "VPN_ERROR", message: vpnStatus.message ?? "" });
     }
   }, [vpnStatus.status, vpnStatus.message]);
 

@@ -391,7 +391,8 @@ pub trait Connectable {
     fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>>;
     fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()>;
     fn disconnect(&self);
-    fn get_state(&self) -> Status;
+    fn get_status(&self) -> Status;
+    fn get_server_name(&self) -> Option<String>;
 }
 
 impl Connectable for VpnClient {
@@ -524,7 +525,7 @@ impl Connectable for VpnClient {
 
     /// Gracefully stop the main loop
     fn disconnect(&self) {
-        if self.get_state() != Status::Connected {
+        if self.get_status() != Status::Connected {
             return;
         }
 
@@ -562,7 +563,14 @@ impl Connectable for VpnClient {
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
-    fn get_state(&self) -> Status {
+    fn get_server_name(&self) -> Option<String> {
+        self.entrypoint
+            .read()
+            .ok()
+            .and_then(|r| r.as_ref().and_then(|e| e.name.clone()))
+    }
+
+    fn get_status(&self) -> Status {
         self.status
             .read()
             .ok()

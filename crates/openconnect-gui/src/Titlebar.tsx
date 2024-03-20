@@ -25,8 +25,8 @@ export const TauriTitleBar = () => {
     else appWindow.maximize();
   };
 
-  const close = () => {
-    appWindow.close();
+  const hide = () => {
+    appWindow.hide();
   };
 
   return (
@@ -55,8 +55,8 @@ export const TauriTitleBar = () => {
         </svg>
       </TitleBarButton>
       <TitleBarButton
-        id="titlebar-close"
-        onClick={close}
+        id="titlebar-hide"
+        onClick={hide}
         className="rounded-tr-lg"
       >
         <svg

@@ -10,6 +10,10 @@
     "version": "0.0.0"
   },
   "tauri": {
+    "systemTray": {
+      "iconPath": "icons/disconnected.png",
+      "iconAsTemplate": true
+    },
     "macOSPrivateApi": true,
     "allowlist": {
       "fs": {
@@ -58,7 +62,9 @@
       "resources": [
         "vpnc-script",
         "vpnc-script-win.js",
-        "wintun.dll"
+        "wintun.dll",
+        "icons/connected.png",
+        "icons/disconnected.png"
       ]
     }
   }

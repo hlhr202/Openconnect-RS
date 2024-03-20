@@ -5,10 +5,12 @@ specifiers:
   '@nextui-org/react': ^2.2.10
   '@tauri-apps/api': ^1
   '@tauri-apps/cli': ^1.5.11
+  '@types/crypto-js': ^4.2.2
   '@types/react': ^18.2.64
   '@types/react-dom': ^18.2.21
   '@vitejs/plugin-react': ^4.2.1
   autoprefixer: ^10.4.18
+  crypto-js: ^4.2.0
   framer-motion: ^11.0.8
   jotai: ^2.7.0
   lottie-react: ^2.4.0
@@ -27,6 +29,7 @@ dependencies:
   '@nextui-org/button': 2.0.27_eg2egv5elaewtxh5tuujhliwri
   '@nextui-org/react': 2.2.10_axazmisogohwozdwdqhmc3mupm
   '@tauri-apps/api': 1.5.3
+  crypto-js: 4.2.0
   framer-motion: 11.0.14_biqbaboplfbrettd7655fr4n2y
   jotai: 2.7.1_zmht6lurnl66xpcbybuy5gpuey
   lottie-react: 2.4.0_biqbaboplfbrettd7655fr4n2y
@@ -39,6 +42,7 @@ dependencies:
 
 devDependencies:
   '@tauri-apps/cli': 1.5.11
+  '@types/crypto-js': 4.2.2
   '@types/react': 18.2.66
   '@types/react-dom': 18.2.22
   '@vitejs/plugin-react': 4.2.1_vite@5.1.6
@@ -3135,6 +3139,10 @@ packages:
       '@babel/types': 7.24.0
     dev: true
 
+  /@types/crypto-js/4.2.2:
+    resolution: {integrity: sha512-sDOLlVbHhXpAUAL0YHDUUwDZf3iN4Bwi4W6a0W0b+QcAezUbRtH4FVb+9J4h+XFPW7l/gQ9F8qC7P+Ec4k8QVQ==}
+    dev: true
+
   /@types/estree/1.0.5:
     resolution: {integrity: sha512-/kYRxGDLWzHOB7q+wtSUQlFrtcdUccpfy+X+9iMBpHK8QLLhx2wIPYuS5DYtR9Wa/YlZAbIovy7qVdB1Aq6Lyw==}
     dev: true
@@ -3369,6 +3377,10 @@ packages:
       path-key: 3.1.1
       shebang-command: 2.0.0
       which: 2.0.2
+
+  /crypto-js/4.2.0:
+    resolution: {integrity: sha512-KALDyEYgpY+Rlob/iriUtjV6d5Eq+Y191A5g4UqLAi8CyGP9N1+FdVbkc1SxKc2r4YAYqG8JzO2KGL+AizD70Q==}
+    dev: false
 
   /css-in-js-utils/3.1.0:
     resolution: {integrity: sha512-fJAcud6B3rRu+KHYk+Bwf+WFL2MDCJJ1XG9x137tJQ0xYxor7XziQtuGFbWNdqrvF4Tk26O3H73nfVqXt/fW1A==}
