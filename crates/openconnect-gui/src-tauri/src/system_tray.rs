@@ -46,33 +46,42 @@ impl AppSystemTray {
                 };
                 let is_server_connected = current_server_name.as_ref() == Some(&server_name)
                     && status.status == "CONNECTED";
-                let connection_menu = {
-                    if is_server_connected {
-                        CustomMenuItem::new(format!("disconnect-{}", server_name), "Disconnect")
+
+                if is_server_connected {
+                    CustomMenuItem::new(
+                        format!("disconnect-{}", server_name),
+                        format!("Disconnect {}", server_name),
+                    )
+                } else {
+                    let conection_menu = CustomMenuItem::new(
+                        format!("connect-{}", server_name),
+                        format!("Connect {}", server_name),
+                    );
+
+                    if status.status == "CONNECTED" {
+                        conection_menu.disabled()
                     } else {
-                        CustomMenuItem::new(format!("connect-{}", server_name), "Connect")
+                        conection_menu
                     }
-                };
-                let server_menu = SystemTrayMenu::new().add_item(connection_menu);
-                SystemTraySubmenu::new(
-                    if is_server_connected {
-                        format!("🌐 {}", server_name)
-                    } else {
-                        server_name
-                    },
-                    server_menu,
-                )
+                }
             })
             .collect::<Vec<_>>();
+
+        let mut sub_menu_tray = SystemTrayMenu::new();
+
+        for server_menu in server_menus {
+            sub_menu_tray = sub_menu_tray.add_item(server_menu);
+        }
+
+        let sub_menu = SystemTraySubmenu::new("Servers", sub_menu_tray);
         let show = CustomMenuItem::new("show".to_string(), "Show Window");
         let quit = CustomMenuItem::new("quit".to_string(), "Quit");
-        // let status = CustomMenuItem::new("status".to_string(), "Initialized");
-        let mut tray_menu = SystemTrayMenu::new();
-        for server_menu in server_menus {
-            tray_menu = tray_menu.add_submenu(server_menu);
-        }
-        tray_menu = tray_menu.add_native_item(tauri::SystemTrayMenuItem::Separator);
-        tray_menu = tray_menu.add_item(show).add_item(quit);
+
+        let tray_menu = SystemTrayMenu::new()
+            .add_submenu(sub_menu)
+            .add_native_item(tauri::SystemTrayMenuItem::Separator)
+            .add_item(show)
+            .add_item(quit);
 
         let system_tray_handle = app_handle.tray_handle();
         system_tray_handle.set_menu(tray_menu)
