@@ -24,6 +24,7 @@ fn main() -> anyhow::Result<()> {
         .password(&env::var("VPN_PASSWORD").unwrap())
         .protocol(protocol)
         .enable_udp(true)
+        .accept_insecure_cert(true)
         .build()?;
 
     client.connect(entrypoint)?;
