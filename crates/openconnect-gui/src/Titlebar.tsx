@@ -1,5 +1,6 @@
 import { FC, PropsWithChildren } from "react";
 import { appWindow } from "@tauri-apps/api/window";
+import { hide } from "@tauri-apps/api/app";
 
 const TitleBarButton: FC<
   PropsWithChildren<{ id: string; className?: string; onClick?: () => void }>
@@ -25,8 +26,8 @@ export const TauriTitleBar = () => {
     else appWindow.maximize();
   };
 
-  const hide = () => {
-    appWindow.hide();
+  const handleHide = () => {
+    hide();
   };
 
   return (
@@ -56,7 +57,7 @@ export const TauriTitleBar = () => {
       </TitleBarButton>
       <TitleBarButton
         id="titlebar-hide"
-        onClick={hide}
+        onClick={handleHide}
         className="rounded-tr-lg"
       >
         <svg

@@ -20,12 +20,17 @@
         "scope": ["$RESOURCE/*"]
       },
       "all": false,
+      "app": {
+        "all": true,
+        "show": true,
+        "hide": true
+      },
       "shell": {
         "all": false,
         "open": true
       },
       "window": {
-        "all": false,
+        "all": true,
         "close": true,
         "hide": true,
         "show": true,
@@ -33,7 +38,8 @@
         "minimize": true,
         "unmaximize": true,
         "unminimize": true,
-        "startDragging": true
+        "startDragging": true,
+        "setClosable": true
       }
     },
     "windows": [

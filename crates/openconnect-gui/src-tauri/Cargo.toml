@@ -12,16 +12,8 @@ tauri-build = { version = "1.5.1", features = [] }
 
 [dependencies]
 anyhow = { workspace = true }
-tauri = { version = "1.6.1", features = [ "system-tray",
+tauri = { version = "1.6.1", features = [ "app-all", "window-all", "system-tray",
     "macos-private-api",
-    "window-show",
-    "window-unminimize",
-    "window-minimize",
-    "window-maximize",
-    "window-start-dragging",
-    "window-unmaximize",
-    "window-close",
-    "window-hide",
     "shell-open",
     "icon-png"
 ] }

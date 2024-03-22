@@ -122,9 +122,11 @@ impl AppSystemTray {
                     app_handle.exit(0);
                 }
                 "show" => {
-                    let window = app_handle.get_window("main").unwrap();
-                    window.show().unwrap();
-                    window.set_focus().unwrap();
+                    let window = app_handle.get_window("main");
+                    if let Some(window) = window {
+                        window.show().unwrap();
+                        window.set_focus().unwrap();
+                    }
                 }
                 _ => match id.split('-').collect::<Vec<_>>().as_slice() {
                     ["connect", server_name] => {

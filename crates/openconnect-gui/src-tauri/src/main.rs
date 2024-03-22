@@ -62,7 +62,7 @@ fn main() {
     let app_system_tray = AppSystemTray::new();
 
     let app_system_tray_clone = app_system_tray.clone();
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .system_tray(app_system_tray.create_empty())
         .on_system_tray_event(move |app, event| app_system_tray_clone.handle(app, event))
         .register_uri_scheme_protocol("oidcvpn", |app, _req| {
@@ -145,6 +145,19 @@ fn main() {
             connect_with_password,
             connect_with_oidc,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .unwrap();
+
+    app.run(|app, event| {
+        if let tauri::RunEvent::WindowEvent {
+            label,
+            event: tauri::WindowEvent::CloseRequested { api, .. },
+            ..
+        } = event
+        {
+            let win = app.get_window(label.as_str()).unwrap();
+            win.hide().unwrap();
+            api.prevent_close();
+        }
+    });
 }

@@ -12,7 +12,7 @@
   "dependencies": {
     "@nextui-org/button": "^2.0.27",
     "@nextui-org/react": "^2.2.10",
-    "@tauri-apps/api": "^1",
+    "@tauri-apps/api": "^1.5.3",
     "crypto-js": "^4.2.0",
     "framer-motion": "^11.0.8",
     "jotai": "^2.7.0",
