@@ -79,6 +79,7 @@ pub struct Entrypoint {
     pub protocol: Protocol,
     pub cookie: Option<String>,
     pub enable_udp: bool,
+    pub accept_insecure_cert: bool,
 }
 
 pub struct EntrypointBuilder {
@@ -89,6 +90,7 @@ pub struct EntrypointBuilder {
     protocol: Option<Protocol>,
     cookie: Option<String>,
     enable_udp: bool,
+    accept_insecure_cert: Option<bool>,
 }
 
 impl EntrypointBuilder {
@@ -101,6 +103,7 @@ impl EntrypointBuilder {
             protocol: None,
             cookie: None,
             enable_udp: true,
+            accept_insecure_cert: None,
         }
     }
 
@@ -139,6 +142,11 @@ impl EntrypointBuilder {
         self
     }
 
+    pub fn accept_insecure_cert(&mut self, accept_insecure_cert: bool) -> &mut Self {
+        self.accept_insecure_cert = Some(accept_insecure_cert);
+        self
+    }
+
     pub fn build(&self) -> OpenconnectResult<Entrypoint> {
         let server = self
             .server
@@ -160,6 +168,7 @@ impl EntrypointBuilder {
             protocol,
             cookie: self.cookie.clone(),
             enable_udp: self.enable_udp,
+            accept_insecure_cert: self.accept_insecure_cert.unwrap_or(false),
         })
     }
 }

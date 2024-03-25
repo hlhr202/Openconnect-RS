@@ -155,26 +155,11 @@ impl AppState {
             .server(&password_server.server)
             .username(&password_server.username)
             .password(&password_server.password.clone().unwrap_or("".to_string()))
+            .accept_insecure_cert(password_server.allow_insecure.unwrap_or(false))
             .enable_udp(true)
             .build()?;
 
-        let event_tx = self.event_tx.clone();
-        let server_name = password_server.name.clone();
-
-        let event_handlers =
-            EventHandlers::default().with_handle_connection_state_change(move |state| {
-                let event_tx = event_tx.clone();
-                let server_name = Some(server_name.clone());
-                tauri::async_runtime::spawn(async move {
-                    let _ = event_tx
-                        .send(VpnEvent::Status {
-                            status: state.into(),
-                            server_name,
-                        })
-                        .await;
-                    // ignore the result
-                });
-            });
+        let event_handlers = self.create_event_handler(server_name);
 
         let client = VpnClient::new(config, event_handlers)?;
         {
@@ -231,25 +216,10 @@ impl AppState {
             .name(&oidc_server.name)
             .server(&oidc_server.server)
             .cookie(&cookie)
+            .accept_insecure_cert(oidc_server.allow_insecure.unwrap_or(false))
             .build()?;
 
-        let event_tx = self.event_tx.clone();
-        let server_name = oidc_server.name.clone();
-
-        let event_handlers =
-            EventHandlers::default().with_handle_connection_state_change(move |state| {
-                let event_tx = event_tx.clone();
-                let server_name = Some(server_name.clone());
-                tauri::async_runtime::spawn(async move {
-                    let _ = event_tx
-                        .send(VpnEvent::Status {
-                            status: state.into(),
-                            server_name,
-                        })
-                        .await;
-                    // ignore the result
-                });
-            });
+        let event_handlers = self.create_event_handler(server_name);
 
         let client = VpnClient::new(config, event_handlers)?;
         {
@@ -271,6 +241,49 @@ impl AppState {
         // self.client.write().await.take(); // TODO: wait a few seconds and drop the client
 
         Ok(())
+    }
+
+    pub fn create_event_handler(
+        &self,
+        server_name: &str,
+    ) -> openconnect_core::events::EventHandlers {
+        let event_tx_for_state = self.event_tx.clone();
+        let event_tx_for_cert = self.event_tx.clone();
+        let server_name_for_state = server_name.to_string();
+        let server_name_for_cert = server_name.to_string();
+
+        EventHandlers::default()
+            .with_handle_connection_state_change(move |state| {
+                let event_tx = event_tx_for_state.clone();
+                let server_name = Some(server_name_for_state.to_string());
+                tauri::async_runtime::spawn(async move {
+                    let _ = event_tx
+                        .send(VpnEvent::Status {
+                            status: state.into(),
+                            server_name,
+                        })
+                        .await;
+                    // ignore the result
+                });
+            })
+            .with_handle_peer_cert_invalid(move |reason| {
+                let event_tx = event_tx_for_cert.clone();
+                let server_name = Some(server_name_for_cert.to_string());
+                let reason = reason.to_string();
+                tauri::async_runtime::spawn(async move {
+                    let _ = event_tx
+                        .send(VpnEvent::Status {
+                            status: StatusPayload {
+                                status: "ERROR".to_string(),
+                                message: Some(format!("Peer certificate invalid, if you want to connect this insecure server, please tick 'Allow insecure' in the config. Server fingerprint: {}", reason)),
+                            },
+                            server_name,
+                        })
+                        .await;
+                    // ignore the result
+                });
+                false
+            })
     }
 
     pub async fn new(event_tx: Sender<VpnEvent>, vpnc_scipt: &str) -> Result<Self, StateError> {

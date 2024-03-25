@@ -12,6 +12,7 @@ pub mod storage;
 #[cfg(target_os = "macos")]
 pub use openconnect_sys::helper_reluanch_as_root;
 
+use cert::OpenSSLCert;
 use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
 use form::FormContext;
@@ -46,6 +47,7 @@ pub struct VpnClient {
     callbacks: EventHandlers,
     entrypoint: RwLock<Option<Entrypoint>>,
     form_context: FormContext,
+    certs: OpenSSLCert,
 }
 
 unsafe impl Send for VpnClient {}
@@ -71,13 +73,13 @@ impl VpnClient {
         }
     }
 
-    pub(crate) extern "C" fn validate_peer_cert(
-        _privdata: *mut ::std::os::raw::c_void,
-        _reason: *const ::std::os::raw::c_char,
-    ) -> ::std::os::raw::c_int {
-        println!("validate_peer_cert");
-        0
-    }
+    // pub(crate) extern "C" fn validate_peer_cert(
+    //     _privdata: *mut ::std::os::raw::c_void,
+    //     _reason: *const ::std::os::raw::c_char,
+    // ) -> ::std::os::raw::c_int {
+    //     println!("validate_peer_cert");
+    //     0
+    // }
 
     pub(crate) extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
         let client = VpnClient::from_c_void(privdata);
@@ -153,6 +155,30 @@ impl VpnClient {
 
     pub(crate) fn handle_stats(&self, (dlts, stats): (Option<String>, Option<Stats>)) {
         println!("stats: {:?}, {:?}", dlts, stats);
+    }
+
+    pub(crate) fn handle_accept_insecure_cert(&self, fingerprint: &str) -> bool {
+        let entrypoint = self.entrypoint.read();
+        let accept_in_entrypoint_config = {
+            if let Ok(entrypoint) = entrypoint {
+                (*entrypoint)
+                    .as_ref()
+                    .map(|entrypoint| entrypoint.accept_insecure_cert)
+                    .unwrap_or(false)
+            } else {
+                false
+            }
+        };
+
+        if accept_in_entrypoint_config {
+            return true;
+        }
+
+        if let Some(ref handler) = self.callbacks.handle_peer_cert_invalid {
+            handler(fingerprint)
+        } else {
+            false
+        }
     }
 
     pub fn set_loglevel(&self, level: LogLevel) {
@@ -408,6 +434,7 @@ impl Connectable for VpnClient {
             callbacks,
             entrypoint: RwLock::new(None),
             form_context: FormContext::default(),
+            certs: OpenSSLCert::default(),
         });
 
         let instance = Arc::into_raw(instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
@@ -423,7 +450,7 @@ impl Connectable for VpnClient {
 
             let vpninfo = openconnect_vpninfo_new(
                 useragent.as_ptr(),
-                Some(Self::validate_peer_cert),
+                Some(cert::validate_peer_cert),
                 None,
                 Some(FormContext::process_auth_form_cb),
                 Some(helper_format_vargs), // format args on C side

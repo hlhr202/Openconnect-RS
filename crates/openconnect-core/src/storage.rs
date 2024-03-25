@@ -78,6 +78,7 @@ pub struct OidcServer {
     pub issuer: String,
     pub client_id: String,
     pub client_secret: Option<String>,
+    pub allow_insecure: Option<bool>,
     pub updated_at: Option<String>,
 }
 
@@ -88,6 +89,7 @@ pub struct PasswordServer {
     pub server: String,
     pub username: String,
     pub password: Option<String>,
+    pub allow_insecure: Option<bool>,
     pub updated_at: Option<String>,
 }
 
@@ -102,6 +104,7 @@ impl PasswordServer {
             server: self.server.clone(),
             username: self.username.clone(),
             password,
+            allow_insecure: self.allow_insecure,
             updated_at: self.updated_at.clone(),
         }
     }
@@ -116,6 +119,7 @@ impl PasswordServer {
             server: self.server.clone(),
             username: self.username.clone(),
             password,
+            allow_insecure: self.allow_insecure,
             updated_at: self.updated_at.clone(),
         }
     }
@@ -381,6 +385,7 @@ async fn test_save_config() {
         issuer: "https://example.com".to_string(),
         client_id: "client_id".to_string(),
         client_secret: Some("client_secret".to_string()),
+        allow_insecure: Some(true),
         updated_at: None,
     });
 
@@ -411,6 +416,7 @@ async fn test_config_type() {
         issuer: "https://example.com".to_string(),
         client_id: "client_id".to_string(),
         client_secret: None,
+        allow_insecure: Some(true),
         updated_at: None,
     });
 
@@ -425,6 +431,7 @@ async fn test_config_type() {
         server: "https://example.com".to_string(),
         username: "username".to_string(),
         password: Some("password".to_string()),
+        allow_insecure: Some(true),
         updated_at: None,
     });
 
