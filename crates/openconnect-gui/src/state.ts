@@ -9,6 +9,7 @@ export interface OidcServer {
   issuer: string;
   clientId: string;
   clientSecret?: string;
+  allowInsecure?: boolean,
   updatedAt?: string;
 }
 
@@ -18,6 +19,7 @@ export interface PasswordServer {
   server: string;
   username: string;
   password: string;
+  allowInsecure?: boolean,
   updatedAt?: string;
 }
 

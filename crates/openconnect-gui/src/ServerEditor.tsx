@@ -1,4 +1,11 @@
-import { Input, Button, Select, SelectItem } from "@nextui-org/react";
+import {
+  Input,
+  Button,
+  Select,
+  SelectItem,
+  Switch,
+  cn,
+} from "@nextui-org/react";
 import { useForm, SubmitHandler, useWatch, Controller } from "react-hook-form";
 import { useCallback, useEffect, useMemo } from "react";
 import { invoke } from "@tauri-apps/api";
@@ -45,6 +52,7 @@ export const ServerEditor = (props: FormParams) => {
           issuer: data.issuer,
           clientId: data.clientId,
           clientSecret: data.clientSecret,
+          allowInsecure: data.allowInsecure,
         };
         break;
       case "password":
@@ -54,6 +62,7 @@ export const ServerEditor = (props: FormParams) => {
           server: data.server,
           username: data.username,
           password: data.password,
+          allowInsecure: data.allowInsecure,
         };
         break;
     }
@@ -197,6 +206,7 @@ export const ServerEditor = (props: FormParams) => {
             />
           )}
         />
+
         {watchedAuthType === "password" && (
           <>
             <Controller
@@ -279,6 +289,43 @@ export const ServerEditor = (props: FormParams) => {
             />
           </>
         )}
+        <Controller
+          name="allowInsecure"
+          control={control}
+          render={({ field }) => (
+            <Switch
+              classNames={{
+                base: cn(
+                  "inline-flex flex-row-reverse w-full bg-content2 hover:bg-content3 items-center",
+                  "justify-between cursor-pointer rounded-lg gap-2 p-2 border-2 border-transparent",
+                  // "data-[selected=true]:border-primary"
+                ),
+                wrapper: "p-0 h-4 overflow-visible",
+                thumb: cn(
+                  "w-6 h-6 border-2 shadow-lg",
+                  // "group-data-[hover=true]:border-primary",
+                  //selected
+                  "group-data-[selected=true]:ml-6",
+                  // pressed
+                  "group-data-[pressed=true]:w-7",
+                  "group-data-[selected]:group-data-[pressed]:ml-4"
+                ),
+              }}
+              size="sm"
+              aria-label="Allow Insecure SSL Certificate"
+              isSelected={field.value ?? false}
+              onValueChange={field.onChange}
+            >
+              <div className="flex flex-col gap-1">
+                <p className="text-medium">Allow Insecure SSL Certificate</p>
+                <p className="text-tiny text-default-400">
+                  In case of getting an insecure SSL certificate error but you
+                  still want to connect to the server.
+                </p>
+              </div>
+            </Switch>
+          )}
+        />
       </div>
       <div className="flex gap-4 w-full self-end items-end pl-2 pr-2">
         {props.mode === "edit" && (
