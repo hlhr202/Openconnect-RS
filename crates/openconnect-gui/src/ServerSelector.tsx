@@ -8,6 +8,7 @@ import {
 import { FC, PropsWithChildren, useEffect } from "react";
 import { ServerEditorModal } from "./ServerEditorModal";
 import { useStoredConfigs } from "./state";
+import { useKey } from "react-use";
 
 export const ServerSelector = () => {
   const {
@@ -19,6 +20,35 @@ export const ServerSelector = () => {
   } = useStoredConfigs();
 
   const { isOpen, onOpen, onOpenChange } = useDisclosure();
+
+  useKey(
+    "Tab",
+    (evt) => {
+      evt.preventDefault();
+      if (serverList.length) {
+        const currentIndex = serverList.findIndex(
+          ({ name }) => name === selectedName
+        );
+        if (currentIndex !== -1) {
+          const nextIndex =
+            currentIndex === serverList.length - 1 ? 0 : currentIndex + 1;
+          const next = serverList[nextIndex].name;
+          setSelectedName(next);
+        }
+      }
+    },
+    undefined,
+    [serverList, selectedName, setSelectedName]
+  );
+
+  useKey(
+    "m",
+    () => {
+      onOpen();
+    },
+    undefined,
+    [onOpen]
+  );
 
   useEffect(() => {
     getStoredConfigs();
@@ -49,7 +79,7 @@ export const ServerSelector = () => {
           </Select>
         )}
         <Button size="md" color="primary" className="ml-2" onClick={onOpen}>
-          Manage Server
+          Manage Server [M]
         </Button>
       </div>
       <Divider className="mt-3 mb-3"></Divider>

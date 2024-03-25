@@ -20,6 +20,7 @@ import { ToastContainer } from "react-toastify";
 import connected from "./assets/connected-animate.json";
 import Lottie from "lottie-react";
 import { AboutModal } from "./About";
+import { useKey } from "react-use";
 
 enum EStatus {
   Initialized = "INITIALIZED",
@@ -45,6 +46,19 @@ function App() {
   const [vpnStatus] = useAtom(vpnStatusAtom);
   const { selectedServer } = useStoredConfigs();
   const [isAboutOpened, setIsAboutOpened] = useState(false);
+
+  useKey(
+    "Enter",
+    () => {
+      if (vpnStatus.status === EStatus.Connected) {
+        handleDisconnect();
+      } else if (selectedServer) {
+        handleConnect();
+      }
+    },
+    undefined,
+    [vpnStatus, selectedServer]
+  );
 
   const handleConnect = useCallback(async () => {
     if (selectedServer) {
@@ -160,7 +174,7 @@ function App() {
                 className="m-3 w-[50%]"
                 onClick={handleDisconnect}
               >
-                Disconnect
+                Disconnect [Enter]
               </Button>
             )}
             {vpnStatus.status === EStatus.Disconnected ||
@@ -171,7 +185,7 @@ function App() {
                 className="m-3 w-full"
                 onClick={handleConnect}
               >
-                Connect
+                Connect [Enter]
               </Button>
             ) : null}
           </CardFooter>
