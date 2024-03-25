@@ -1,4 +1,4 @@
-// TODO: add support for macOS/Linux GUI escalation
+// TODO: add support for Linux GUI escalation
 #[cfg(target_os = "windows")]
 pub mod windows {
     use std::os::windows::process::ExitStatusExt;
@@ -97,5 +97,29 @@ pub mod windows {
             cmd.arg("/c").arg("echo hello");
             elevate(&cmd, false).expect("Failed to elevate");
         }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub mod macos {
+    use security_framework::{
+        authorization::{Authorization, Flags},
+        base::Result,
+    };
+    use std::process::Command;
+
+    pub fn is_elevated() -> bool {
+        unsafe { libc::geteuid() == 0 }
+    }
+
+    pub fn elevate(cmd: &Command) -> Result<()> {
+        let args = cmd
+            .get_args()
+            .map(|c| c.to_str().expect("Invalid args").to_string())
+            .collect::<Vec<_>>();
+
+        let flags = Flags::default();
+        let auth = Authorization::default()?;
+        auth.execute_with_privileges(cmd.get_program(), args, flags)
     }
 }

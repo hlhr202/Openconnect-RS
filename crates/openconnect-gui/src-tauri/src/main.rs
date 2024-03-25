@@ -23,15 +23,17 @@ fn main() {
         #[cfg(debug_assertions)]
         sudo::escalate_if_needed().unwrap();
 
-        unsafe {
-            // TODO: replace with security framework sys bindings
-            // https://github.com/kornelski/rust-security-framework
-            if libc::geteuid() != 0 {
-                if openconnect_core::helper_reluanch_as_root() == 1 {
-                    std::process::exit(0);
-                }
-                std::process::exit(1);
-            }
+        use openconnect_core::elevator::macos::{elevate, is_elevated};
+        let exe_path = std::env::current_exe().expect("failed to get current executable path");
+        let exe_path = exe_path
+            .to_str()
+            .expect("failed to convert exec path to string");
+
+        let command = std::process::Command::new(exe_path);
+
+        if !is_elevated() {
+            elevate(&command).unwrap();
+            std::process::exit(0);
         }
     }
 
@@ -75,8 +77,8 @@ fn main() {
         })
         .setup(move |app| {
             // This is to fully remove dock icon, temp disable
-            // #[cfg(target_os = "macos")]
-            // app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            #[cfg(target_os = "macos")]
+            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let vpnc_script = {
                 #[cfg(target_os = "windows")]

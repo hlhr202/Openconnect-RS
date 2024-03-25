@@ -9,9 +9,6 @@ pub mod result;
 pub mod stats;
 pub mod storage;
 
-#[cfg(target_os = "macos")]
-pub use openconnect_sys::helper_reluanch_as_root;
-
 use cert::OpenSSLCert;
 use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
@@ -72,14 +69,6 @@ impl VpnClient {
             println!("{}: {}", level, buf.unwrap_or(""));
         }
     }
-
-    // pub(crate) extern "C" fn validate_peer_cert(
-    //     _privdata: *mut ::std::os::raw::c_void,
-    //     _reason: *const ::std::os::raw::c_char,
-    // ) -> ::std::os::raw::c_int {
-    //     println!("validate_peer_cert");
-    //     0
-    // }
 
     pub(crate) extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
         let client = VpnClient::from_c_void(privdata);

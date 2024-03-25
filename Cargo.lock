@@ -2499,6 +2499,7 @@ dependencies = [
  "openconnect-sys",
  "rand 0.8.5",
  "reqwest",
+ "security-framework",
  "serde",
  "serde_json",
  "sha2",
