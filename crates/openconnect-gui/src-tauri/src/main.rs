@@ -77,8 +77,8 @@ fn main() {
         })
         .setup(move |app| {
             // This is to fully remove dock icon, temp disable
-            #[cfg(target_os = "macos")]
-            app.set_activation_policy(tauri::ActivationPolicy::Accessory);
+            // #[cfg(target_os = "macos")]
+            // app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let vpnc_script = {
                 #[cfg(target_os = "windows")]

@@ -10,16 +10,16 @@ pub struct AcceptedCert {
 }
 
 #[derive(Debug, Default)]
-pub struct OpenSSLCert {
+pub struct PeerCerts {
     pub accepted_certs: Vec<AcceptedCert>,
 }
 
 pub extern "C" fn validate_peer_cert(
-    _privdata: *mut ::std::os::raw::c_void,
+    privdata: *mut ::std::os::raw::c_void,
     _reason: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
-    let ctx = VpnClient::from_c_void(_privdata);
-    let openssl_cert = unsafe { &mut (*ctx).certs.accepted_certs };
+    let ctx = VpnClient::from_c_void(privdata);
+    let openssl_cert = unsafe { &mut (*ctx).peer_certs.accepted_certs };
 
     unsafe {
         let vpninfo = (*ctx).vpninfo;

@@ -2,84 +2,56 @@
 
 use crate::VpnClient;
 use openconnect_sys::{
-    oc_form_opt_select, openconnect_info, openconnect_set_option_value, OC_FORM_OPT_HIDDEN,
-    OC_FORM_OPT_IGNORE, OC_FORM_OPT_PASSWORD, OC_FORM_OPT_SELECT, OC_FORM_OPT_TEXT,
-    OC_FORM_OPT_TOKEN, OC_FORM_RESULT_CANCELLED, OC_FORM_RESULT_OK,
+    oc_form_opt_select, openconnect_set_option_value, OC_FORM_OPT_HIDDEN, OC_FORM_OPT_IGNORE,
+    OC_FORM_OPT_PASSWORD, OC_FORM_OPT_SELECT, OC_FORM_OPT_TEXT, OC_FORM_OPT_TOKEN,
+    OC_FORM_RESULT_CANCELLED, OC_FORM_RESULT_OK,
 };
 use std::{
-    collections::HashMap,
-    ffi::CString,
+    ffi::{CStr, CString},
     ptr,
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        Mutex,
-    },
 };
 
 pub struct FormField {
-    pub next: *mut FormField,
-    pub form_id: *mut i8,
-    pub opt_id: *mut i8,
+    pub form_id: String,
+    pub opt_id: String,
     pub value: Option<String>,
 }
 
-pub static mut FORM_FIELDS: *mut FormField = std::ptr::null_mut(); // TODO: to be replaced
-
 #[repr(C)]
-pub struct FormContext {
-    last_form_empty: AtomicI32,
-    saved_form_fields: Mutex<HashMap<String, FormField>>, // TODO: use this to replace current implementation with C saved_form_field
+pub struct FormManager {
+    last_form_empty: i32,
+    saved_form_fields: Vec<FormField>, // TODO: currently not in use
 }
 
 // TODO: optimize this
-impl FormContext {
+impl FormManager {
     pub fn new() -> Self {
         Self {
-            last_form_empty: AtomicI32::new(-1),
-            saved_form_fields: Mutex::new(HashMap::new()),
+            last_form_empty: -1,
+            saved_form_fields: Vec::new(),
         }
     }
 
-    pub fn reset(&self) {
-        self.last_form_empty
-            .store(-1, std::sync::atomic::Ordering::Relaxed);
-        if let Ok(mut form_fields) = self.saved_form_fields.lock() {
-            form_fields.clear();
-        }
+    pub fn reset(&mut self) {
+        self.last_form_empty = -1;
+        self.saved_form_fields.clear();
     }
 
     unsafe fn saved_form_field(
-        _vpninfo: *mut openconnect_info,
-        form_id: *mut i8,
-        opt_id: *mut i8,
-        found: *mut i32,
+        &self,
+        form_id: Option<&str>,
+        opt_id: Option<&str>,
     ) -> Option<String> {
-        println!("saved_form_field");
-        let mut ff = FORM_FIELDS;
+        let found = self
+            .saved_form_fields
+            .iter()
+            .find(|ff| Some(ff.form_id.as_str()) == form_id && Some(ff.opt_id.as_str()) == opt_id);
 
-        while !ff.is_null() {
-            if (*ff).form_id == form_id && (*ff).opt_id == opt_id {
-                if !found.is_null() {
-                    *found = 1;
-                }
-                return (*ff).value.clone();
-            }
-
-            ff = (*ff).next;
-        }
-
-        if !found.is_null() {
-            *found = 0;
-        }
-
-        None
+        found.and_then(|ff| ff.value.to_owned())
     }
 
-    unsafe fn match_choice_label(
-        _vpninfo: *mut openconnect_info,
-        select_opt: *mut oc_form_opt_select,
-        label: &str,
-    ) -> i32 {
+    // TODO: better impl rather than a C style
+    unsafe fn match_choice_label(&self, select_opt: *mut oc_form_opt_select, label: &str) -> i32 {
         let mut match_ = ptr::null_mut::<i8>();
 
         let input_len = label.len();
@@ -124,7 +96,12 @@ impl FormContext {
         println!("process_auth_form_cb");
         let client = VpnClient::from_c_void(privdata);
         unsafe {
-            let vpninfo = (*client).vpninfo;
+            // TODO: review this
+            let mut this = (*client)
+                .form_manager
+                .try_write()
+                .expect("try_write form_context failed");
+
             let mut opt = (*form).opts;
             let mut empty = 1;
 
@@ -158,24 +135,15 @@ impl FormContext {
                             continue 'loop_opt;
                         }
 
-                        let opt_response = FormContext::saved_form_field(
-                            vpninfo,
-                            (*form).auth_id,
-                            (*select_opt).form.name,
-                            ptr::null_mut(),
-                        );
+                        let auth_id = CStr::from_ptr((*form).auth_id).to_str().ok();
+                        let opt_id = CStr::from_ptr((*select_opt).form.name).to_str().ok();
+                        let opt_response = this.saved_form_field(auth_id, opt_id);
 
                         if opt_response.is_some()
-                            && FormContext::match_choice_label(
-                                vpninfo,
-                                select_opt,
-                                &opt_response.unwrap(),
-                            ) == 0
+                            && this.match_choice_label(select_opt, &opt_response.unwrap()) == 0
                         {
-                            // free(opt_response);
                             continue 'loop_opt;
                         }
-                        // free(opt_response);
                         // TODO: if (prompt_opt_select(vpninfo, form, select_opt) < 0)
                         //     goto error;
                         empty = 0;
@@ -226,17 +194,13 @@ impl FormContext {
                     }
                     OC_FORM_OPT_HIDDEN => {
                         println!("OC_FORM_OPT_HIDDEN");
-                        let found = ptr::null_mut::<i32>();
-                        let value = FormContext::saved_form_field(
-                            vpninfo,
-                            (*form).auth_id,
-                            (*opt).name,
-                            found,
-                        );
+                        let auth_id = CStr::from_ptr((*form).auth_id).to_str().ok();
+                        let opt_id = CStr::from_ptr((*opt).name).to_str().ok();
+                        let value = this.saved_form_field(auth_id, opt_id);
                         if value.is_some() {
                             let value = CString::new(value.unwrap()).unwrap();
                             openconnect_set_option_value(opt, value.as_ptr());
-                        } else if !found.is_null() {
+                        } else {
                             // TODO: implement prompt;
                         }
                     }
@@ -250,28 +214,15 @@ impl FormContext {
 
             // TODO: optimize this stupid empty check
             if empty != 0 {
-                (*client)
-                    .form_context
-                    .last_form_empty
-                    .store(0, Ordering::Relaxed);
+                this.last_form_empty = 0;
             } else if {
-                (*client)
-                    .form_context
-                    .last_form_empty
-                    .fetch_add(1, Ordering::Relaxed);
-
-                (*client)
-                    .form_context
-                    .last_form_empty
-                    .load(Ordering::Relaxed)
+                this.last_form_empty += 1;
+                this.last_form_empty
             } >= 3
             {
                 println!(
                     "{} consecutive empty forms, aborting loop",
-                    (*client)
-                        .form_context
-                        .last_form_empty
-                        .load(Ordering::Relaxed)
+                    this.last_form_empty
                 );
                 println!();
                 return OC_FORM_RESULT_CANCELLED as i32;
@@ -283,7 +234,7 @@ impl FormContext {
     }
 }
 
-impl Default for FormContext {
+impl Default for FormManager {
     fn default() -> Self {
         Self::new()
     }

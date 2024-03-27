@@ -13,7 +13,7 @@ import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import { atom, useAtom } from "jotai";
 import { ServerSelector } from "./ServerSelector";
-import bg from "./assets/bg.webp";
+import bg from "./assets/bg.jpeg";
 import { useStoredConfigs } from "./state";
 import { toastError } from "./lib/toast";
 import { ToastContainer } from "react-toastify";
@@ -46,6 +46,7 @@ function App() {
   const [vpnStatus] = useAtom(vpnStatusAtom);
   const { selectedServer } = useStoredConfigs();
   const [isAboutOpened, setIsAboutOpened] = useState(false);
+  const [mounted, setMounted] = useState(false);
 
   useKey(
     "Enter",
@@ -97,6 +98,7 @@ function App() {
 
   useEffect(() => {
     invoke("trigger_state_retrieve");
+    setMounted(true);
   }, []);
 
   return (
@@ -113,7 +115,9 @@ function App() {
             src={bg}
             alt="bg"
             style={{ objectFit: "cover" }}
-            className="relative h-full w-full scale-[120%] blur brightness-60 contrast-70"
+            className={`h-full w-full scale-[120%] transition-all duration-2000 brightness-60 contrast-70${
+              mounted ? " blur" : "blur-sm"
+            }`}
           />
         </div>
         <TauriTitleBar />

@@ -9,10 +9,10 @@ pub mod result;
 pub mod stats;
 pub mod storage;
 
-use cert::OpenSSLCert;
+use cert::PeerCerts;
 use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
-use form::FormContext;
+use form::FormManager;
 use ip_info::IpInfo;
 use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
@@ -37,14 +37,14 @@ pub enum Status {
 
 #[repr(C)]
 pub struct VpnClient {
-    pub(crate) config: Config,
     vpninfo: *mut openconnect_info,
+    config: Config,
     cmd_fd: AtomicI32,
     status: RwLock<Status>,
     callbacks: EventHandlers,
     entrypoint: RwLock<Option<Entrypoint>>,
-    form_context: FormContext,
-    certs: OpenSSLCert,
+    form_manager: RwLock<FormManager>,
+    peer_certs: PeerCerts,
 }
 
 unsafe impl Send for VpnClient {}
@@ -422,8 +422,8 @@ impl Connectable for VpnClient {
             status: RwLock::new(Status::Initialized),
             callbacks,
             entrypoint: RwLock::new(None),
-            form_context: FormContext::default(),
-            certs: OpenSSLCert::default(),
+            form_manager: RwLock::new(FormManager::default()),
+            peer_certs: PeerCerts::default(),
         });
 
         let instance = Arc::into_raw(instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
@@ -441,7 +441,7 @@ impl Connectable for VpnClient {
                 useragent.as_ptr(),
                 Some(cert::validate_peer_cert),
                 None,
-                Some(FormContext::process_auth_form_cb),
+                Some(FormManager::process_auth_form_cb),
                 Some(helper_format_vargs), // format args on C side
                 instance as *mut ::std::os::raw::c_void,
             );
@@ -470,8 +470,11 @@ impl Connectable for VpnClient {
 
     fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
         self.emit_state_change(Status::Connecting("Initializing connection".to_string()));
-        self.form_context.reset();
-
+        {
+            if let Ok(mut form_context) = self.form_manager.try_write() {
+                form_context.reset();
+            }
+        }
         self.set_protocol(&entrypoint.protocol.name)
             .emit_error(self)?;
         self.emit_state_change(Status::Connecting("Setting up system pipe".to_string()));
