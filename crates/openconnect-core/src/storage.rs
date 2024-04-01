@@ -324,7 +324,7 @@ impl PassEncryptor {
             .or_else(|| machine_uid::get().ok())
             .unwrap_or("openconnect-rs-2024".to_string());
 
-        let mut hasher = sha2::Sha256::new();
+        let mut hasher: sha2::Sha256 = sha2::digest::Digest::new();
         hasher.update(unique_key.as_bytes());
         let hash = hasher.finalize(); // hash is absolutely 32 bytes
         let mut seed = rand::rngs::StdRng::from_seed(hash.into());

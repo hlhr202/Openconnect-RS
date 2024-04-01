@@ -18,16 +18,13 @@ pub fn get_supported_protocols() -> Vec<Protocol> {
         }
         while !raw_protocols.is_null() && !(*raw_protocols).name.is_null() {
             let name = std::ffi::CStr::from_ptr((*raw_protocols).name)
-                .to_str()
-                .expect("protocol name is not valid")
+                .to_string_lossy()
                 .to_string();
             let pretty_name = std::ffi::CStr::from_ptr((*raw_protocols).pretty_name)
-                .to_str()
-                .expect("protocol pretty_name is not valid")
+                .to_string_lossy()
                 .to_string();
             let description = std::ffi::CStr::from_ptr((*raw_protocols).description)
-                .to_str()
-                .expect("protocol description is not valid")
+                .to_string_lossy()
                 .to_string();
             let flags = (*raw_protocols).flags;
             protocols.push(Protocol {

@@ -1,6 +1,5 @@
-use std::ffi::CStr;
-
 use openconnect_sys::oc_ip_info;
+use std::ffi::CStr;
 
 // TODO: Implement SplitInclude
 // pub struct SplitInclude {
