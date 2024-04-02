@@ -21,7 +21,7 @@ use std::{
     ffi::CString,
     sync::{
         atomic::{AtomicI32, Ordering},
-        Arc, RwLock,
+        Arc, RwLock, Weak,
     },
 };
 
@@ -71,61 +71,34 @@ impl VpnClient {
     }
 
     pub(crate) extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
-        let client = VpnClient::from_c_void(privdata);
-        if !client.is_null() {
-            unsafe {
-                let vpnc_script_from_config = (*client).config.vpncscript.clone();
+        let client = unsafe { VpnClient::ref_from_raw(privdata) };
 
-                let vpnc_script = {
-                    if let Some(vpnc_script) = vpnc_script_from_config {
-                        CString::new(vpnc_script).expect("TODO: handle CString::new failed")
-                    } else {
-                        CString::from_vec_with_nul(DEFAULT_VPNCSCRIPT.to_vec())
-                            .expect("TODO: handle CString::from_vec_with_nul failed")
-                    }
-                };
+        #[cfg(target_os = "windows")]
+        {
+            // currently use wintun on windows
+            // https://gitlab.com/openconnect/openconnect-gui/-/blob/main/src/vpninfo.cpp?ref_type=heads#L407
+            // TODO: investigate tap ip address allocation, since it works well in Openconnect-GUI
+            let ifname = client
+                .get_hostname()
+                .map(|hostname| format!("tun_{}", hostname));
 
-                #[cfg(target_os = "windows")]
-                {
-                    // currently use wintun on windows
-                    // https://gitlab.com/openconnect/openconnect-gui/-/blob/main/src/vpninfo.cpp?ref_type=heads#L407
-                    // TODO: investigate tap ip address allocation, since it works well in Openconnect-GUI
-                    let hostname = (*client).get_hostname();
-                    let ifname = hostname.and_then(|hostname| {
-                        let ifname = format!("tun_{}", hostname);
-                        CString::new(ifname).ok()
-                    });
+            // TODO: handle result
+            let _result = client.setup_tun_device(None, ifname);
+        }
 
-                    if let Some(ifname) = ifname {
-                        let ret = openconnect_setup_tun_device(
-                            (*client).vpninfo,
-                            vpnc_script.as_ptr(),
-                            ifname.as_ptr(),
-                        );
-                        // TODO: handle ret
-                        println!("setup_tun_device ret: {}", ret);
-                    } else {
-                        panic!("setup_tun_device failed: ifname is None");
-                    }
-                }
-
-                #[cfg(not(target_os = "windows"))]
-                {
-                    let ret = openconnect_setup_tun_device(
-                        (*client).vpninfo,
-                        vpnc_script.as_ptr(),
-                        std::ptr::null(), // currently use tun/tap on linux
-                    );
-
-                    // TODO: handle ret
-                    println!("setup_tun_device ret: {}", ret);
-                }
-            }
+        #[cfg(not(target_os = "windows"))]
+        {
+            // TODO: handle result
+            let _result = client.setup_tun_device(None, None);
         }
     }
 
-    pub(crate) fn from_c_void(ptr: *mut std::os::raw::c_void) -> *mut Self {
-        ptr.cast()
+    /// Reclaim a reference from c_void
+    ///
+    /// SAFETY: You must ensure that the pointer is valid and points to a valid instance of `Self`
+    pub(crate) unsafe fn ref_from_raw<'a>(ptr: *mut std::os::raw::c_void) -> &'a Self {
+        let ptr = ptr.cast::<Self>();
+        &*ptr
     }
 
     pub(crate) fn handle_text_input(&self, field_name: &str) -> Option<String> {
@@ -189,6 +162,39 @@ impl VpnClient {
     pub fn set_stats_handler(&self) {
         unsafe {
             openconnect_set_stats_handler(self.vpninfo, Some(stats::stats_fn));
+        }
+    }
+
+    pub fn setup_tun_device(
+        &self,
+        vpnc_script: Option<String>,
+        ifname: Option<String>,
+    ) -> OpenconnectResult<()> {
+        let vpnc_script_from_config = vpnc_script.or_else(|| self.config.vpncscript.clone());
+
+        let vpnc_script = {
+            if let Some(vpnc_script) = vpnc_script_from_config {
+                CString::new(vpnc_script)
+                    .map_err(|_| OpenconnectError::SetupTunDeviceEror(libc::EIO))?
+            } else {
+                CString::from_vec_with_nul(DEFAULT_VPNCSCRIPT.to_vec())
+                    .map_err(|_| OpenconnectError::SetupTunDeviceEror(libc::EIO))?
+            }
+        };
+
+        let ifname = ifname.and_then(|s| CString::new(s).ok());
+
+        let ret = unsafe {
+            openconnect_setup_tun_device(
+                self.vpninfo,
+                vpnc_script.as_ptr(),
+                ifname.map_or_else(std::ptr::null, |s| s.as_ptr()),
+            )
+        };
+
+        match ret {
+            0 => Ok(()),
+            _ => Err(OpenconnectError::SetupTunDeviceEror(ret)),
         }
     }
 
@@ -288,6 +294,30 @@ impl VpnClient {
             0 => Ok(()),
             _ => Err(OpenconnectError::MakeCstpError(ret)),
         }
+    }
+
+    pub fn get_dlts_cipher(&self) -> Option<String> {
+        unsafe {
+            let cipher = openconnect_get_dtls_cipher(self.vpninfo);
+            if !cipher.is_null() {
+                Some(
+                    std::ffi::CStr::from_ptr(cipher)
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                )
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn get_peer_cert_hash(&self) -> String {
+        // SAFETY: we should not use CString::from_raw(peer_fingerprint)
+        // because peer_fingerprint will be deallocated in rust and cause a double free
+        unsafe { std::ffi::CStr::from_ptr(openconnect_get_peer_cert_hash(self.vpninfo)) }
+            .to_string_lossy()
+            .to_string()
     }
 
     pub fn disable_dtls(&self) -> OpenconnectResult<()> {
@@ -425,10 +455,10 @@ impl Connectable for VpnClient {
             form_manager: RwLock::new(FormManager::default()),
             peer_certs: PeerCerts::default(),
         });
-
-        let instance = Arc::into_raw(instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
-
-        let instance = unsafe {
+        
+        unsafe {
+            let weak_instance = Arc::downgrade(&instance);
+            let raw_instance = Weak::into_raw(weak_instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
             let ret = openconnect_init_ssl();
             if ret != 0 {
                 panic!("openconnect_init_ssl failed");
@@ -443,15 +473,14 @@ impl Connectable for VpnClient {
                 None,
                 Some(FormManager::process_auth_form_cb),
                 Some(helper_format_vargs), // format args on C side
-                instance as *mut ::std::os::raw::c_void,
+                raw_instance as *mut ::std::os::raw::c_void,
             );
 
             if vpninfo.is_null() {
                 panic!("openconnect_vpninfo_new failed");
             }
 
-            (*instance).vpninfo = vpninfo;
-            Arc::from_raw(instance) // reclaim ownership
+            (*raw_instance).vpninfo = vpninfo;
         };
 
         instance.set_loglevel(instance.config.loglevel);
@@ -535,8 +564,9 @@ impl Connectable for VpnClient {
             }
         }
 
-        self.reset_ssl();
-        self.clear_cookie();
+        // TODO: check if the following should be invoke?
+        // self.reset_ssl();
+        // self.clear_cookie();
         self.emit_state_change(Status::Disconnected);
 
         Ok(())
