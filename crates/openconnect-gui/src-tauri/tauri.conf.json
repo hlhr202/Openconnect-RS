@@ -16,6 +16,9 @@
     },
     "macOSPrivateApi": true,
     "allowlist": {
+      "globalShortcut": {
+        "all": true
+      },
       "fs": {
         "scope": ["$RESOURCE/*"]
       },
