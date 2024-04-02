@@ -15,7 +15,7 @@ pub(crate) extern "C" fn stats_fn(privdata: *mut ::std::os::raw::c_void, stats: 
     let dlts = client.get_dlts_cipher();
 
     let stats: Option<Stats> = if !stats.is_null() {
-        let stats = unsafe { *stats };
+        let stats = unsafe { &*stats };
         Some(Stats {
             rx_bytes: stats.rx_bytes,
             tx_bytes: stats.tx_bytes,
