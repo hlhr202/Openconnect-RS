@@ -13,6 +13,7 @@ crate-type = ["lib"]
 [dependencies]
 anyhow = { workspace = true }
 ctrlc = "3.4.4"
+signal-hook = "0.3.17"
 dotenvy = { workspace = true }
 libc = { workspace = true }
 openconnect-sys = { path = "../openconnect-sys", version = "0.1.0"}

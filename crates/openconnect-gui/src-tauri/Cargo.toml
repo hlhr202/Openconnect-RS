@@ -12,7 +12,7 @@ tauri-build = { version = "1.5.1", features = [] }
 
 [dependencies]
 anyhow = { workspace = true }
-tauri = { version = "1.6.1", features = [ "app-all", "window-all", "system-tray",
+tauri = { version = "1.6.1", features = [ "global-shortcut-all", "app-all", "window-all", "system-tray",
     "macos-private-api",
     "shell-open",
     "icon-png"
