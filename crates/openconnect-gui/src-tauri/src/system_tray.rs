@@ -119,6 +119,10 @@ impl AppSystemTray {
             }
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
                 "quit" => {
+                    tauri::async_runtime::block_on(async {
+                        let app_state: State<'_, AppState> = app_handle.state();
+                        let _ = app_state.disconnect().await;
+                    });
                     app_handle.exit(0);
                 }
                 "show" => {

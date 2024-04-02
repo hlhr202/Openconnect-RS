@@ -16,6 +16,10 @@ use form::FormManager;
 use ip_info::IpInfo;
 use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
+use signal_hook::{
+    consts::{SIGHUP, SIGINT, SIGTERM, SIGUSR1, SIGUSR2},
+    iterator::Signals,
+};
 use stats::Stats;
 use std::{
     ffi::CString,
@@ -23,6 +27,7 @@ use std::{
         atomic::{AtomicI32, Ordering},
         Arc, RwLock, Weak,
     },
+    thread,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -455,7 +460,7 @@ impl Connectable for VpnClient {
             form_manager: RwLock::new(FormManager::default()),
             peer_certs: PeerCerts::default(),
         });
-        
+
         unsafe {
             let weak_instance = Arc::downgrade(&instance);
             let raw_instance = Weak::into_raw(weak_instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
@@ -483,6 +488,7 @@ impl Connectable for VpnClient {
             (*raw_instance).vpninfo = vpninfo;
         };
 
+        instance.set_sig_handler();
         instance.set_loglevel(instance.config.loglevel);
         instance.set_setup_tun_handler();
 
@@ -580,32 +586,35 @@ impl Connectable for VpnClient {
 
         self.emit_state_change(Status::Disconnecting);
 
-        let cmd = OC_CMD_CANCEL;
-        unsafe {
-            let cmd_fd = self.cmd_fd.load(Ordering::SeqCst);
-            if cmd_fd != -1 {
-                let ret = {
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        libc::write(cmd_fd, std::ptr::from_ref(&cmd) as *const _, 1)
-                    }
+        #[cfg(not(target_os = "windows"))]
+        {
+            unsafe {
+                libc::raise(SIGTERM);
+            }
+        }
 
-                    #[cfg(target_os = "windows")]
-                    {
+        // TODO: revamp this
+        #[cfg(target_os = "windows")]
+        {
+            let cmd = OC_CMD_CANCEL;
+            unsafe {
+                let cmd_fd = self.cmd_fd.load(Ordering::SeqCst);
+                if cmd_fd != -1 {
+                    let ret = {
                         windows_sys::Win32::Networking::WinSock::send(
                             cmd_fd as usize,
                             std::ptr::from_ref(&cmd) as *const _,
                             1,
                             0,
                         )
+                    };
+
+                    if ret < 0 {
+                        println!("write cmd_fd failed");
                     }
-                };
 
-                if ret < 0 {
-                    println!("write cmd_fd failed");
+                    self.cmd_fd.store(-1, Ordering::SeqCst);
                 }
-
-                self.cmd_fd.store(-1, Ordering::SeqCst);
             }
         }
 
@@ -643,6 +652,68 @@ impl Shutdown for Arc<VpnClient> {
         .map_err(|e| OpenconnectError::SetupShutdownError(e.to_string()))?;
 
         Ok(self)
+    }
+}
+
+pub trait SigHandle {
+    fn set_sig_handler(&self);
+}
+
+impl SigHandle for Arc<VpnClient> {
+    fn set_sig_handler(&self) {
+        // TODO: windows implementation
+        #[cfg(not(target_os = "windows"))]
+        {
+            let mut signals = Signals::new([SIGINT, SIGTERM, SIGHUP, SIGUSR1, SIGUSR2])
+                .expect("Failed to register signal handler");
+
+            let this = Arc::clone(self);
+
+            thread::spawn(move || {
+                println!("Signal handler thread started");
+
+                for sig in signals.forever() {
+                    let cmd = match sig {
+                        SIGINT | SIGTERM => {
+                            println!("Received SIGINT or SIGTERM");
+                            OC_CMD_CANCEL
+                        }
+                        SIGHUP => {
+                            println!("Received SIGHUP");
+                            OC_CMD_DETACH
+                        }
+                        SIGUSR2 => {
+                            println!("Received SIGUSR2");
+                            OC_CMD_PAUSE
+                        }
+                        SIGUSR1 => {
+                            println!("Received SIGUSR1");
+                            OC_CMD_STATS
+                        }
+                        _ => {
+                            println!("Received unknown signal");
+                            0
+                        }
+                    };
+
+                    let cmd_fd = this.clone().cmd_fd.load(Ordering::SeqCst);
+                    if cmd != 0 && !cmd_fd < 0 {
+                        let ret =
+                            unsafe { libc::write(cmd_fd, std::ptr::from_ref(&cmd) as *const _, 1) };
+
+                        if ret < 0 {
+                            println!("write cmd_fd failed");
+                        } else {
+                            println!("write cmd_fd success");
+                        }
+                    }
+
+                    if sig != SIGUSR1 {
+                        break;
+                    }
+                }
+            });
+        }
     }
 }
 
