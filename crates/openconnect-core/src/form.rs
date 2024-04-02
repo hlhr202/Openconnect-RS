@@ -91,7 +91,7 @@ impl FormManager {
         form: *mut openconnect_sys::oc_auth_form,
     ) -> ::std::os::raw::c_int {
         println!("process_auth_form_cb");
-        let client = unsafe { VpnClient::from_raw(privdata) };
+        let client = unsafe { VpnClient::ref_from_raw(privdata) };
         unsafe {
             // TODO: review this
             let mut this = client

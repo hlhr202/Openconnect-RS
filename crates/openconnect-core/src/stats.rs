@@ -11,7 +11,7 @@ pub struct Stats {
 
 pub(crate) extern "C" fn stats_fn(privdata: *mut ::std::os::raw::c_void, stats: *const oc_stats) {
     println!("stats_fn");
-    let client = unsafe { VpnClient::from_raw(privdata) };
+    let client = unsafe { VpnClient::ref_from_raw(privdata) };
     let dlts = client.get_dlts_cipher();
 
     let stats: Option<Stats> = if !stats.is_null() {

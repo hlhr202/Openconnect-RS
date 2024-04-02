@@ -21,7 +21,7 @@ use std::{
     ffi::CString,
     sync::{
         atomic::{AtomicI32, Ordering},
-        Arc, RwLock,
+        Arc, RwLock, Weak,
     },
 };
 
@@ -71,7 +71,7 @@ impl VpnClient {
     }
 
     pub(crate) extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
-        let client = unsafe { VpnClient::from_raw(privdata) };
+        let client = unsafe { VpnClient::ref_from_raw(privdata) };
 
         #[cfg(target_os = "windows")]
         {
@@ -93,12 +93,12 @@ impl VpnClient {
         }
     }
 
-    /// Reclaim an Arc pointer from c_void and increase the original Arc count
+    /// Reclaim a reference from c_void
     ///
-    /// ptr must be the pointer converted by [Arc::into_raw] previously
-    pub(crate) unsafe fn from_raw(ptr: *mut std::os::raw::c_void) -> Arc<Self> {
-        println!("from_raw");
-        Arc::from_raw(ptr.cast::<Self>())
+    /// SAFETY: You must ensure that the pointer is valid and points to a valid instance of `Self`
+    pub(crate) unsafe fn ref_from_raw<'a>(ptr: *mut std::os::raw::c_void) -> &'a Self {
+        let ptr = ptr.cast::<Self>();
+        &*ptr
     }
 
     pub(crate) fn handle_text_input(&self, field_name: &str) -> Option<String> {
@@ -455,10 +455,10 @@ impl Connectable for VpnClient {
             form_manager: RwLock::new(FormManager::default()),
             peer_certs: PeerCerts::default(),
         });
-
+        
         unsafe {
-            let raw_instance = Arc::into_raw(instance.clone()) as *mut VpnClient; // dangerous, leak for assign to vpninfo
-            Arc::increment_strong_count(raw_instance); // important, increase the Arc count
+            let weak_instance = Arc::downgrade(&instance);
+            let raw_instance = Weak::into_raw(weak_instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
             let ret = openconnect_init_ssl();
             if ret != 0 {
                 panic!("openconnect_init_ssl failed");

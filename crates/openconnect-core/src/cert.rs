@@ -18,7 +18,7 @@ pub(crate) extern "C" fn validate_peer_cert(
     privdata: *mut ::std::os::raw::c_void,
     _reason: *const ::std::os::raw::c_char,
 ) -> ::std::os::raw::c_int {
-    let client = unsafe { VpnClient::from_raw(privdata) };
+    let client = unsafe { VpnClient::ref_from_raw(privdata) };
     let vpninfo = client.vpninfo;
     let host = client.get_hostname();
     let port = client.get_port();
