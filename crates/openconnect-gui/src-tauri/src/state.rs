@@ -238,7 +238,8 @@ impl AppState {
             tauri::async_runtime::spawn_blocking(move || client.disconnect()).await?;
         }
 
-        // self.client.write().await.take(); // TODO: wait a few seconds and drop the client
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+        self.client.write().await.take();
 
         Ok(())
     }

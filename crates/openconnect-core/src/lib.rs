@@ -16,18 +16,14 @@ use form::FormManager;
 use ip_info::IpInfo;
 use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
-use signal_hook::{
-    consts::{SIGHUP, SIGINT, SIGTERM, SIGUSR1, SIGUSR2},
-    iterator::Signals,
-};
+
 use stats::Stats;
 use std::{
     ffi::CString,
     sync::{
         atomic::{AtomicI32, Ordering},
-        Arc, RwLock, Weak,
+        Arc, Mutex, RwLock, Weak,
     },
-    thread,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,6 +50,8 @@ pub struct VpnClient {
 
 unsafe impl Send for VpnClient {}
 unsafe impl Sync for VpnClient {}
+
+static GLOBAL_CURRENT: Mutex<Option<Weak<VpnClient>>> = Mutex::new(None);
 
 impl VpnClient {
     pub(crate) unsafe extern "C" fn handle_process_log(
@@ -86,6 +84,8 @@ impl VpnClient {
             let ifname = client
                 .get_hostname()
                 .map(|hostname| format!("tun_{}", hostname));
+
+            println!("ifname: {:?}", ifname);
 
             // TODO: handle result
             let _result = client.setup_tun_device(None, ifname);
@@ -193,9 +193,11 @@ impl VpnClient {
             openconnect_setup_tun_device(
                 self.vpninfo,
                 vpnc_script.as_ptr(),
-                ifname.map_or_else(std::ptr::null, |s| s.as_ptr()),
+                ifname.as_ref().map_or_else(std::ptr::null, |s| s.as_ptr()),
             )
         };
+
+        let _manually_dropped = ifname; // SAFETY: dont remove this line, ifname's lifetime should be extended
 
         match ret {
             0 => Ok(()),
@@ -500,6 +502,11 @@ impl Connectable for VpnClient {
 
         instance.emit_state_change(Status::Initialized);
 
+        let global_guard = GLOBAL_CURRENT.lock();
+        if let Ok(mut global) = global_guard {
+            *global = Some(Arc::downgrade(&instance));
+        }
+
         Ok(instance)
     }
 
@@ -664,12 +671,17 @@ impl SigHandle for Arc<VpnClient> {
         // TODO: windows implementation
         #[cfg(not(target_os = "windows"))]
         {
+            use signal_hook::{
+                consts::{SIGHUP, SIGINT, SIGTERM, SIGUSR1, SIGUSR2},
+                iterator::Signals,
+            };
+
             let mut signals = Signals::new([SIGINT, SIGTERM, SIGHUP, SIGUSR1, SIGUSR2])
                 .expect("Failed to register signal handler");
 
             let this = Arc::clone(self);
 
-            thread::spawn(move || {
+            std::thread::spawn(move || {
                 println!("Signal handler thread started");
 
                 for sig in signals.forever() {
@@ -713,6 +725,51 @@ impl SigHandle for Arc<VpnClient> {
                     }
                 }
             });
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            use windows_sys::Win32::System::Console::{
+                SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_C_EVENT, CTRL_CLOSE_EVENT,
+                CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
+            };
+
+            unsafe extern "system" fn console_control_handle(dw_ctrl_type: u32) -> i32 {
+                let cmd = match dw_ctrl_type {
+                    CTRL_C_EVENT | CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT => {
+                        OC_CMD_CANCEL
+                    }
+                    CTRL_BREAK_EVENT => OC_CMD_DETACH,
+                    _ => return 0,
+                };
+
+                {
+                    let global_current = GLOBAL_CURRENT
+                        .lock()
+                        .ok()
+                        .and_then(|r| r.as_ref().and_then(|r| r.upgrade()));
+
+                    if let Some(global_current) = global_current {
+                        let cmd_fd = global_current.cmd_fd.load(Ordering::SeqCst);
+                        if cmd_fd != -1 {
+                            unsafe {
+                                windows_sys::Win32::Networking::WinSock::send(
+                                    cmd_fd as usize,
+                                    std::ptr::from_ref(&cmd) as *const _,
+                                    1,
+                                    0,
+                                );
+                            }
+                        }
+                    }
+                }
+
+                1
+            }
+
+            unsafe {
+                SetConsoleCtrlHandler(Some(console_control_handle), 1);
+            }
         }
     }
 }
