@@ -6,6 +6,7 @@ pub mod form;
 pub mod ip_info;
 pub mod protocols;
 pub mod result;
+pub mod command;
 pub mod stats;
 pub mod storage;
 
@@ -16,7 +17,7 @@ use form::FormManager;
 use ip_info::IpInfo;
 use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
-
+use command::{CmdPipe, SigHandle};
 use stats::Stats;
 use std::{
     ffi::CString,
@@ -51,7 +52,7 @@ pub struct VpnClient {
 unsafe impl Send for VpnClient {}
 unsafe impl Sync for VpnClient {}
 
-static GLOBAL_CURRENT: Mutex<Option<Weak<VpnClient>>> = Mutex::new(None);
+pub static GLOBAL_CURRENT: Mutex<Option<Weak<VpnClient>>> = Mutex::new(None);
 
 impl VpnClient {
     pub(crate) unsafe extern "C" fn handle_process_log(
@@ -260,32 +261,15 @@ impl VpnClient {
     }
 
     pub fn setup_cmd_pipe(&self) -> OpenconnectResult<()> {
-        unsafe {
+        let cmd_fd = unsafe {
             let cmd_fd = openconnect_setup_cmd_pipe(self.vpninfo);
             self.cmd_fd.store(cmd_fd, Ordering::Relaxed);
             if cmd_fd < 0 {
                 return Err(result::OpenconnectError::CmdPipeError(cmd_fd));
             }
-
-            #[cfg(not(target_os = "windows"))]
-            {
-                libc::fcntl(
-                    cmd_fd,
-                    libc::F_SETFL,
-                    libc::fcntl(cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK,
-                );
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                let mut mode: u32 = 0;
-                windows_sys::Win32::Networking::WinSock::ioctlsocket(
-                    cmd_fd as usize,
-                    windows_sys::Win32::Networking::WinSock::FIONBIO,
-                    &mut mode,
-                );
-            }
-        }
+            cmd_fd
+        };
+        self.set_sock_block(cmd_fd);
         Ok(())
     }
 
@@ -592,38 +576,8 @@ impl Connectable for VpnClient {
         }
 
         self.emit_state_change(Status::Disconnecting);
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            unsafe {
-                libc::raise(SIGTERM);
-            }
-        }
-
-        // TODO: revamp this
-        #[cfg(target_os = "windows")]
-        {
-            let cmd = OC_CMD_CANCEL;
-            unsafe {
-                let cmd_fd = self.cmd_fd.load(Ordering::SeqCst);
-                if cmd_fd != -1 {
-                    let ret = {
-                        windows_sys::Win32::Networking::WinSock::send(
-                            cmd_fd as usize,
-                            std::ptr::from_ref(&cmd) as *const _,
-                            1,
-                            0,
-                        )
-                    };
-
-                    if ret < 0 {
-                        println!("write cmd_fd failed");
-                    }
-
-                    self.cmd_fd.store(-1, Ordering::SeqCst);
-                }
-            }
-        }
+        self.send_command(command::Command::Cancel);
+        self.cmd_fd.store(-1, Ordering::SeqCst);
 
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
@@ -640,137 +594,6 @@ impl Connectable for VpnClient {
             .read()
             .ok()
             .map_or(Status::Initialized, |r| r.clone())
-    }
-}
-
-pub trait Shutdown {
-    fn with_ctrlc_shutdown(self) -> OpenconnectResult<Self>
-    where
-        Self: std::marker::Sized;
-}
-
-impl Shutdown for Arc<VpnClient> {
-    fn with_ctrlc_shutdown(self) -> OpenconnectResult<Self> {
-        let cloned_client = self.clone();
-
-        ctrlc::set_handler(move || {
-            cloned_client.disconnect();
-        })
-        .map_err(|e| OpenconnectError::SetupShutdownError(e.to_string()))?;
-
-        Ok(self)
-    }
-}
-
-pub trait SigHandle {
-    fn set_sig_handler(&self);
-}
-
-impl SigHandle for Arc<VpnClient> {
-    fn set_sig_handler(&self) {
-        // TODO: windows implementation
-        #[cfg(not(target_os = "windows"))]
-        {
-            use signal_hook::{
-                consts::{SIGHUP, SIGINT, SIGTERM, SIGUSR1, SIGUSR2},
-                iterator::Signals,
-            };
-
-            let mut signals = Signals::new([SIGINT, SIGTERM, SIGHUP, SIGUSR1, SIGUSR2])
-                .expect("Failed to register signal handler");
-
-            let this = Arc::clone(self);
-
-            std::thread::spawn(move || {
-                println!("Signal handler thread started");
-
-                for sig in signals.forever() {
-                    let cmd = match sig {
-                        SIGINT | SIGTERM => {
-                            println!("Received SIGINT or SIGTERM");
-                            OC_CMD_CANCEL
-                        }
-                        SIGHUP => {
-                            println!("Received SIGHUP");
-                            OC_CMD_DETACH
-                        }
-                        SIGUSR2 => {
-                            println!("Received SIGUSR2");
-                            OC_CMD_PAUSE
-                        }
-                        SIGUSR1 => {
-                            println!("Received SIGUSR1");
-                            OC_CMD_STATS
-                        }
-                        _ => {
-                            println!("Received unknown signal");
-                            0
-                        }
-                    };
-
-                    let cmd_fd = this.clone().cmd_fd.load(Ordering::SeqCst);
-                    if cmd != 0 && !cmd_fd < 0 {
-                        let ret =
-                            unsafe { libc::write(cmd_fd, std::ptr::from_ref(&cmd) as *const _, 1) };
-
-                        if ret < 0 {
-                            println!("write cmd_fd failed");
-                        } else {
-                            println!("write cmd_fd success");
-                        }
-                    }
-
-                    if sig != SIGUSR1 {
-                        break;
-                    }
-                }
-            });
-        }
-
-        #[cfg(target_os = "windows")]
-        {
-            use windows_sys::Win32::System::Console::{
-                SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_C_EVENT, CTRL_CLOSE_EVENT,
-                CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
-            };
-
-            unsafe extern "system" fn console_control_handle(dw_ctrl_type: u32) -> i32 {
-                let cmd = match dw_ctrl_type {
-                    CTRL_C_EVENT | CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT => {
-                        OC_CMD_CANCEL
-                    }
-                    CTRL_BREAK_EVENT => OC_CMD_DETACH,
-                    _ => return 0,
-                };
-
-                {
-                    let global_current = GLOBAL_CURRENT
-                        .lock()
-                        .ok()
-                        .and_then(|r| r.as_ref().and_then(|r| r.upgrade()));
-
-                    if let Some(global_current) = global_current {
-                        let cmd_fd = global_current.cmd_fd.load(Ordering::SeqCst);
-                        if cmd_fd != -1 {
-                            unsafe {
-                                windows_sys::Win32::Networking::WinSock::send(
-                                    cmd_fd as usize,
-                                    std::ptr::from_ref(&cmd) as *const _,
-                                    1,
-                                    0,
-                                );
-                            }
-                        }
-                    }
-                }
-
-                1
-            }
-
-            unsafe {
-                SetConsoleCtrlHandler(Some(console_control_handle), 1);
-            }
-        }
     }
 }
 
