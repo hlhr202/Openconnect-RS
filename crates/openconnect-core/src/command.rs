@@ -1,6 +1,7 @@
 use crate::VpnClient;
+use lazy_static::lazy_static;
 use openconnect_sys::{OC_CMD_CANCEL, OC_CMD_DETACH, OC_CMD_PAUSE, OC_CMD_STATS};
-use std::sync::{atomic::Ordering, Arc};
+use std::sync::{atomic::Ordering, Mutex, Weak};
 
 #[derive(Debug, Clone, Copy)]
 pub enum Command {
@@ -89,11 +90,31 @@ impl CmdPipe for VpnClient {
     }
 }
 
-pub trait SigHandle {
-    fn set_sig_handler(&self);
+pub struct SignalHandle {
+    client: Mutex<Weak<VpnClient>>,
 }
 
-impl SigHandle for Arc<VpnClient> {
+lazy_static! {
+    pub static ref SIGNAL_HANDLE: SignalHandle = {
+        let sig_handle = SignalHandle {
+            client: Mutex::new(Weak::new()),
+        };
+        sig_handle.set_sig_handler();
+        sig_handle
+    };
+}
+
+impl SignalHandle {
+    /// Set the current client singleton to the given client.
+    /// This is used when signal handler is called to send command to the client.
+    pub fn update_client_singleton(&self, client: Weak<VpnClient>) {
+        let saved_client = self.client.lock();
+        if let Ok(mut saved_client) = saved_client {
+            *saved_client = client;
+        }
+    }
+
+    /// Set the signal handler for the current process.
     fn set_sig_handler(&self) {
         #[cfg(not(target_os = "windows"))]
         {
@@ -104,7 +125,6 @@ impl SigHandle for Arc<VpnClient> {
 
             let mut signals = Signals::new([SIGINT, SIGTERM, SIGHUP, SIGUSR1, SIGUSR2])
                 .expect("Failed to register signal handler");
-            let this = Arc::downgrade(self);
 
             std::thread::spawn(move || {
                 println!("Signal handler thread started");
@@ -133,8 +153,16 @@ impl SigHandle for Arc<VpnClient> {
                         }
                     };
 
-                    if let Some(this) = this.upgrade() {
-                        this.send_command(cmd);
+                    {
+                        let this = SIGNAL_HANDLE
+                            .client
+                            .lock()
+                            .ok()
+                            .and_then(|this| this.upgrade());
+
+                        if let Some(this) = this {
+                            this.send_command(cmd);
+                        }
                     }
 
                     if sig != SIGUSR1 {
@@ -146,7 +174,6 @@ impl SigHandle for Arc<VpnClient> {
 
         #[cfg(target_os = "windows")]
         {
-            use crate::GLOBAL_CURRENT;
             use windows_sys::Win32::System::Console::{
                 SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT,
                 CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
@@ -162,13 +189,14 @@ impl SigHandle for Arc<VpnClient> {
                 };
 
                 {
-                    let global_current = GLOBAL_CURRENT
+                    let this = SIGNAL_HANDLE
+                        .client
                         .lock()
                         .ok()
-                        .and_then(|r| r.as_ref().and_then(|r| r.upgrade()));
+                        .and_then(|this| this.upgrade());
 
-                    if let Some(global_current) = global_current {
-                        global_current.send_command(cmd);
+                    if let Some(this) = this {
+                        this.send_command(cmd);
                     }
                 }
 

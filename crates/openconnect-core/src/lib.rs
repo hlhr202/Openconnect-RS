@@ -1,4 +1,5 @@
 pub mod cert;
+pub mod command;
 pub mod config;
 pub mod elevator;
 pub mod events;
@@ -6,24 +7,23 @@ pub mod form;
 pub mod ip_info;
 pub mod protocols;
 pub mod result;
-pub mod command;
 pub mod stats;
 pub mod storage;
 
 use cert::PeerCerts;
+use command::{CmdPipe, SIGNAL_HANDLE};
 use config::{Config, Entrypoint, LogLevel};
 use events::{EventHandlers, Events};
 use form::FormManager;
 use ip_info::IpInfo;
 use openconnect_sys::*;
 use result::{EmitError, OpenconnectError, OpenconnectResult};
-use command::{CmdPipe, SigHandle};
 use stats::Stats;
 use std::{
     ffi::CString,
     sync::{
         atomic::{AtomicI32, Ordering},
-        Arc, Mutex, RwLock, Weak,
+        Arc, RwLock, Weak,
     },
 };
 
@@ -51,8 +51,6 @@ pub struct VpnClient {
 
 unsafe impl Send for VpnClient {}
 unsafe impl Sync for VpnClient {}
-
-pub static GLOBAL_CURRENT: Mutex<Option<Weak<VpnClient>>> = Mutex::new(None);
 
 impl VpnClient {
     pub(crate) unsafe extern "C" fn handle_process_log(
@@ -474,7 +472,7 @@ impl Connectable for VpnClient {
             (*raw_instance).vpninfo = vpninfo;
         };
 
-        instance.set_sig_handler();
+        SIGNAL_HANDLE.update_client_singleton(Arc::downgrade(&instance));
         instance.set_loglevel(instance.config.loglevel);
         instance.set_setup_tun_handler();
 
@@ -485,11 +483,6 @@ impl Connectable for VpnClient {
         }
 
         instance.emit_state_change(Status::Initialized);
-
-        let global_guard = GLOBAL_CURRENT.lock();
-        if let Ok(mut global) = global_guard {
-            *global = Some(Arc::downgrade(&instance));
-        }
 
         Ok(instance)
     }

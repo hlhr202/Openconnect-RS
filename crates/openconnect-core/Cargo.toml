@@ -19,6 +19,7 @@ libc = { workspace = true }
 openconnect-sys = { path = "../openconnect-sys", version = "0.1.0"}
 reqwest = { workspace = true }
 thiserror = { workspace = true }
+lazy_static = { workspace = true }
 tokio = { workspace = true }
 home = { workspace = true }
 serde = { workspace = true }
