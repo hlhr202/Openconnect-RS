@@ -56,12 +56,13 @@ Special thanks to (MORE THAN) the following projects and technologies for making
 - [x] implement safe ffi
 - [x] implement password login
 - [x] implement cookie login
+- [x] implement ssl certificate validation
 - [ ] implement public key login
-- [ ] implement ssl certificate validation
 
 ### Client
 
 - [x] implement password login
 - [x] implement oidc login
-- [ ] implement logs
+- [x] implement logs
+  - [ ] waiting tracing file rotation
 - [ ] implement CLI

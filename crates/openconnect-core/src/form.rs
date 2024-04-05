@@ -90,7 +90,8 @@ impl FormManager {
         privdata: *mut ::std::os::raw::c_void,
         form: *mut openconnect_sys::oc_auth_form,
     ) -> ::std::os::raw::c_int {
-        println!("process_auth_form_cb");
+        tracing::debug!("Calling process_auth_form_cb");
+
         let client = unsafe { VpnClient::ref_from_raw(privdata) };
         unsafe {
             // TODO: review this
@@ -225,8 +226,8 @@ impl FormManager {
                 return OC_FORM_RESULT_CANCELLED as i32;
             }
         }
-        println!("Submitting form");
-        println!();
+
+        tracing::debug!("Successfully processed auth form");
         OC_FORM_RESULT_OK as i32
     }
 }

@@ -76,6 +76,7 @@ fn main() {
                 .body(b"Authenticated, close this window and return to the application.".to_vec())
         })
         .setup(move |app| {
+            openconnect_core::log::Logger::init().expect("failed to init logger");
             // This is to fully remove dock icon, temp disable
             // #[cfg(target_os = "macos")]
             // app.set_activation_policy(tauri::ActivationPolicy::Accessory);

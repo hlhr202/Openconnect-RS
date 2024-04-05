@@ -5,20 +5,23 @@ pub mod elevator;
 pub mod events;
 pub mod form;
 pub mod ip_info;
+pub mod log;
 pub mod protocols;
 pub mod result;
 pub mod stats;
 pub mod storage;
 
-use cert::PeerCerts;
-use command::{CmdPipe, SIGNAL_HANDLE};
-use config::{Config, Entrypoint, LogLevel};
-use events::{EventHandlers, Events};
-use form::FormManager;
-use ip_info::IpInfo;
+use crate::cert::PeerCerts;
+use crate::command::{CmdPipe, SIGNAL_HANDLE};
+use crate::config::{Config, Entrypoint, LogLevel};
+use crate::events::{EventHandlers, Events};
+use crate::form::FormManager;
+use crate::ip_info::IpInfo;
+use crate::log::Logger;
+use crate::result::{EmitError, OpenconnectError, OpenconnectResult};
+use crate::stats::Stats;
+
 use openconnect_sys::*;
-use result::{EmitError, OpenconnectError, OpenconnectResult};
-use stats::Stats;
 use std::{
     ffi::CString,
     sync::{
@@ -53,25 +56,6 @@ unsafe impl Send for VpnClient {}
 unsafe impl Sync for VpnClient {}
 
 impl VpnClient {
-    pub(crate) unsafe extern "C" fn handle_process_log(
-        _privdata: *mut ::std::os::raw::c_void,
-        level: ::std::os::raw::c_int,
-        buf: *const ::std::os::raw::c_char,
-    ) {
-        let buf = std::ffi::CStr::from_ptr(buf).to_str().ok();
-        let level = level as u32;
-        let level = match level {
-            PRG_ERR => "ERR",
-            PRG_INFO => "INFO",
-            PRG_DEBUG => "DEBUG",
-            PRG_TRACE => "TRACE",
-            _ => "UNKNOWN",
-        };
-        if buf.is_some() {
-            println!("{}: {}", level, buf.unwrap_or(""));
-        }
-    }
-
     pub(crate) extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
         let client = unsafe { VpnClient::ref_from_raw(privdata) };
 
@@ -410,7 +394,7 @@ impl VpnClient {
         unsafe {
             openconnect_vpninfo_free(self.vpninfo);
         }
-        println!("free context");
+        tracing::debug!("Client instance is dropped");
     }
 }
 
@@ -454,11 +438,11 @@ impl Connectable for VpnClient {
             }
 
             // format args on C side
-            helper_set_global_progress_vfn(Some(Self::handle_process_log));
+            helper_set_global_progress_vfn(Some(Logger::raw_handle_process_log));
 
             let vpninfo = openconnect_vpninfo_new(
                 useragent.as_ptr(),
-                Some(cert::validate_peer_cert),
+                Some(PeerCerts::validate_peer_cert),
                 None,
                 Some(FormManager::process_auth_form_cb),
                 Some(helper_format_vargs), // format args on C side
