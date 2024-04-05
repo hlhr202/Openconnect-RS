@@ -165,7 +165,8 @@ impl SignalHandle {
                         }
                     }
 
-                    if sig != SIGUSR1 {
+                    if sig == SIGINT || sig == SIGTERM {
+                        // Exit the signal handler thread since the process is going to exit
                         break;
                     }
                 }
