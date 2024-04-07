@@ -106,6 +106,11 @@ function App() {
       hide();
     });
 
+    unregister("Alt+F4");
+    register("Alt+F4", () => {
+      hide();
+    });
+
     setMounted(true);
   }, []);
 

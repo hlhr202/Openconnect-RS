@@ -19,6 +19,9 @@
       "globalShortcut": {
         "all": true
       },
+      "os": {
+        "all": true
+      },
       "fs": {
         "scope": ["$RESOURCE/*"]
       },

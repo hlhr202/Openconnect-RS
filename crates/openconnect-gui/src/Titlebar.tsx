@@ -1,6 +1,7 @@
 import { FC, PropsWithChildren } from "react";
 import { appWindow } from "@tauri-apps/api/window";
 import { hide } from "@tauri-apps/api/app";
+import { type } from "@tauri-apps/api/os";
 
 const TitleBarButton: FC<
   PropsWithChildren<{ id: string; className?: string; onClick?: () => void }>
@@ -26,8 +27,14 @@ export const TauriTitleBar = () => {
     else appWindow.maximize();
   };
 
-  const handleHide = () => {
-    hide();
+  const handleHide = async () => {
+    const osType = await type();
+    if (osType === "Darwin") {
+      hide();
+    }
+    if (osType === "Windows_NT") {
+      appWindow.hide();
+    }
   };
 
   return (
