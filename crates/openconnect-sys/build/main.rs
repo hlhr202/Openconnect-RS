@@ -6,9 +6,13 @@ use std::path::PathBuf;
 
 // TODO: optimize path search
 fn main() {
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let openconnect_src_dir = manifest_dir.join("openconnect");
+    let openconnect_src_dir = out_path.join("openconnect");
 
     #[cfg(not(target_os = "windows"))]
     {
@@ -101,10 +105,8 @@ fn main() {
 
     // ===== compile helper.c start =====
     let mut build = cc::Build::new();
-    let build = build
-        .file("c-src/helper.c")
-        .include("c-src");
-        // .include(openconnect_src_dir.to_str().unwrap()); // maybe not needed
+    let build = build.file("c-src/helper.c").include("c-src");
+    // .include(openconnect_src_dir.to_str().unwrap()); // maybe not needed
     build.compile("helper");
     // ===== compile helper.c end =====
 
@@ -116,7 +118,7 @@ fn main() {
         // bindings for.
         .header("wrapper.h")
         .header("c-src/helper.h")
-        .clang_arg("-I./openconnect")
+        .clang_arg(format!("-I{}", openconnect_src_dir.to_str().unwrap()))
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)
         // Tell cargo to invalidate the built crate whenever any of the
@@ -129,6 +131,15 @@ fn main() {
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
     bindings
-        .write_to_file(out_path.join("bindings.rs"))
+        .write_to_file(manifest_dir.join(format!(
+            "src/bindings_{}_{}{}.rs",
+            target_arch,
+            target_os,
+            if target_env.is_empty() {
+                "".to_string()
+            } else {
+                format!("_{}", target_env)
+            }
+        )))
         .expect("Couldn't write bindings!");
 }

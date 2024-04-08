@@ -3,7 +3,6 @@ name = "openconnect-sys"
 version = "0.1.1"
 edition = "2021"
 build = "build/main.rs"
-exclude = ["/openconnect"]
 description = "Rust bindings for OpenConnect"
 license = "LGPL-2.1"
 

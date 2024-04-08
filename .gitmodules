@@ -1,3 +1,0 @@
-[submodule "crates/openconnect-sys/openconnect"]
-	path = crates/openconnect-sys/openconnect
-	url = https://gitlab.com/openconnect/openconnect.git

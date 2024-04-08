@@ -165,7 +165,13 @@ impl VpnClient {
                 CString::new(vpnc_script)
                     .map_err(|_| OpenconnectError::SetupTunDeviceEror(libc::EIO))?
             } else {
-                CString::from_vec_with_nul(DEFAULT_VPNCSCRIPT.to_vec())
+                #[cfg(not(target_os = "windows"))]
+                const DEFAULT_SCRIPT: &str = "./vpnc-script";
+
+                #[cfg(target_os = "windows")]
+                const DEFAULT_SCRIPT: &str = "./vpnc-script-win.js";
+
+                CString::new(DEFAULT_SCRIPT)
                     .map_err(|_| OpenconnectError::SetupTunDeviceEror(libc::EIO))?
             }
         };
