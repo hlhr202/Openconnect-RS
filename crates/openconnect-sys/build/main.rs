@@ -103,8 +103,8 @@ fn main() {
     let mut build = cc::Build::new();
     let build = build
         .file("c-src/helper.c")
-        .include("c-src")
-        .include(openconnect_src_dir.to_str().unwrap()); // maybe not needed
+        .include("c-src");
+        // .include(openconnect_src_dir.to_str().unwrap()); // maybe not needed
     build.compile("helper");
     // ===== compile helper.c end =====
 
@@ -116,7 +116,7 @@ fn main() {
         // bindings for.
         .header("wrapper.h")
         .header("c-src/helper.h")
-        .clang_arg(format!("-I{}", openconnect_src_dir.to_str().unwrap()))
+        .clang_arg("-I./openconnect")
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)
         // Tell cargo to invalidate the built crate whenever any of the
