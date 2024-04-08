@@ -25,14 +25,14 @@ impl AppSystemTray {
             app_handle
                 .tray_handle()
                 .set_icon(tauri::Icon::Raw(
-                    include_bytes!("../icons/connected.png").to_vec(),
+                    include_bytes!("../icons/connected-w.png").to_vec(),
                 ))
                 .unwrap();
         } else {
             app_handle
                 .tray_handle()
                 .set_icon(tauri::Icon::Raw(
-                    include_bytes!("../icons/disconnected.png").to_vec(),
+                    include_bytes!("../icons/disconnected-w.png").to_vec(),
                 ))
                 .unwrap();
         }
