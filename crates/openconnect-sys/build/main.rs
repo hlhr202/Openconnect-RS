@@ -6,8 +6,9 @@ use std::path::PathBuf;
 
 // TODO: optimize path search
 fn main() {
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
-    let openconnect_src_dir = out_path.join("openconnect");
+    let openconnect_src_dir = manifest_dir.join("openconnect");
 
     #[cfg(not(target_os = "windows"))]
     {

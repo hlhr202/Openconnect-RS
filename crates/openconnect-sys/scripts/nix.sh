@@ -1,11 +1,9 @@
 DIR=$1
+LIB_PATH="$DIR/.libs/libopenconnect.a"
 
-if [ -d $DIR ]; then
+if [ -e $LIB_PATH ]; then
     echo "build openconnect-sys: openconnect folder already exists"
 else
-    echo "build openconnect-sys: cloning openconnect"
-
-    git clone https://gitlab.com/openconnect/openconnect.git $DIR
     cd $DIR
 
     echo "build openconnect-sys: downloading vpnc-script"
@@ -26,5 +24,8 @@ else
         --with-vpnc-script=./vpnc-script
 
     echo "build openconnect-sys: making"
+    make clean
     make
+
+    git clean -fd
 fi
