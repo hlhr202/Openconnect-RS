@@ -2644,13 +2644,13 @@ dependencies = [
 
 [[package]]
 name = "openconnect-sys"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "bindgen 0.69.4",
  "cc",
  "home",
- "openconnect-build",
  "openssl-sys",
+ "pkg-config",
 ]
 
 [[package]]

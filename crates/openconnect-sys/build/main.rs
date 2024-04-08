@@ -1,9 +1,21 @@
-use openconnect_build::*;
+mod lib_prob;
+
+use lib_prob::*;
 use std::env;
 use std::path::PathBuf;
 
 // TODO: optimize path search
 fn main() {
+    #[cfg(not(target_os = "windows"))]
+    {
+        let current_dir = env::current_dir().unwrap();
+        let script = current_dir.join("scripts/nix.sh");
+        let _ = std::process::Command::new("sh")
+            .arg(script)
+            .output()
+            .expect("failed to execute process");
+    }
+
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
     // statically link openconnect

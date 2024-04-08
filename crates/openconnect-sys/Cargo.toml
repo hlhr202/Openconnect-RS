@@ -1,6 +1,6 @@
 [package]
 name = "openconnect-sys"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 build = "build/main.rs"
 exclude = ["/openconnect"]
@@ -17,5 +17,6 @@ crate-type = ["lib"]
 [build-dependencies]
 bindgen = "0.69.4"
 cc = "1.0.90"
+pkg-config = "0.3.30"
 home = { workspace = true }
-openconnect-build = { path = "../openconnect-build", version = "0.1.0" }
+# openconnect-build = { path = "../openconnect-build", version = "0.1.0" }
