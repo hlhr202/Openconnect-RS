@@ -68,7 +68,14 @@ fn main() {
         .system_tray(app_system_tray.create_empty())
         .on_system_tray_event(move |app, event| app_system_tray_clone.handle(app, event))
         .register_uri_scheme_protocol("oidcvpn", |app, _req| {
+            println!("URI: {:?}", _req.uri());
             let _app_state: tauri::State<'_, AppState> = app.state();
+
+            let window = app.get_window("main");
+            if let Some(window) = window {
+                let uri = _req.uri().to_string();
+                let _ = window.eval(format!("window.alert('URI: {}')", uri).as_str());
+            }
 
             tauri::http::ResponseBuilder::new()
                 .header("Content-Type", "text/html")

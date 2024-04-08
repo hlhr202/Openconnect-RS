@@ -21,8 +21,6 @@ import connected from "./assets/connected-animate.json";
 import Lottie from "lottie-react";
 import { AboutModal } from "./About";
 import { useKey } from "react-use";
-import { register, unregister } from "@tauri-apps/api/globalShortcut";
-import { hide } from "@tauri-apps/api/app";
 
 enum EStatus {
   Initialized = "INITIALIZED",
@@ -100,17 +98,6 @@ function App() {
 
   useEffect(() => {
     invoke("trigger_state_retrieve");
-
-    unregister("CmdOrControl+Q");
-    register("CmdOrControl+Q", () => {
-      hide();
-    });
-
-    unregister("Alt+F4");
-    register("Alt+F4", () => {
-      hide();
-    });
-
     setMounted(true);
   }, []);
 
