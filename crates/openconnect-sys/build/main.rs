@@ -6,21 +6,28 @@ use std::path::PathBuf;
 
 // TODO: optimize path search
 fn main() {
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let openconnect_src_dir = out_path.join("openconnect");
+
     #[cfg(not(target_os = "windows"))]
     {
         let current_dir = env::current_dir().unwrap();
         let script = current_dir.join("scripts/nix.sh");
         let _ = std::process::Command::new("sh")
-            .arg(script)
+            .args([
+                script.to_str().unwrap(),
+                openconnect_src_dir.to_str().unwrap(),
+            ])
             .output()
             .expect("failed to execute process");
     }
 
-    let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
-
     // statically link openconnect
-    let openconnect_lib = format!("{}/openconnect/.libs", dir);
-    println!("cargo:rustc-link-search={}", openconnect_lib);
+    let openconnect_lib = openconnect_src_dir.join(".libs");
+    println!(
+        "cargo:rustc-link-search={}",
+        openconnect_lib.to_str().unwrap()
+    );
     println!("cargo:rustc-link-lib=static=openconnect");
 
     // windows linking
@@ -29,11 +36,12 @@ fn main() {
         resolve_mingw64_lib_path();
 
         let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
         let target_path = out_path.ancestors().nth(3).unwrap();
         print_build_warning!("target_path: {}", target_path.to_string_lossy());
         println!("cargo:rustc-link-search={}", target_path.to_string_lossy());
 
-        let wintun_dll_source = format!("{}/wintun.dll", dir);
+        let wintun_dll_source = format!("{}/wintun.dll", manifest_dir);
         let wintun_dll_target = format!("{}/wintun.dll", target_path.to_string_lossy());
         std::fs::copy(wintun_dll_source, wintun_dll_target).unwrap();
 
@@ -95,7 +103,7 @@ fn main() {
     let build = build
         .file("c-src/helper.c")
         .include("c-src")
-        .include("openconnect"); // maybe not needed
+        .include(openconnect_src_dir.to_str().unwrap()); // maybe not needed
     build.compile("helper");
     // ===== compile helper.c end =====
 
@@ -107,7 +115,7 @@ fn main() {
         // bindings for.
         .header("wrapper.h")
         .header("c-src/helper.h")
-        .clang_arg("-I./openconnect")
+        .clang_arg(format!("-I{}", openconnect_src_dir.to_str().unwrap()))
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)
         // Tell cargo to invalidate the built crate whenever any of the
@@ -119,7 +127,6 @@ fn main() {
         .expect("Unable to generate bindings");
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
         .write_to_file(out_path.join("bindings.rs"))
         .expect("Couldn't write bindings!");

@@ -1,10 +1,12 @@
-if [ -d "openconnect" ]; then
+DIR=$1
+
+if [ -d $DIR ]; then
     echo "build openconnect-sys: openconnect folder already exists"
 else
     echo "build openconnect-sys: cloning openconnect"
 
-    git clone https://gitlab.com/openconnect/openconnect.git
-    cd openconnect
+    git clone https://gitlab.com/openconnect/openconnect.git $DIR
+    cd $DIR
 
     echo "build openconnect-sys: downloading vpnc-script"
     curl -O https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script
