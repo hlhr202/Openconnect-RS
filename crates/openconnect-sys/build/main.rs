@@ -14,18 +14,15 @@ fn main() {
     let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     let openconnect_src_dir = out_path.join("openconnect");
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let current_dir = env::current_dir().unwrap();
-        let script = current_dir.join("scripts/nix.sh");
-        let _ = std::process::Command::new("sh")
-            .args([
-                script.to_str().unwrap(),
-                openconnect_src_dir.to_str().unwrap(),
-            ])
-            .output()
-            .expect("failed to execute process");
-    }
+    let current_dir = env::current_dir().unwrap();
+    let script = current_dir.join("scripts/nix.sh");
+    let _ = std::process::Command::new("sh")
+        .args([
+            script.to_str().unwrap(),
+            openconnect_src_dir.to_str().unwrap(),
+        ])
+        .output()
+        .expect("failed to execute process");
 
     // statically link openconnect
     let openconnect_lib = openconnect_src_dir.join(".libs");
