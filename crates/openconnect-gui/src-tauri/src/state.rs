@@ -8,7 +8,7 @@ use openconnect_core::{
     storage::{StoredConfigError, StoredConfigs, StoredServer},
     Connectable, Status, VpnClient,
 };
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 use tauri::{
     async_runtime::{channel, RwLock, Sender},
     Manager, State,
@@ -78,9 +78,10 @@ impl AppState {
     pub async fn handle_with_vpnc_script(
         app: &mut tauri::App,
         vpnc_scipt: &str,
+        config_file: PathBuf,
     ) -> Result<(), StateError> {
         let (event_tx, mut event_rx) = channel::<VpnEvent>(100);
-        let app_state = AppState::new(event_tx, vpnc_scipt).await?;
+        let app_state = AppState::new(event_tx, vpnc_scipt, config_file).await?;
         app.manage(app_state);
 
         let handle = app.app_handle();
@@ -287,8 +288,12 @@ impl AppState {
             })
     }
 
-    pub async fn new(event_tx: Sender<VpnEvent>, vpnc_scipt: &str) -> Result<Self, StateError> {
-        let mut stored_configs = StoredConfigs::default();
+    pub async fn new(
+        event_tx: Sender<VpnEvent>,
+        vpnc_scipt: &str,
+        config_file: PathBuf,
+    ) -> Result<Self, StateError> {
+        let mut stored_configs = StoredConfigs::new(None, config_file);
         stored_configs.read_from_file().await?;
         Ok(Self {
             event_tx,

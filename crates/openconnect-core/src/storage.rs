@@ -32,10 +32,12 @@ impl StoredConfigsJson {
     }
 }
 
-impl TryFrom<StoredConfigsJson> for StoredConfigs {
+impl TryFrom<(StoredConfigsJson, PathBuf)> for StoredConfigs {
     type Error = StoredConfigError;
 
-    fn try_from(json: StoredConfigsJson) -> Result<StoredConfigs, StoredConfigError> {
+    fn try_from(
+        (json, config_file): (StoredConfigsJson, PathBuf),
+    ) -> Result<StoredConfigs, StoredConfigError> {
         let mut servers = HashMap::new();
         for server in json.servers {
             let name = match &server {
@@ -57,6 +59,7 @@ impl TryFrom<StoredConfigsJson> for StoredConfigs {
             default: json.default,
             servers,
             cipher: PassEncryptor::default(),
+            config_file,
         })
     }
 }
@@ -140,6 +143,7 @@ pub struct StoredConfigs {
     pub default: Option<String>,
     pub servers: HashMap<String, StoredServer>,
     pub cipher: PassEncryptor,
+    pub config_file: PathBuf,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -157,18 +161,13 @@ pub enum StoredConfigError {
     CipherError(#[from] PassEncryptorError),
 }
 
-impl Default for StoredConfigs {
-    fn default() -> Self {
-        Self::new(None)
-    }
-}
-
 impl StoredConfigs {
-    pub fn new(pass_key: Option<String>) -> Self {
+    pub fn new(pass_key: Option<String>, config_file: PathBuf) -> Self {
         Self {
             default: None,
             servers: HashMap::new(),
             cipher: PassEncryptor::new(pass_key),
+            config_file,
         }
     }
 
@@ -178,7 +177,7 @@ impl StoredConfigs {
             .and_then(|name| self.servers.get(name))
     }
 
-    pub async fn getorinit_config_file(&self) -> Result<PathBuf, StoredConfigError> {
+    pub fn getorinit_config_file() -> Result<PathBuf, StoredConfigError> {
         let home_dir = home::home_dir().ok_or(StoredConfigError::IoError(std::io::Error::new(
             std::io::ErrorKind::NotFound,
             "Home directory not found",
@@ -186,35 +185,33 @@ impl StoredConfigs {
 
         let config_folder = home_dir.join(".oidcvpn");
         if !config_folder.exists() {
-            tokio::fs::create_dir(&config_folder).await?;
+            std::fs::create_dir(&config_folder)?;
         }
 
         let config_file = config_folder.join("config.json");
         if !config_file.exists() {
-            tokio::fs::write(&config_file, br#"{"default":null,"servers":[]}"#).await?;
+            std::fs::write(&config_file, br#"{"default":null,"servers":[]}"#)?;
         }
 
         Ok(config_file)
     }
 
     pub async fn save_to_file(&self) -> Result<&Self, StoredConfigError> {
-        let config_file = self.getorinit_config_file().await?;
         let json = serde_json::to_string(&StoredConfigsJson::from(self.clone())).map_err(|e| {
             StoredConfigError::ParseError(format!("Failed to serialize config: {}", e))
         })?;
 
-        tokio::fs::write(&config_file, json).await?;
+        tokio::fs::write(&self.config_file, json).await?;
 
         Ok(self)
     }
 
     pub async fn read_from_file(&mut self) -> Result<&mut Self, StoredConfigError> {
-        let config_file = self.getorinit_config_file().await?;
-        let content = tokio::fs::read(&config_file).await?;
+        let content = tokio::fs::read(&self.config_file).await?;
         let config_json: StoredConfigsJson = serde_json::from_slice(&content).map_err(|e| {
             StoredConfigError::ParseError(format!("Failed to parse config file: {}", e))
         })?;
-        let config = StoredConfigs::try_from(config_json)?;
+        let config = StoredConfigs::try_from((config_json, self.config_file.clone()))?;
 
         self.default = config.default;
         self.servers = config.servers;
@@ -368,7 +365,8 @@ fn test_pass_enc() {
 
 #[tokio::test]
 async fn test_read_config() {
-    let mut stored_configs = StoredConfigs::default();
+    let config_file = StoredConfigs::getorinit_config_file().unwrap();
+    let mut stored_configs = StoredConfigs::new(None, config_file);
     stored_configs.read_from_file().await.unwrap();
     println!("parsed struct: {:#?}", stored_configs);
 
@@ -389,7 +387,8 @@ async fn test_save_config() {
         updated_at: None,
     });
 
-    let mut stored_config = StoredConfigs::default();
+    let config_file = StoredConfigs::getorinit_config_file().unwrap();
+    let mut stored_config = StoredConfigs::new(None, config_file.clone());
     let config = stored_config
         .read_from_file()
         .await
@@ -404,7 +403,10 @@ async fn test_save_config() {
     println!("saved: {:?}", config);
     println!(
         "read: {:?}",
-        StoredConfigs::default().read_from_file().await.unwrap()
+        StoredConfigs::new(None, config_file)
+            .read_from_file()
+            .await
+            .unwrap()
     );
 }
 

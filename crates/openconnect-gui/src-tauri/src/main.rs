@@ -7,11 +7,14 @@ mod state;
 mod system_tray;
 
 use command::*;
+use openconnect_core::storage::StoredConfigs;
 use state::AppState;
 use system_tray::AppSystemTray;
 use tauri::Manager;
 
 fn main() {
+    let config_file = StoredConfigs::getorinit_config_file().expect("failed to get config file");
+
     #[cfg(target_os = "linux")]
     {
         // TODO: add support for GUI escalation
@@ -130,16 +133,16 @@ fn main() {
                 }
             };
 
-            let window = app.get_window("main").expect("no main window");
-
             #[cfg(any(windows, target_os = "macos"))]
-            window_shadows::set_shadow(&window, true).unwrap();
-
+            {
+                let window = app.get_window("main").expect("no main window");
+                window_shadows::set_shadow(&window, true).unwrap();
+            }
             let app_handle = app.app_handle();
 
             Ok(tauri::async_runtime::block_on(async {
                 app_handle.manage(app_system_tray.clone());
-                AppState::handle_with_vpnc_script(app, &vpnc_script)
+                AppState::handle_with_vpnc_script(app, &vpnc_script, config_file)
                     .await
                     .unwrap();
                 app_system_tray.recreate(&app_handle).await
