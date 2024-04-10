@@ -61,7 +61,7 @@ jobs:
 
     - name: '🚧 Build TOOL'
       run: |
-        git clone --branch v9.12 https://gitlab.com/openconnect/openconnect
+        git clone --branch v9.12 https://gitlab.com/openconnect/openconnect.git
         cd openconnect
         curl -O https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script-win.js
         ./autogen.sh
@@ -73,7 +73,7 @@ jobs:
           --without-libpcsclite \
           --without-libpskc \
           --without-gnutls \
-          --with-vpnc-script vpnc-script-win.js
+          --with-vpnc-script=./vpnc-script-win.js
         make clean
         echo "#define LIBXML_STATIC" >>config.h
         make
