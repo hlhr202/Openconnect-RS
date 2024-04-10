@@ -25,7 +25,9 @@ jobs:
         update: true
         install: >-
           git
+          curl
           make
+          zip
           base-devel
           mingw-w64-x86_64-toolchain
           automake
@@ -59,5 +61,27 @@ jobs:
 
     - name: '🚧 Build TOOL'
       run: |
-        echo "Testing"
-        ls /mingw64/lib/libxml2.a
+        git clone --branch v9.12 https://gitlab.com/openconnect/openconnect
+        cd openconnect
+        curl -O https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script-win.js
+        ./autogen.sh
+        ./configure --enable-shared --enable-static \
+          --with-openssl \
+          --without-gssapi \
+          --without-libproxy \
+          --without-stoken \
+          --without-libpcsclite \
+          --without-libpskc \
+          --without-gnutls \
+          --with-vpnc-script vpnc-script-win.js
+        make clean
+        echo "#define LIBXML_STATIC" >>config.h
+        make
+        cd ../
+        zip -r openconnect.zip openconnect
+
+    - name: 'Upload'
+      uses: actions/upload-artifact@v4.3.1
+      with:
+        name: prebuilt-openconnect-msys
+        path: openconnect.zip
