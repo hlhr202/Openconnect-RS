@@ -1,11 +1,17 @@
+mod download_prebuilt;
 mod lib_prob;
 
 use lib_prob::*;
 use std::env;
 use std::path::PathBuf;
 
+use crate::download_prebuilt::download_from_sourceforge;
+
 // TODO: optimize path search
 fn main() {
+    let use_prebuilt =
+        env::var("OPENCONNECT_USE_PREBUILT").unwrap_or("false".to_string()) == "true";
+
     let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
     let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
     let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
@@ -15,17 +21,26 @@ fn main() {
     let openconnect_src_dir = out_path.join("openconnect");
 
     let current_dir = env::current_dir().unwrap();
-    let script = current_dir.join("scripts/nix.sh");
-    let _ = std::process::Command::new("sh")
-        .args([
-            script.to_str().unwrap(),
-            openconnect_src_dir.to_str().unwrap(),
-        ])
-        .output()
-        .expect("failed to execute process");
 
     // statically link openconnect
     let openconnect_lib = openconnect_src_dir.join(".libs");
+    let static_lib = openconnect_lib.join("libopenconnect.a");
+
+    if !static_lib.exists() {
+        if use_prebuilt {
+            download_from_sourceforge(out_path.clone());
+        } else {
+            let script = current_dir.join("scripts/nix.sh");
+            let _ = std::process::Command::new("sh")
+                .args([
+                    script.to_str().unwrap(),
+                    openconnect_src_dir.to_str().unwrap(),
+                ])
+                .output()
+                .expect("failed to execute process");
+        }
+    }
+
     println!(
         "cargo:rustc-link-search={}",
         openconnect_lib.to_str().unwrap()
