@@ -11,7 +11,7 @@ jobs:
       - name: Install Package
         uses: ConorMacBride/install-package@v1.1.0
         with:
-          brew: libxml2 zlib openssl pkg-config automake libtool gettext
+          brew: libxml2 zlib openssl pkg-config automake libtool gettext zip
 
       - name: "🚧 Build TOOL"
         run: |
@@ -30,11 +30,12 @@ jobs:
             --with-vpnc-script=./vpnc-script
           make clean
           make
+          rm -rf .git
           cd ../
           zip -r openconnect.zip openconnect
 
       - name: "Upload"
         uses: actions/upload-artifact@v4.3.1
         with:
-          name: prebuilt-openconnect-msys
+          name: prebuilt-openconnect-aarch64-apple-darwin
           path: openconnect.zip
