@@ -1,0 +1,40 @@
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "crates/openconnect-sys"
+
+jobs:
+  build:
+    runs-on: macos-13-xlarge
+    steps:
+      - name: Install Package
+        uses: ConorMacBride/install-package@v1.1.0
+        with:
+          brew: libxml2 zlib openssl pkg-config automake libtool gettext
+
+      - name: "🚧 Build TOOL"
+        run: |
+          git clone --branch v9.12 https://gitlab.com/openconnect/openconnect.git
+          cd openconnect
+          curl -O https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script
+          ./autogen.sh
+          ./configure --enable-shared --enable-static \
+            --with-openssl \
+            --without-gssapi \
+            --without-libproxy \
+            --without-stoken \
+            --without-libpcsclite \
+            --without-libpskc \
+            --without-gnutls \
+            --with-vpnc-script=./vpnc-script
+          make clean
+          make
+          cd ../
+          zip -r openconnect.zip openconnect
+
+      - name: "Upload"
+        uses: actions/upload-artifact@v4.3.1
+        with:
+          name: prebuilt-openconnect-msys
+          path: openconnect.zip
