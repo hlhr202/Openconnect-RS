@@ -77,6 +77,7 @@ jobs:
         make clean
         echo "#define LIBXML_STATIC" >>config.h
         make
+        rm -r .git
         cd ../
         zip -r openconnect.zip openconnect
 
