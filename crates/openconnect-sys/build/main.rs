@@ -84,7 +84,6 @@ fn main() {
         println!("cargo:rustc-link-lib=static=xml2");
         println!("cargo:rustc-link-lib=static=z");
         println!("cargo:rustc-link-lib=static=lzma");
-        println!("cargo:rustc-link-lib=static=lz4");
         println!("cargo:rustc-link-lib=static=icui18n");
         println!("cargo:rustc-link-lib=static=icudata");
         println!("cargo:rustc-link-lib=static=icuuc");
