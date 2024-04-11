@@ -10,6 +10,7 @@ according to the openconnect [build guide](https://www.infradead.org/openconnect
 apt install libxml2
 apt install zlib1g zlib1g-dev
 apt install openssl libssl-dev
+apt install liblz4-dev liblzma-dev
 apt install pkg-config
 ```
 
