@@ -28,6 +28,7 @@ jobs:
         with:
           msystem: ${{matrix.sys}}
           update: true
+          path-type: inherit
           install: >-
             git
             curl
