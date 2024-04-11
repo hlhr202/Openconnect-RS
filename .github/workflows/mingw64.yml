@@ -67,11 +67,15 @@ jobs:
           toolchain:p
       
     - name: Setup PNPM
+      uses: pnpm/action-setup@v3
+    
+    - name: Checkout
       uses: actions/checkout@v3
       
     - name: Build
       working-directory: ./crates/openconnect-gui
       run: |
+        rustup default stable-x86_64-pc-windows-gnu
         pnpm install
         pnpm tauri build
 
