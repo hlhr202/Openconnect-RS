@@ -6,7 +6,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-13-xlarge
+    runs-on: macos-14
     steps:
       - name: Install Package
         uses: ConorMacBride/install-package@v1.1.0
