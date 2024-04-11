@@ -48,8 +48,9 @@ Special thanks to (MORE THAN) the following projects and technologies for making
 
 ### Openconnect sys
 
-- [ ] Automatically search library path
-- [ ] Automatically build openconnect
+- [x] Automatically build openconnect
+- [x] Automatically search library path
+  - [ ] Optimize search path for more cases
 
 ### Openconnect core
 
