@@ -1,14 +1,50 @@
-use openconnect_build::*;
+mod download_prebuilt;
+mod lib_prob;
+
+use lib_prob::*;
 use std::env;
 use std::path::PathBuf;
 
+use crate::download_prebuilt::download_prebuilt_from_sourceforge;
+
 // TODO: optimize path search
 fn main() {
-    let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
+    let use_prebuilt =
+        env::var("OPENCONNECT_USE_PREBUILT").unwrap_or("false".to_string()) == "true";
+
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_env = env::var("CARGO_CFG_TARGET_ENV").unwrap();
+
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let openconnect_src_dir = out_path.join("openconnect");
+
+    let current_dir = env::current_dir().unwrap();
 
     // statically link openconnect
-    let openconnect_lib = format!("{}/openconnect/.libs", dir);
-    println!("cargo:rustc-link-search={}", openconnect_lib);
+    let openconnect_lib = openconnect_src_dir.join(".libs");
+    let static_lib = openconnect_lib.join("libopenconnect.a");
+
+    if !static_lib.exists() {
+        if use_prebuilt {
+            download_prebuilt_from_sourceforge(out_path.clone());
+        } else {
+            let script = current_dir.join("scripts/nix.sh");
+            let _ = std::process::Command::new("sh")
+                .args([
+                    script.to_str().unwrap(),
+                    openconnect_src_dir.to_str().unwrap(),
+                ])
+                .output()
+                .expect("failed to execute process");
+        }
+    }
+
+    println!(
+        "cargo:rustc-link-search={}",
+        openconnect_lib.to_str().unwrap()
+    );
     println!("cargo:rustc-link-lib=static=openconnect");
 
     // windows linking
@@ -17,11 +53,12 @@ fn main() {
         resolve_mingw64_lib_path();
 
         let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
+        let manifest_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
         let target_path = out_path.ancestors().nth(3).unwrap();
         print_build_warning!("target_path: {}", target_path.to_string_lossy());
         println!("cargo:rustc-link-search={}", target_path.to_string_lossy());
 
-        let wintun_dll_source = format!("{}/wintun.dll", dir);
+        let wintun_dll_source = format!("{}/wintun.dll", manifest_dir);
         let wintun_dll_target = format!("{}/wintun.dll", target_path.to_string_lossy());
         std::fs::copy(wintun_dll_source, wintun_dll_target).unwrap();
 
@@ -80,10 +117,8 @@ fn main() {
 
     // ===== compile helper.c start =====
     let mut build = cc::Build::new();
-    let build = build
-        .file("c-src/helper.c")
-        .include("c-src")
-        .include("openconnect"); // maybe not needed
+    let build = build.file("c-src/helper.c").include("c-src");
+    // .include(openconnect_src_dir.to_str().unwrap()); // maybe not needed
     build.compile("helper");
     // ===== compile helper.c end =====
 
@@ -95,7 +130,7 @@ fn main() {
         // bindings for.
         .header("wrapper.h")
         .header("c-src/helper.h")
-        .clang_arg("-I./openconnect")
+        .clang_arg(format!("-I{}", openconnect_src_dir.to_str().unwrap()))
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)
         // Tell cargo to invalidate the built crate whenever any of the
@@ -107,8 +142,16 @@ fn main() {
         .expect("Unable to generate bindings");
 
     // Write the bindings to the $OUT_DIR/bindings.rs file.
-    let out_path = PathBuf::from(env::var("OUT_DIR").unwrap());
     bindings
-        .write_to_file(out_path.join("bindings.rs"))
+        .write_to_file(manifest_dir.join(format!(
+            "src/bindings_{}_{}{}.rs",
+            target_arch,
+            target_os,
+            if target_env.is_empty() {
+                "".to_string()
+            } else {
+                format!("_{}", target_env)
+            }
+        )))
         .expect("Couldn't write bindings!");
 }

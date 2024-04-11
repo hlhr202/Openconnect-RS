@@ -7,11 +7,14 @@ mod state;
 mod system_tray;
 
 use command::*;
+use openconnect_core::storage::StoredConfigs;
 use state::AppState;
 use system_tray::AppSystemTray;
 use tauri::Manager;
 
 fn main() {
+    let config_file = StoredConfigs::getorinit_config_file().expect("failed to get config file");
+
     #[cfg(target_os = "linux")]
     {
         // TODO: add support for GUI escalation
@@ -68,7 +71,14 @@ fn main() {
         .system_tray(app_system_tray.create_empty())
         .on_system_tray_event(move |app, event| app_system_tray_clone.handle(app, event))
         .register_uri_scheme_protocol("oidcvpn", |app, _req| {
+            println!("URI: {:?}", _req.uri());
             let _app_state: tauri::State<'_, AppState> = app.state();
+
+            let window = app.get_window("main");
+            if let Some(window) = window {
+                let uri = _req.uri().to_string();
+                let _ = window.eval(format!("window.alert('URI: {}')", uri).as_str());
+            }
 
             tauri::http::ResponseBuilder::new()
                 .header("Content-Type", "text/html")
@@ -76,6 +86,7 @@ fn main() {
                 .body(b"Authenticated, close this window and return to the application.".to_vec())
         })
         .setup(move |app| {
+            openconnect_core::log::Logger::init().expect("failed to init logger");
             // This is to fully remove dock icon, temp disable
             // #[cfg(target_os = "macos")]
             // app.set_activation_policy(tauri::ActivationPolicy::Accessory);
@@ -122,16 +133,16 @@ fn main() {
                 }
             };
 
-            let window = app.get_window("main").expect("no main window");
-
             #[cfg(any(windows, target_os = "macos"))]
-            window_shadows::set_shadow(&window, true).unwrap();
-
+            {
+                let window = app.get_window("main").expect("no main window");
+                window_shadows::set_shadow(&window, true).unwrap();
+            }
             let app_handle = app.app_handle();
 
             Ok(tauri::async_runtime::block_on(async {
                 app_handle.manage(app_system_tray.clone());
-                AppState::handle_with_vpnc_script(app, &vpnc_script)
+                AppState::handle_with_vpnc_script(app, &vpnc_script, config_file)
                     .await
                     .unwrap();
                 app_system_tray.recreate(&app_handle).await

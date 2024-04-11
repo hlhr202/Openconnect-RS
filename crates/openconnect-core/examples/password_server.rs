@@ -2,7 +2,7 @@ use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
     protocols::get_anyconnect_protocol,
-    Connectable, Shutdown, VpnClient,
+    Connectable, VpnClient,
 };
 use std::env;
 
@@ -16,7 +16,7 @@ fn main() -> anyhow::Result<()> {
 
     let event_handlers = EventHandlers::default();
 
-    let client = VpnClient::new(config, event_handlers)?.with_ctrlc_shutdown()?;
+    let client = VpnClient::new(config, event_handlers)?;
 
     let entrypoint = EntrypointBuilder::new()
         .server(&env::var("VPN_SERVER").unwrap())

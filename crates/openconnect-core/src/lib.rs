@@ -1,27 +1,32 @@
 pub mod cert;
+pub mod command;
 pub mod config;
 pub mod elevator;
 pub mod events;
 pub mod form;
 pub mod ip_info;
+pub mod log;
 pub mod protocols;
 pub mod result;
 pub mod stats;
 pub mod storage;
 
-use cert::PeerCerts;
-use config::{Config, Entrypoint, LogLevel};
-use events::{EventHandlers, Events};
-use form::FormManager;
-use ip_info::IpInfo;
+use crate::cert::PeerCerts;
+use crate::command::{CmdPipe, SIGNAL_HANDLE};
+use crate::config::{Config, Entrypoint, LogLevel};
+use crate::events::{EventHandlers, Events};
+use crate::form::FormManager;
+use crate::ip_info::IpInfo;
+use crate::log::Logger;
+use crate::result::{EmitError, OpenconnectError, OpenconnectResult};
+use crate::stats::Stats;
+
 use openconnect_sys::*;
-use result::{EmitError, OpenconnectError, OpenconnectResult};
-use stats::Stats;
 use std::{
     ffi::CString,
     sync::{
         atomic::{AtomicI32, Ordering},
-        Arc, RwLock,
+        Arc, RwLock, Weak,
     },
 };
 
@@ -51,81 +56,37 @@ unsafe impl Send for VpnClient {}
 unsafe impl Sync for VpnClient {}
 
 impl VpnClient {
-    pub(crate) unsafe extern "C" fn handle_process_log(
-        _privdata: *mut ::std::os::raw::c_void,
-        level: ::std::os::raw::c_int,
-        buf: *const ::std::os::raw::c_char,
-    ) {
-        let buf = std::ffi::CStr::from_ptr(buf).to_str().ok();
-        let level = level as u32;
-        let level = match level {
-            PRG_ERR => "ERR",
-            PRG_INFO => "INFO",
-            PRG_DEBUG => "DEBUG",
-            PRG_TRACE => "TRACE",
-            _ => "UNKNOWN",
-        };
-        if buf.is_some() {
-            println!("{}: {}", level, buf.unwrap_or(""));
-        }
-    }
-
     pub(crate) extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
-        let client = VpnClient::from_c_void(privdata);
-        if !client.is_null() {
-            unsafe {
-                let vpnc_script_from_config = (*client).config.vpncscript.clone();
+        let client = unsafe { VpnClient::ref_from_raw(privdata) };
 
-                let vpnc_script = {
-                    if let Some(vpnc_script) = vpnc_script_from_config {
-                        CString::new(vpnc_script).expect("TODO: handle CString::new failed")
-                    } else {
-                        CString::from_vec_with_nul(DEFAULT_VPNCSCRIPT.to_vec())
-                            .expect("TODO: handle CString::from_vec_with_nul failed")
-                    }
-                };
+        #[cfg(target_os = "windows")]
+        {
+            // currently use wintun on windows
+            // https://gitlab.com/openconnect/openconnect-gui/-/blob/main/src/vpninfo.cpp?ref_type=heads#L407
+            // TODO: investigate tap ip address allocation, since it works well in Openconnect-GUI
+            let ifname = client
+                .get_hostname()
+                .map(|hostname| format!("tun_{}", hostname));
 
-                #[cfg(target_os = "windows")]
-                {
-                    // currently use wintun on windows
-                    // https://gitlab.com/openconnect/openconnect-gui/-/blob/main/src/vpninfo.cpp?ref_type=heads#L407
-                    // TODO: investigate tap ip address allocation, since it works well in Openconnect-GUI
-                    let hostname = (*client).get_hostname();
-                    let ifname = hostname.and_then(|hostname| {
-                        let ifname = format!("tun_{}", hostname);
-                        CString::new(ifname).ok()
-                    });
+            println!("ifname: {:?}", ifname);
 
-                    if let Some(ifname) = ifname {
-                        let ret = openconnect_setup_tun_device(
-                            (*client).vpninfo,
-                            vpnc_script.as_ptr(),
-                            ifname.as_ptr(),
-                        );
-                        // TODO: handle ret
-                        println!("setup_tun_device ret: {}", ret);
-                    } else {
-                        panic!("setup_tun_device failed: ifname is None");
-                    }
-                }
+            // TODO: handle result
+            let _result = client.setup_tun_device(None, ifname);
+        }
 
-                #[cfg(not(target_os = "windows"))]
-                {
-                    let ret = openconnect_setup_tun_device(
-                        (*client).vpninfo,
-                        vpnc_script.as_ptr(),
-                        std::ptr::null(), // currently use tun/tap on linux
-                    );
-
-                    // TODO: handle ret
-                    println!("setup_tun_device ret: {}", ret);
-                }
-            }
+        #[cfg(not(target_os = "windows"))]
+        {
+            // TODO: handle result
+            let _result = client.setup_tun_device(None, None);
         }
     }
 
-    pub(crate) fn from_c_void(ptr: *mut std::os::raw::c_void) -> *mut Self {
-        ptr.cast()
+    /// Reclaim a reference from c_void
+    ///
+    /// SAFETY: You must ensure that the pointer is valid and points to a valid instance of `Self`
+    pub(crate) unsafe fn ref_from_raw<'a>(ptr: *mut std::os::raw::c_void) -> &'a Self {
+        let ptr = ptr.cast::<Self>();
+        &*ptr
     }
 
     pub(crate) fn handle_text_input(&self, field_name: &str) -> Option<String> {
@@ -192,6 +153,47 @@ impl VpnClient {
         }
     }
 
+    pub fn setup_tun_device(
+        &self,
+        vpnc_script: Option<String>,
+        ifname: Option<String>,
+    ) -> OpenconnectResult<()> {
+        let vpnc_script_from_config = vpnc_script.or_else(|| self.config.vpncscript.clone());
+
+        let vpnc_script = {
+            if let Some(vpnc_script) = vpnc_script_from_config {
+                CString::new(vpnc_script)
+                    .map_err(|_| OpenconnectError::SetupTunDeviceEror(libc::EIO))?
+            } else {
+                #[cfg(not(target_os = "windows"))]
+                const DEFAULT_SCRIPT: &str = "./vpnc-script";
+
+                #[cfg(target_os = "windows")]
+                const DEFAULT_SCRIPT: &str = "./vpnc-script-win.js";
+
+                CString::new(DEFAULT_SCRIPT)
+                    .map_err(|_| OpenconnectError::SetupTunDeviceEror(libc::EIO))?
+            }
+        };
+
+        let ifname = ifname.and_then(|s| CString::new(s).ok());
+
+        let ret = unsafe {
+            openconnect_setup_tun_device(
+                self.vpninfo,
+                vpnc_script.as_ptr(),
+                ifname.as_ref().map_or_else(std::ptr::null, |s| s.as_ptr()),
+            )
+        };
+
+        let _manually_dropped = ifname; // SAFETY: dont remove this line, ifname's lifetime should be extended
+
+        match ret {
+            0 => Ok(()),
+            _ => Err(OpenconnectError::SetupTunDeviceEror(ret)),
+        }
+    }
+
     pub fn set_setup_tun_handler(&self) {
         unsafe {
             openconnect_set_setup_tun_handler(self.vpninfo, Some(VpnClient::default_setup_tun_vfn));
@@ -247,32 +249,15 @@ impl VpnClient {
     }
 
     pub fn setup_cmd_pipe(&self) -> OpenconnectResult<()> {
-        unsafe {
+        let cmd_fd = unsafe {
             let cmd_fd = openconnect_setup_cmd_pipe(self.vpninfo);
             self.cmd_fd.store(cmd_fd, Ordering::Relaxed);
             if cmd_fd < 0 {
                 return Err(result::OpenconnectError::CmdPipeError(cmd_fd));
             }
-
-            #[cfg(not(target_os = "windows"))]
-            {
-                libc::fcntl(
-                    cmd_fd,
-                    libc::F_SETFL,
-                    libc::fcntl(cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK,
-                );
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                let mut mode: u32 = 0;
-                windows_sys::Win32::Networking::WinSock::ioctlsocket(
-                    cmd_fd as usize,
-                    windows_sys::Win32::Networking::WinSock::FIONBIO,
-                    &mut mode,
-                );
-            }
-        }
+            cmd_fd
+        };
+        self.set_sock_block(cmd_fd);
         Ok(())
     }
 
@@ -288,6 +273,30 @@ impl VpnClient {
             0 => Ok(()),
             _ => Err(OpenconnectError::MakeCstpError(ret)),
         }
+    }
+
+    pub fn get_dlts_cipher(&self) -> Option<String> {
+        unsafe {
+            let cipher = openconnect_get_dtls_cipher(self.vpninfo);
+            if !cipher.is_null() {
+                Some(
+                    std::ffi::CStr::from_ptr(cipher)
+                        .to_str()
+                        .unwrap()
+                        .to_string(),
+                )
+            } else {
+                None
+            }
+        }
+    }
+
+    pub fn get_peer_cert_hash(&self) -> String {
+        // SAFETY: we should not use CString::from_raw(peer_fingerprint)
+        // because peer_fingerprint will be deallocated in rust and cause a double free
+        unsafe { std::ffi::CStr::from_ptr(openconnect_get_peer_cert_hash(self.vpninfo)) }
+            .to_string_lossy()
+            .to_string()
     }
 
     pub fn disable_dtls(&self) -> OpenconnectResult<()> {
@@ -391,7 +400,7 @@ impl VpnClient {
         unsafe {
             openconnect_vpninfo_free(self.vpninfo);
         }
-        println!("free context");
+        tracing::debug!("Client instance is dropped");
     }
 }
 
@@ -426,34 +435,34 @@ impl Connectable for VpnClient {
             peer_certs: PeerCerts::default(),
         });
 
-        let instance = Arc::into_raw(instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
-
-        let instance = unsafe {
+        unsafe {
+            let weak_instance = Arc::downgrade(&instance);
+            let raw_instance = Weak::into_raw(weak_instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
             let ret = openconnect_init_ssl();
             if ret != 0 {
                 panic!("openconnect_init_ssl failed");
             }
 
             // format args on C side
-            helper_set_global_progress_vfn(Some(Self::handle_process_log));
+            helper_set_global_progress_vfn(Some(Logger::raw_handle_process_log));
 
             let vpninfo = openconnect_vpninfo_new(
                 useragent.as_ptr(),
-                Some(cert::validate_peer_cert),
+                Some(PeerCerts::validate_peer_cert),
                 None,
                 Some(FormManager::process_auth_form_cb),
                 Some(helper_format_vargs), // format args on C side
-                instance as *mut ::std::os::raw::c_void,
+                raw_instance as *mut ::std::os::raw::c_void,
             );
 
             if vpninfo.is_null() {
                 panic!("openconnect_vpninfo_new failed");
             }
 
-            (*instance).vpninfo = vpninfo;
-            Arc::from_raw(instance) // reclaim ownership
+            (*raw_instance).vpninfo = vpninfo;
         };
 
+        SIGNAL_HANDLE.update_client_singleton(Arc::downgrade(&instance));
         instance.set_loglevel(instance.config.loglevel);
         instance.set_setup_tun_handler();
 
@@ -535,8 +544,9 @@ impl Connectable for VpnClient {
             }
         }
 
-        self.reset_ssl();
-        self.clear_cookie();
+        // TODO: check if the following should be invoke?
+        // self.reset_ssl();
+        // self.clear_cookie();
         self.emit_state_change(Status::Disconnected);
 
         Ok(())
@@ -549,35 +559,8 @@ impl Connectable for VpnClient {
         }
 
         self.emit_state_change(Status::Disconnecting);
-
-        let cmd = OC_CMD_CANCEL;
-        unsafe {
-            let cmd_fd = self.cmd_fd.load(Ordering::SeqCst);
-            if cmd_fd != -1 {
-                let ret = {
-                    #[cfg(not(target_os = "windows"))]
-                    {
-                        libc::write(cmd_fd, std::ptr::from_ref(&cmd) as *const _, 1)
-                    }
-
-                    #[cfg(target_os = "windows")]
-                    {
-                        windows_sys::Win32::Networking::WinSock::send(
-                            cmd_fd as usize,
-                            std::ptr::from_ref(&cmd) as *const _,
-                            1,
-                            0,
-                        )
-                    }
-                };
-
-                if ret < 0 {
-                    println!("write cmd_fd failed");
-                }
-
-                self.cmd_fd.store(-1, Ordering::SeqCst);
-            }
-        }
+        self.send_command(command::Command::Cancel);
+        self.cmd_fd.store(-1, Ordering::SeqCst);
 
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
@@ -594,25 +577,6 @@ impl Connectable for VpnClient {
             .read()
             .ok()
             .map_or(Status::Initialized, |r| r.clone())
-    }
-}
-
-pub trait Shutdown {
-    fn with_ctrlc_shutdown(self) -> OpenconnectResult<Self>
-    where
-        Self: std::marker::Sized;
-}
-
-impl Shutdown for Arc<VpnClient> {
-    fn with_ctrlc_shutdown(self) -> OpenconnectResult<Self> {
-        let cloned_client = self.clone();
-
-        ctrlc::set_handler(move || {
-            cloned_client.disconnect();
-        })
-        .map_err(|e| OpenconnectError::SetupShutdownError(e.to_string()))?;
-
-        Ok(self)
     }
 }
 

@@ -25,14 +25,14 @@ impl AppSystemTray {
             app_handle
                 .tray_handle()
                 .set_icon(tauri::Icon::Raw(
-                    include_bytes!("../icons/connected.png").to_vec(),
+                    include_bytes!("../icons/connected-w.png").to_vec(),
                 ))
                 .unwrap();
         } else {
             app_handle
                 .tray_handle()
                 .set_icon(tauri::Icon::Raw(
-                    include_bytes!("../icons/disconnected.png").to_vec(),
+                    include_bytes!("../icons/disconnected-w.png").to_vec(),
                 ))
                 .unwrap();
         }
@@ -119,6 +119,10 @@ impl AppSystemTray {
             }
             SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
                 "quit" => {
+                    tauri::async_runtime::block_on(async {
+                        let app_state: State<'_, AppState> = app_handle.state();
+                        let _ = app_state.disconnect().await;
+                    });
                     app_handle.exit(0);
                 }
                 "show" => {

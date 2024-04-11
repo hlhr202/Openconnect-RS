@@ -1,0 +1,88 @@
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "crates/openconnect-sys"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { icon: '🟦', sys: mingw64 }
+    name: 🚧${{ matrix.icon }} ${{ matrix.sys }}
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+
+    - name: '${{ matrix.icon }} Setup MSYS2'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: ${{matrix.sys}}
+        update: true
+        install: >-
+          git
+          curl
+          make
+          zip
+          base-devel
+          mingw-w64-x86_64-toolchain
+          automake
+          libtool
+          gettext
+          autotools
+          pkg-config
+          openssl
+          openssl-devel
+          mingw-w64-x86_64-openssl
+          libxml2
+          libxml2-devel
+          mingw-w64-x86_64-libxml2
+          libiconv
+          libiconv-devel
+          mingw-w64-x86_64-libiconv
+          zlib
+          zlib-devel
+          mingw-w64-x86_64-zlib
+          liblz4
+          liblz4-devel
+          mingw-w64-x86_64-lz4
+          liblzma
+          liblzma-devel
+          mingw-w64-x86_64-xz
+          icu
+          icu-devel
+          mingw-w64-x86_64-icu
+        pacboy: >-
+          toolchain:p
+
+    - name: '🚧 Build TOOL'
+      run: |
+        git clone --branch v9.12 https://gitlab.com/openconnect/openconnect.git
+        cd openconnect
+        curl -O https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script-win.js
+        ./autogen.sh
+        ./configure --enable-shared --enable-static \
+          --with-openssl \
+          --without-gssapi \
+          --without-libproxy \
+          --without-stoken \
+          --without-libpcsclite \
+          --without-libpskc \
+          --without-gnutls \
+          --with-vpnc-script=./vpnc-script-win.js
+        make clean
+        echo "#define LIBXML_STATIC" >>config.h
+        make
+        rm -r .git
+        cd ../
+        zip -r openconnect.zip openconnect
+
+    - name: 'Upload'
+      uses: actions/upload-artifact@v4.3.1
+      with:
+        name: prebuilt-openconnect-msys
+        path: openconnect.zip

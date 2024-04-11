@@ -1,5 +1,6 @@
 [env]
 OPENSSL_STATIC = "yes"
+OPENCONNECT_USE_PREBUILT = "true"
 
 [target.x86_64-pc-windows-gnu]
 linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"

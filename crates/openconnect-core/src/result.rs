@@ -36,6 +36,9 @@ pub enum OpenconnectError {
     #[error("Failed to parse URL. Error code: {0}")]
     ParseUrlError(i32),
 
+    #[error("Failed to setup tun device. Error code: {0}")]
+    SetupTunDeviceEror(i32),
+
     #[error("Failed to set client certificate. Error code: {0}")]
     SetClientCertError(i32),
 

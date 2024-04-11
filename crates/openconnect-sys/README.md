@@ -4,17 +4,6 @@
 
 according to the openconnect [build guide](https://www.infradead.org/openconnect/building.html), you should install the following packages as dependencies.
 
-### Download vpnc-script if you don't have it
-
-You can test if vpnc-script exists in your system by `ls /etc/vpnc/vpnc-script` or `ls /usr/share/vpnc-scripts/vpnc-script`. If it doesn't exist, you can download it from the openconnect project.
-
-```bash
-# you may need to run under sudo
-mkdir -p /opt/vpnc-scripts
-curl -o /opt/vpnc-scripts/vpnc-script https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script
-chmod +x /opt/vpnc-scripts/vpnc-script
-```
-
 ### For Ubuntu
 
 ```bash
@@ -24,7 +13,7 @@ apt install openssl libssl-dev
 apt install pkg-config
 ```
 
-For building tools:
+For building tools (if you don't want to use the prebuilt openconnect):
 
 ```bash
 apt install automake # for aclocal
@@ -41,7 +30,7 @@ brew install openssl
 brew install pkg-config
 ```
 
-For building tools:
+For building tools (if you don't want to use the prebuilt openconnect):
 
 ```bash
 brew install automake # for aclocal
@@ -78,49 +67,15 @@ pacman -S liblzma liblzma-devel mingw-w64-x86_64-xz
 pacman -S icu icu-devel mingw-w64-x86_64-icu
 ```
 
-### Minor changes for Windows
+### Related to prebuilt openconnect
 
-- in config.h, you may add
+By default, we use the prebuilt openconnect static lib, which is downloaded from [sourceforge](https://sourceforge.net/projects/openconnect-prebuilt/files/).
 
-  ```c
-  #define LIBXML_STATIC
-  ```
+If you want to build the openconnect static lib when building the crate, you can add environment variable to your .cargo/config file.
 
-- for cargo build, you have to use CFLAGS under MSYS2 MINGW64 shell, this avoid error when building rustls.
-  See details here: https://github.com/aws/aws-lc-rs/issues/370
-
-  For bash:
-
-  ```bash
-  export CFLAGS="-D_ISOC11_SOURCE" && cargo build
-  ```
-
-  For powershell:
-
-  ```powershell
-  $env:CFLAGS="-D_ISOC11_SOURCE"; cargo build
-  ```
-
-## Download source
-
-```bash
-git clone https://gitlab.com/openconnect/openconnect.git
+```toml
+[env]
+OPENCONNECT_USE_PREBUILT = "false"
 ```
 
-## Build static library
-
-```bash
-cd openconnect
-./autogen.sh
-./configure --enable-shared --enable-static \
-    --with-openssl \
-    --without-gssapi \
-    --without-libproxy \
-    --without-stoken \
-    --without-libpcsclite \
-    --without-libpskc \
-    --without-gnutls
-    # --with-vpnc-script=./vpnc-script-win.js # for windows
-    # --with-vpnc-script=/opt/vpnc-scripts/vpnc-script # for *nix without vpnc-script installed
-make
-```
+A further investigation of manual build can be found in [MANUAL_BUILD.md](MANUAL_BUILD.md).

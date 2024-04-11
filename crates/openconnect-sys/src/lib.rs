@@ -3,7 +3,28 @@
 #![allow(non_snake_case)]
 extern crate openssl_sys;
 
-include!(concat!(env!("OUT_DIR"), "/bindings.rs"));
+#[cfg(target_os = "macos")]
+#[cfg(target_arch = "aarch64")]
+include!("bindings_aarch64_macos.rs");
+
+#[cfg(target_os = "macos")]
+#[cfg(target_arch = "x86_64")]
+include!("bindings_x86_64_macos.rs");
+
+#[cfg(target_os = "linux")]
+#[cfg(target_arch = "x86_64")]
+#[cfg(target_env = "gnu")]
+include!("bindings_x86_64_linux_gnu.rs");
+
+#[cfg(target_os = "linux")]
+#[cfg(target_arch = "x86_64")]
+#[cfg(target_env = "musl")]
+include!("bindings_x86_64_linux_musl.rs");
+
+#[cfg(target_os = "windows")]
+#[cfg(target_arch = "x86_64")]
+#[cfg(target_env = "gnu")]
+include!("bindings_x86_64_windows_gnu.rs");
 
 #[cfg(test)]
 mod tests {

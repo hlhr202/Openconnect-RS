@@ -11,11 +11,16 @@
   },
   "tauri": {
     "systemTray": {
-      "iconPath": "icons/disconnected.png",
-      "iconAsTemplate": true
+      "iconPath": "icons/disconnected-w.png"
     },
     "macOSPrivateApi": true,
     "allowlist": {
+      "globalShortcut": {
+        "all": true
+      },
+      "os": {
+        "all": true
+      },
       "fs": {
         "scope": ["$RESOURCE/*"]
       },
@@ -57,7 +62,7 @@
     "bundle": {
       "active": true,
       "targets": "all",
-      "identifier": "com.openconnect-gui.app",
+      "identifier": "com.openconnect-gui.rs",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
@@ -69,8 +74,8 @@
         "vpnc-script",
         "vpnc-script-win.js",
         "wintun.dll",
-        "icons/connected.png",
-        "icons/disconnected.png"
+        "icons/connected-w.png",
+        "icons/disconnected-w.png"
       ]
     }
   }

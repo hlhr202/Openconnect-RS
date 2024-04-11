@@ -1,5 +1,3 @@
-#![allow(clippy::not_unsafe_ptr_arg_deref)]
-
 use crate::VpnClient;
 use openconnect_sys::{
     oc_form_opt_select, openconnect_set_option_value, OC_FORM_OPT_HIDDEN, OC_FORM_OPT_IGNORE,
@@ -17,7 +15,6 @@ pub struct FormField {
     pub value: Option<String>,
 }
 
-#[repr(C)]
 pub struct FormManager {
     last_form_empty: i32,
     saved_form_fields: Vec<FormField>, // TODO: currently not in use
@@ -89,15 +86,16 @@ impl FormManager {
 
     // TODO: forward rust string to C
     #[no_mangle]
-    pub extern "C" fn process_auth_form_cb(
+    pub(crate) extern "C" fn process_auth_form_cb(
         privdata: *mut ::std::os::raw::c_void,
         form: *mut openconnect_sys::oc_auth_form,
     ) -> ::std::os::raw::c_int {
-        println!("process_auth_form_cb");
-        let client = VpnClient::from_c_void(privdata);
+        tracing::debug!("Calling process_auth_form_cb");
+
+        let client = unsafe { VpnClient::ref_from_raw(privdata) };
         unsafe {
             // TODO: review this
-            let mut this = (*client)
+            let mut this = client
                 .form_manager
                 .try_write()
                 .expect("try_write form_context failed");
@@ -150,12 +148,12 @@ impl FormManager {
                     }
                     OC_FORM_OPT_TEXT => {
                         let opt_name = std::ffi::CStr::from_ptr((*opt).name).to_str().unwrap();
-                        let value = (*client).handle_text_input(opt_name);
+                        let value = client.handle_text_input(opt_name);
                         if let Some(value) = value {
                             let value = CString::new(value).unwrap();
                             openconnect_set_option_value(opt, value.as_ptr());
 
-                            // if (*client).form_attempt == 0
+                            // if client.form_attempt == 0
                             //     && (opt_name == "user" || opt_name == "uname" || opt_name == "username")
                             // {
                             //     openconnect_set_option_value(opt, user.as_c_str().as_ptr());
@@ -180,7 +178,7 @@ impl FormManager {
                         }
                     }
                     OC_FORM_OPT_PASSWORD => {
-                        let value = (*client).handle_password_input();
+                        let value = client.handle_password_input();
                         if let Some(value) = value {
                             let value = CString::new(value).unwrap();
                             openconnect_set_option_value(opt, value.as_ptr());
@@ -228,8 +226,8 @@ impl FormManager {
                 return OC_FORM_RESULT_CANCELLED as i32;
             }
         }
-        println!("Submitting form");
-        println!();
+
+        tracing::debug!("Successfully processed auth form");
         OC_FORM_RESULT_OK as i32
     }
 }
