@@ -79,10 +79,15 @@ jobs:
           package_json_file: ./crates/openconnect-gui/package.json
           version: 8
 
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-gnu
+
       - name: Build
         working-directory: ./crates/openconnect-gui
         run: |
-          rustup default stable-x86_64-pc-windows-gnu
           pnpm install
           pnpm tauri build
 
