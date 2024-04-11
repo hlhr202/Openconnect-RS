@@ -1,0 +1,83 @@
+name: Windows Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { sys: mingw64 }
+    name: ${{ matrix.sys }}
+    defaults:
+      run:
+        shell: msys2 {0}
+
+    steps:
+    - uses: msys2/setup-msys2@v2
+      name: Setup MinGW64
+      with:
+        msystem: ${{matrix.sys}}
+        update: true
+        install: >-
+          git
+          curl
+          make
+          zip
+          base-devel
+          mingw-w64-x86_64-toolchain
+          automake
+          libtool
+          gettext
+          autotools
+          pkg-config
+          openssl
+          openssl-devel
+          mingw-w64-x86_64-openssl
+          libxml2
+          libxml2-devel
+          mingw-w64-x86_64-libxml2
+          libiconv
+          libiconv-devel
+          mingw-w64-x86_64-libiconv
+          zlib
+          zlib-devel
+          mingw-w64-x86_64-zlib
+          liblz4
+          liblz4-devel
+          mingw-w64-x86_64-lz4
+          liblzma
+          liblzma-devel
+          mingw-w64-x86_64-xz
+          icu
+          icu-devel
+          mingw-w64-x86_64-icu
+          mingw-w64-x86_64-nodejs
+        pacboy: >-
+          toolchain:p
+      
+    - name: Setup PNPM
+      uses: actions/checkout@v3
+      
+    - name: Build
+      working-directory: ./crates/openconnect-gui
+      run: |
+        pnpm install
+        pnpm tauri build
+
+    - name: Upload
+      uses: actions/upload-artifact@v4.3.1
+      with:
+        name: openconnect-win
+        path: ./target/release/bundle/
+    
