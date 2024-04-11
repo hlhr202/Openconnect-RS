@@ -5,7 +5,7 @@ use lib_prob::*;
 use std::env;
 use std::path::PathBuf;
 
-use crate::download_prebuilt::download_from_sourceforge;
+use crate::download_prebuilt::download_prebuilt_from_sourceforge;
 
 // TODO: optimize path search
 fn main() {
@@ -28,7 +28,7 @@ fn main() {
 
     if !static_lib.exists() {
         if use_prebuilt {
-            download_from_sourceforge(out_path.clone());
+            download_prebuilt_from_sourceforge(out_path.clone());
         } else {
             let script = current_dir.join("scripts/nix.sh");
             let _ = std::process::Command::new("sh")
