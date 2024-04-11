@@ -89,6 +89,7 @@ jobs:
       - name: Build
         working-directory: ./crates/openconnect-gui
         run: |
+          rustup default stable-x86_64-pc-windows-gnu
           pnpm install
           pnpm tauri build
 
