@@ -13,6 +13,10 @@ const URL: &str = "https://master.dl.sourceforge.net/project/openconnect-prebuil
 #[cfg(target_env = "gnu")]
 const URL: &str = "https://master.dl.sourceforge.net/project/openconnect-prebuilt/prebuilt-openconnect-msys.zip?viasf=1";
 
+#[cfg(target_os = "linux")]
+#[cfg(target_arch = "x86_64")]
+const URL: &str = "https://master.dl.sourceforge.net/project/openconnect-prebuilt/prebuilt-openconnect-linux-x86_64.zip?viasf=1";
+
 pub fn download_prebuilt_from_sourceforge(outdir: PathBuf) {
     let output = outdir.join("openconnect.zip");
     let mut response = reqwest::blocking::get(URL).unwrap();
