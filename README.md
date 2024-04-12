@@ -1,12 +1,8 @@
 # OpenConnect for Rust
 
-<img alt="GitHub License" src="https://img.shields.io/github/license/hlhr202/Openconnect-RS">
-<img alt="Crates.io Version" src="https://img.shields.io/crates/v/openconnect-core?label=crates.io%20openconnect-core">
-<img alt="GitHub Release" src="https://img.shields.io/github/v/release/hlhr202/Openconnect-RS?include_prereleases">
+<img alt="GitHub License" src="https://img.shields.io/github/license/hlhr202/Openconnect-RS"> <img alt="Crates.io Version" src="https://img.shields.io/crates/v/openconnect-core?label=crates.io%20openconnect-core"> <img alt="GitHub Release" src="https://img.shields.io/github/v/release/hlhr202/Openconnect-RS?include_prereleases">
 
-<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mingw64.yml?label=win-x86_64%20build">
-<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mac-aarch64.yml?label=mac-aarch64%20build" />
-<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mac-x64.yml?label=mac-x86_64%20build">
+<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mingw64.yml?label=win-x86_64%20build"> <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mac-aarch64.yml?label=mac-aarch64%20build" /> <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mac-x64.yml?label=mac-x86_64%20build">
 
 This is a cross-platform GUI client for OpenConnect, written in Rust and designed to work seamlessly on Windows, Linux, and macOS desktop systems. The program utilizes various technologies including MSYS2, Tauri, React, and NextUI. It provides a user-friendly interface for connecting to VPN servers using both password and OIDC authentication methods.
 
