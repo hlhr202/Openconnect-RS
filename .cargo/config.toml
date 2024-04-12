@@ -2,9 +2,9 @@
 OPENSSL_STATIC = "yes"
 OPENCONNECT_USE_PREBUILT = "true"
 
-[target.x86_64-pc-windows-gnu]
-linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"
-ar = "C:\\msys64\\mingw64\\bin\\ar.exe"
+# [target.x86_64-pc-windows-gnu]
+# linker = "C:\\msys64\\mingw64\\bin\\gcc.exe"
+# ar = "C:\\msys64\\mingw64\\bin\\ar.exe"
 
 [target.x86_64-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-Wl,-rpath,$ORIGIN/"]
