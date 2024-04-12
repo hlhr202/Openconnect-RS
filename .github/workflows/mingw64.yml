@@ -86,6 +86,14 @@ jobs:
           toolchain: stable
           target: x86_64-pc-windows-gnu
 
+      - name: Setup Vcpkg
+        uses: johnwason/vcpkg-action@v6
+        with:
+          triplet: x64-windows-release
+          pkgs: openssl
+          github-binarycache: true
+          token: ${{ github.token }}
+
       - name: Build
         working-directory: ./crates/openconnect-gui
         run: |
