@@ -4,6 +4,11 @@ version = "0.1.1"
 edition = "2021"
 description = "A library for interacting with OpenConnect VPN"
 license = "LGPL-2.1"
+repository = "https://github.com/hlhr202/Openconnect-RS"
+homepage = "https://github.com/hlhr202/Openconnect-RS"
+authors = ["hlhr202"]
+readme = "../../README.md"
+keywords = ["openconnect", "vpn", "networking", "security"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 

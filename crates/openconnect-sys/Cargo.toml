@@ -5,6 +5,10 @@ edition = "2021"
 build = "build/main.rs"
 description = "Rust bindings for OpenConnect"
 license = "LGPL-2.1"
+repository = "https://github.com/hlhr202/Openconnect-RS"
+homepage = "https://github.com/hlhr202/Openconnect-RS"
+authors = ["hlhr202"]
+keywords = ["openconnect", "vpn", "networking", "security"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
