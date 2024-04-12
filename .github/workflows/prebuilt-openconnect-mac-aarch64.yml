@@ -1,3 +1,5 @@
+name: Mac ARM64 Prebuilt OpenConnect
+
 on:
   workflow_dispatch:
   push:

@@ -1,3 +1,5 @@
+name: Windows x64 Prebuilt OpenConnect
+
 on:
   workflow_dispatch:
   push:
