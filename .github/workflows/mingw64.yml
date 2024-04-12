@@ -85,20 +85,20 @@ jobs:
         with:
           toolchain: stable
           target: x86_64-pc-windows-gnu
+          cache: true
 
-      - name: Setup Vcpkg
-        uses: johnwason/vcpkg-action@v6
-        with:
-          triplet: x64-windows-release
-          pkgs: openssl
-          github-binarycache: true
-          token: ${{ github.token }}
+      # - name: Setup Vcpkg
+      #   uses: johnwason/vcpkg-action@v6
+      #   with:
+      #     triplet: x64-windows-release
+      #     pkgs: openssl
+      #     github-binarycache: true
+      #     token: ${{ github.token }}
 
       - name: Build
         working-directory: ./crates/openconnect-gui
         run: |
-          export VCPKG_ROOT=${{ github.workspace }}/vcpkg
-          rustup default stable-x86_64-pc-windows-gnu
+          rustup override set stable-x86_64-pc-windows-gnu
           pnpm install
           pnpm tauri build
 
