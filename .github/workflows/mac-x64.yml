@@ -1,0 +1,52 @@
+name: Mac x64 Build
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - v*
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: macos-13
+    steps:
+      - name: Install Package
+        uses: ConorMacBride/install-package@v1.1.0
+        with:
+          brew: libxml2 zlib openssl pkg-config automake libtool gettext zip
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4.0.2
+        with:
+          node-version: ">=20"
+
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Setup PNPM
+        uses: pnpm/action-setup@v3
+        with:
+          run_install: false
+          package_json_file: ./crates/openconnect-gui/package.json
+          version: 8
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: x86_64-apple-darwin
+          cache: true
+
+      - name: Build
+        run: |
+          cd ./crates/openconnect-gui
+          pnpm install
+          pnpm tauri build
+
+      - name: Upload
+        uses: actions/upload-artifact@v4.3.1
+        with:
+          name: openconnect-win
+          path: ./target/release/bundle/
