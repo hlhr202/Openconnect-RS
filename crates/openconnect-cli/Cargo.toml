@@ -1,0 +1,16 @@
+[package]
+name = "openconnect-cli"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+clap = { workspace = true }
+tokio = { workspace = true }
+tokio-serde = { workspace = true }
+tokio-util = { workspace = true }
+futures = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+libc = { workspace = true }
+openconnect-core = { path = "../openconnect-core", version = "0.1.1" }
+sudo = { workspace = true }

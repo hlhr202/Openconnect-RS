@@ -5,6 +5,7 @@ members = [
     "crates/openconnect-sys",
     "crates/openconnect-core",
     "crates/openconnect-gui/src-tauri",
+    "crates/openconnect-cli",
 ]
 
 [workspace.dependencies]
@@ -14,12 +15,20 @@ reqwest = { version = "0.12.2", features = [
     "blocking",
     "cookies",
 ] }
-tokio = { version = "1.36.0", features = ["full"] }
+clap = { version = "4.5.4", features = ["derive"] }
+tokio = { version = "1.37.0", features = ["full"] }
+tokio-serde = { version = "0.9.0", features = ["json", "serde"] }
+tokio-util = { version = "0.7.10", features = ["codec"] }
+futures = "0.3.30"
 anyhow = "1.0.81"
 dotenvy = "0.15.7"
 thiserror = "1.0.58"
 windows-sys = "0.52.0"
-windows = { version = "0.54.0", features = ["Win32_Foundation", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+windows = { version = "0.54.0", features = [
+    "Win32_Foundation",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
 security-framework = "2.9.2"
 sudo = "0.6.0"
 serde = { version = "1.0.197", features = ["derive"] }
@@ -37,3 +46,4 @@ machine-uid = "0.5.1"
 chacha20poly1305 = "0.10.1"
 tracing = "0.1.40"
 tracing-subscriber = "0.3.18"
+tracing-appender = "0.2.3"

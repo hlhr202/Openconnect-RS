@@ -9,12 +9,14 @@ pub struct Logger;
 
 impl Logger {
     pub fn init() -> Result<(), SetGlobalDefaultError> {
+        // let file_appender = tracing_appender::rolling::daily("/tmp/openconnect-rs", "a.log");
         // for file based logging, waiting https://github.com/tokio-rs/tracing/pull/2497 to be merged
         let subscriber = tracing_subscriber::fmt()
             .compact()
             .with_level(true)
             .with_target(true)
             .with_max_level(Level::TRACE)
+            // .with_writer(file_appender)
             .finish();
 
         set_global_default(subscriber)
