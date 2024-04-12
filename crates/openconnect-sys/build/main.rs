@@ -102,7 +102,7 @@ fn main() {
         try_pkg_config(vec!["openssl", "libxml-2.0", "zlib", "liblz4"]);
 
         // link for c++ stdlib
-        println!("cargo:rustc-link-lib=static=intl"); // fix for x86 catalina
+        // println!("cargo:rustc-link-lib=static=intl"); // fix for x86 catalina
         println!("cargo:rustc-link-lib=dylib=c++");
         println!("cargo:rustc-link-lib=dylib=c++abi");
 
