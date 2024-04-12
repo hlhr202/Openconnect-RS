@@ -48,5 +48,5 @@ jobs:
       - name: Upload
         uses: actions/upload-artifact@v4.3.1
         with:
-          name: openconnect-win
+          name: openconnect-mac-x64
           path: ./target/release/bundle/
