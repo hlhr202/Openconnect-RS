@@ -18,3 +18,4 @@ sudo = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
+comfy-table = "7.1.1"

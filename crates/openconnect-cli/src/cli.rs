@@ -13,28 +13,40 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
-    #[command(about = "Connect to a VPN server")]
-    Connect {
+    #[command(about = "Connect to a VPN server and run in daemon mode", visible_aliases = ["connect", "run"])]
+    Start {
         /// The server name saved in local config file to connect to
-        #[arg(short, long)]
-        server_name: String,
+        name: String,
 
         /// The path to the local config file
-        #[arg(short, long)]
+        #[arg(short, long, value_hint = clap::ValueHint::FilePath)]
         config_file: Option<String>,
     },
 
-    #[command(about = "Get the current VPN connection status")]
-    Info,
+    #[command(about = "Get the current VPN connection status", visible_aliases = ["info", "stat"])]
+    Status,
 
-    #[command(about = "Close the current connection and exit the daemon process")]
+    #[command(about = "Close the current connection and exit the daemon process", visible_aliases = ["kill", "disconnect"])]
     Stop,
 
     #[command(
         subcommand,
-        about = "Add new VPN server configuration to local config file"
+        about = "Add new VPN server configuration to local config file",
+        visible_aliases = ["new", "create", "insert"]
     )]
     Add(ServerType),
+
+    #[command(about = "Delete a VPN server configuration from local config file", visible_aliases = ["rm", "remove", "del"])]
+    Delete {
+        /// The server name saved in local config file to delete
+        name: String,
+    },
+
+    #[command(about = "List all VPN server configurations in local config file", visible_aliases = ["ls", "l"])]
+    List,
+
+    #[command(about = "Show logs of the daemon process", visible_aliases = ["log"])]
+    Logs,
 }
 
 #[derive(Subcommand, Debug)]
@@ -44,13 +56,13 @@ pub enum ServerType {
         #[arg(short, long)]
         name: String,
 
-        #[arg(short, long)]
+        #[arg(short, long, value_hint = clap::ValueHint::Url)]
         server: String,
 
-        #[arg(short, long)]
+        #[arg(short = 'I', long)]
         issuer: String,
 
-        #[arg(short = 'c', long)]
+        #[arg(short = 'i', long)]
         client_id: String,
 
         #[arg(short = 'k', long)]
@@ -65,7 +77,7 @@ pub enum ServerType {
         #[arg(short, long)]
         name: String,
 
-        #[arg(short, long)]
+        #[arg(short, long, value_hint = clap::ValueHint::Url)]
         server: String,
 
         #[arg(short, long)]

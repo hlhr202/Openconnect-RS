@@ -7,6 +7,7 @@ use std::ffi::CStr;
 //     pub next: Arc<SplitInclude>,
 // }
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct IpInfo {
     pub addr: Option<String>,
     pub netmask: Option<String>,

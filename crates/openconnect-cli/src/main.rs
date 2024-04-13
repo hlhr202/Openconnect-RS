@@ -5,15 +5,17 @@ mod sock;
 use crate::sock::Server;
 use clap::Parser;
 use cli::{Cli, Commands, ServerType};
+use comfy_table::Table;
 use futures::{SinkExt, TryStreamExt};
 use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
+    ip_info::IpInfo,
     log::Logger,
     storage::{OidcServer, PasswordServer, StoredConfigs, StoredServer},
     Connectable, Status, VpnClient,
 };
-use std::{error::Error, path::PathBuf, sync::Arc};
+use std::{error::Error, io::BufRead, path::PathBuf, sync::Arc};
 use tokio::{
     select,
     signal::unix::{signal, SignalKind},
@@ -27,8 +29,16 @@ pub enum JsonRequest {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum JsonResponse {
-    StopResult { server_name: String },
-    InfoResult { server_name: String, status: String },
+    StopResult {
+        server_name: String,
+    },
+    InfoResult {
+        server_name: String,
+        server_url: String,
+        hostname: String,
+        status: String,
+        info: Option<Box<IpInfo>>,
+    },
 }
 
 async fn connect_password_server(
@@ -87,7 +97,10 @@ async fn try_accept(listener: &tokio::net::UnixListener, client: Arc<VpnClient>)
 
                     JsonRequest::Info => {
                         let server_name = client.get_server_name().unwrap_or("".to_string());
+                        let server_url = client.get_server_url().unwrap_or("".to_string());
+                        let hostname = client.get_hostname().unwrap_or("".to_string());
                         let status = client.get_status();
+                        let info = client.get_info().ok().flatten().map(Box::new);
                         let status = match status {
                             Status::Connected => "Connected",
                             Status::Connecting(_) => "Connecting",
@@ -102,7 +115,10 @@ async fn try_accept(listener: &tokio::net::UnixListener, client: Arc<VpnClient>)
                         let _ = framed_writer
                             .send(JsonResponse::InfoResult {
                                 server_name,
+                                server_url,
+                                hostname,
                                 status,
+                                info,
                             })
                             .await;
                     }
@@ -244,7 +260,82 @@ fn main() {
             });
         }
 
-        Commands::Info => {
+        Commands::Delete { name } => {
+            let config_file =
+                StoredConfigs::getorinit_config_file().expect("Failed to get config file");
+
+            let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+            runtime.block_on(async {
+                let mut stored_configs = StoredConfigs::new(None, config_file);
+
+                stored_configs
+                    .read_from_file()
+                    .await
+                    .expect("Failed to read config file");
+
+                stored_configs
+                    .remove_server(&name)
+                    .await
+                    .expect("Failed to delete server");
+            });
+        }
+
+        Commands::List => {
+            let config_file =
+                StoredConfigs::getorinit_config_file().expect("Failed to get config file");
+
+            let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+            runtime.block_on(async {
+                let mut stored_configs = StoredConfigs::new(None, config_file);
+
+                let stored_configs = stored_configs.read_from_file().await.unwrap();
+                let mut table = Table::new();
+                table.set_header(vec![
+                    "Name".to_string(),
+                    "Type".to_string(),
+                    "Server".to_string(),
+                    "Allow Insecure".to_string(),
+                    "Updated At".to_string(),
+                ]);
+
+                for (name, server) in stored_configs.servers.iter() {
+                    match server {
+                        StoredServer::Oidc(OidcServer {
+                            server,
+                            allow_insecure,
+                            updated_at,
+                            ..
+                        }) => {
+                            table.add_row(vec![
+                                name.clone(),
+                                "OIDC Server".to_string(),
+                                server.clone(),
+                                allow_insecure.unwrap_or(false).to_string(),
+                                updated_at.as_ref().unwrap_or(&"".to_string()).to_owned(),
+                            ]);
+                        }
+                        StoredServer::Password(PasswordServer {
+                            server,
+                            allow_insecure,
+                            updated_at,
+                            ..
+                        }) => {
+                            table.add_row(vec![
+                                name.clone(),
+                                "Password Server".to_string(),
+                                server.clone(),
+                                allow_insecure.unwrap_or(false).to_string(),
+                                updated_at.as_ref().unwrap_or(&"".to_string()).to_owned(),
+                            ]);
+                        }
+                    }
+                }
+
+                println!("{table}");
+            });
+        }
+
+        Commands::Status => {
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
             runtime.block_on(async {
@@ -261,10 +352,58 @@ fn main() {
                             match response {
                                 JsonResponse::InfoResult {
                                     server_name,
+                                    server_url,
+                                    hostname,
                                     status,
+                                    info,
                                 } => {
-                                    println!("Server name: {}", server_name);
-                                    println!("Connection status: {}", status);
+                                    let mut table = Table::new();
+                                    let mut rows = vec![
+                                        vec![format!("Server Name"), server_name],
+                                        vec![format!("Server URL"), server_url],
+                                        vec![format!("Server IP"), hostname],
+                                        vec![format!("Connection Status"), status],
+                                    ];
+
+                                    if let Some(info) = info {
+                                        let addr = info.addr.unwrap_or("".to_string());
+                                        let netmask = info.netmask.unwrap_or("".to_string());
+                                        let addr6 = info.addr6.unwrap_or("".to_string());
+                                        let netmask6 = info.netmask6.unwrap_or("".to_string());
+                                        let dns1 = info.dns[0].clone().unwrap_or("".to_string());
+                                        let dns2 = info.dns[1].clone().unwrap_or("".to_string());
+                                        let dns3 = info.dns[2].clone().unwrap_or("".to_string());
+                                        let nbns1 = info.nbns[0].clone().unwrap_or("".to_string());
+                                        let nbns2 = info.nbns[1].clone().unwrap_or("".to_string());
+                                        let nbns3 = info.nbns[2].clone().unwrap_or("".to_string());
+                                        let domain = info.domain.unwrap_or("".to_string());
+                                        let proxy_pac = info.proxy_pac.unwrap_or("".to_string());
+                                        let mtu = info.mtu.to_string();
+                                        let gateway_addr =
+                                            info.gateway_addr.clone().unwrap_or("".to_string());
+                                        let info_rows = vec![
+                                            vec![format!("IPv4 Address"), addr],
+                                            vec![format!("IPv4 Netmask"), netmask],
+                                            vec![format!("IPv6 Address"), addr6],
+                                            vec![format!("IPv6 Netmask"), netmask6],
+                                            vec![format!("DNS 1"), dns1],
+                                            vec![format!("DNS 2"), dns2],
+                                            vec![format!("DNS 3"), dns3],
+                                            vec![format!("NBNS 1"), nbns1],
+                                            vec![format!("NBNS 2"), nbns2],
+                                            vec![format!("NBNS 3"), nbns3],
+                                            vec![format!("Domain"), domain],
+                                            vec![format!("Proxy PAC"), proxy_pac],
+                                            vec![format!("MTU"), mtu],
+                                            vec![format!("Gateway Address"), gateway_addr],
+                                        ];
+
+                                        rows.extend(info_rows);
+                                    }
+
+                                    table.add_rows(rows);
+
+                                    println!("{table}");
                                 }
                                 _ => {
                                     println!("Received unexpected response");
@@ -278,6 +417,24 @@ fn main() {
                 }
             });
         }
+
+        Commands::Logs => {
+            let log_path = Logger::get_log_path();
+            let files = std::fs::read_dir(log_path)
+                .expect("Failed to read log directory")
+                .flatten()
+                .filter(|f| f.metadata().unwrap().is_file())
+                .max_by_key(|f| f.metadata().unwrap().modified().unwrap());
+
+            if let Some(file) = files {
+                let file = std::fs::File::open(file.path()).expect("Failed to open log file");
+                let reader = std::io::BufReader::new(file);
+                for line in reader.lines() {
+                    println!("{}", line.unwrap());
+                }
+            }
+        }
+
         Commands::Stop => {
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
@@ -308,10 +465,8 @@ fn main() {
                 };
             });
         }
-        Commands::Connect {
-            server_name,
-            config_file,
-        } => {
+
+        Commands::Start { name, config_file } => {
             if sock::exists() {
                 println!("Socket already exists. You may have a connected VPN session or a stale socket file. You may solve by:");
                 println!("1. Stopping the connection by sending stop command.");
@@ -331,7 +486,7 @@ fn main() {
                 daemon::ForkResult::Parent => {
                     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
                     runtime.block_on(async {
-                        match get_server(&server_name, config_file).await {
+                        match get_server(&name, config_file).await {
                             Ok(_) => {}
                             Err(e) => {
                                 println!("Failed to get server: {}", e);
@@ -350,24 +505,16 @@ fn main() {
                 }
             }
 
-            Logger::init().expect("Failed to initialize logger");
-
-            let runtime = tokio::runtime::Runtime::new()
-                .inspect_err(|e| {
-                    tracing::error!("Failed to create runtime: {}", e);
-                })
-                .expect("Failed to create runtime");
+            let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
             let (server, configs) = runtime.block_on(async {
-                get_server(&server_name, config_file)
+                get_server(&name, config_file)
                     .await
-                    .inspect_err(|e| {
-                        tracing::error!("Failed to get server: {}", e);
-                    })
                     .expect("Failed to get server")
             });
 
             runtime.block_on(async {
+                Logger::init().expect("Failed to initialize logger");
                 let _ = start_daemon(&server, &configs).await.inspect_err(|e| {
                     tracing::error!("Failed to start daemon: {}", e);
                 });
