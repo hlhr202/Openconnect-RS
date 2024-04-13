@@ -2,7 +2,7 @@
 # This script will download the Openconnect CLI and vpnc-script and install them in $HOME/.oidcvpn/bin
 # It will also add $HOME/.oidcvpn/bin to PATH
 # Usage:
-# curl -s -L URL_TO_SCRIPT_HERE | bash
+# curl -s -L URL_TO_SCRIPT_HERE | sh
 
 CLI_DOWNLOAD_URL=""
 VPNC_SCRIPT_URL="https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script"
