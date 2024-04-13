@@ -138,6 +138,32 @@ pub enum StoredServer {
     Password(PasswordServer),
 }
 
+impl TryFrom<&StoredServer> for OidcServer {
+    type Error = StoredConfigError;
+
+    fn try_from(server: &StoredServer) -> Result<OidcServer, StoredConfigError> {
+        match server {
+            StoredServer::Oidc(oidc_server) => Ok(oidc_server.clone()),
+            StoredServer::Password(_) => Err(StoredConfigError::ParseError(
+                "Server is not OIDC type".to_string(),
+            )),
+        }
+    }
+}
+
+impl TryFrom<&StoredServer> for PasswordServer {
+    type Error = StoredConfigError;
+
+    fn try_from(server: &StoredServer) -> Result<PasswordServer, StoredConfigError> {
+        match server {
+            StoredServer::Password(password_server) => Ok(password_server.clone()),
+            StoredServer::Oidc(_) => Err(StoredConfigError::ParseError(
+                "Server is not Password type".to_string(),
+            )),
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct StoredConfigs {
     pub default: Option<String>,

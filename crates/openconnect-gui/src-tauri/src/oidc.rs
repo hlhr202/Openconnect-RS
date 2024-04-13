@@ -60,6 +60,7 @@ impl OpenID {
 
             let client =
                 CoreClient::from_provider_metadata(provider_metadata, client_id, client_secret)
+                    // TODO: set_device_authorization_url when calling from CLI
                     .set_redirect_uri(redirect_uri);
 
             if config.use_pkce_challenge {

@@ -45,8 +45,14 @@ jobs:
           pnpm install
           pnpm tauri build
 
+      - name: Build CLI
+        run: |
+          cargo build --release -p openconnect-cli
+
       - name: Upload
         uses: actions/upload-artifact@v4.3.1
         with:
           name: openconnect-mac-aarch64
-          path: ./target/release/bundle/
+          path: |
+            ./target/release/bundle/
+            ./target/release/openconnect-cli
