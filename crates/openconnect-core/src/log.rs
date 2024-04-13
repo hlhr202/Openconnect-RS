@@ -4,19 +4,39 @@ use tracing::{
     subscriber::{set_global_default, SetGlobalDefaultError},
     Level,
 };
+use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
 pub struct Logger;
 
 impl Logger {
+    pub fn get_log_path() -> &'static str {
+        #[cfg(target_os = "linux")]
+        const LOG_PATH: &str = "/var/log/openconnect-rs";
+
+        #[cfg(target_os = "macos")]
+        const LOG_PATH: &str = "/Library/Logs/openconnect-rs";
+
+        #[cfg(target_os = "windows")]
+        const LOG_PATH: &str = "C:\\ProgramData\\openconnect-rs";
+
+        LOG_PATH
+    }
+
     pub fn init() -> Result<(), SetGlobalDefaultError> {
-        // let file_appender = tracing_appender::rolling::daily("/tmp/openconnect-rs", "a.log");
+        let file_appender = RollingFileAppender::builder()
+            .max_log_files(5)
+            .rotation(Rotation::DAILY)
+            .filename_prefix("openconnect-rs.log")
+            .build(Self::get_log_path())
+            .expect("failed to create file appender");
+
         // for file based logging, waiting https://github.com/tokio-rs/tracing/pull/2497 to be merged
         let subscriber = tracing_subscriber::fmt()
             .compact()
             .with_level(true)
             .with_target(true)
             .with_max_level(Level::TRACE)
-            // .with_writer(file_appender)
+            .with_writer(file_appender)
             .finish();
 
         set_global_default(subscriber)

@@ -1,6 +1,7 @@
 use crate::{JsonRequest, JsonResponse};
 use futures::SinkExt;
 use std::path::{Path, PathBuf};
+use thiserror::Error;
 use tokio::net::{
     unix::{OwnedReadHalf, OwnedWriteHalf},
     UnixListener, UnixStream,
@@ -8,7 +9,19 @@ use tokio::net::{
 use tokio_serde::{formats::SymmetricalJson, Framed};
 use tokio_util::codec::{FramedRead, FramedWrite, LengthDelimitedCodec};
 
-const SOCK: &str = "/tmp/openconnect-rs.sock";
+#[derive(Debug, Error)]
+pub enum SockError {
+    #[error("IO error: {0}")]
+    Io(#[from] std::io::Error),
+
+    #[error("No valid connection")]
+    NoValidConnection,
+}
+
+pub fn get_sock() -> PathBuf {
+    let tmp = Path::new("/tmp").to_path_buf();
+    tmp.join("openconnect-rs.sock")
+}
 
 pub type FramedWriter<T> =
     Framed<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>, T, T, SymmetricalJson<T>>;
@@ -28,29 +41,27 @@ pub fn get_framed_reader<T: Sized>(read_half: OwnedReadHalf) -> FramedReader<T> 
 }
 
 pub fn exists() -> bool {
-    Path::new(SOCK).exists()
+    get_sock().exists()
 }
 
 pub struct Server {
-    path: PathBuf,
     pub listener: UnixListener,
 }
 
 impl Server {
-    pub fn bind() -> std::io::Result<Self> {
-        let path = Path::new(SOCK).to_path_buf();
-        let listener = UnixListener::bind(&path)?;
+    pub fn bind() -> Result<Self, SockError> {
+        let listener = UnixListener::bind(get_sock())?;
         let listener = listener.into_std()?;
         listener.set_nonblocking(true)?;
         let listener = UnixListener::from_std(listener)?;
-        Ok(Server { path, listener })
+        Ok(Server { listener })
     }
 }
 
 impl Drop for Server {
     fn drop(&mut self) {
         // There's no way to return a useful error here
-        std::fs::remove_file(&self.path).unwrap();
+        std::fs::remove_file(get_sock()).expect("Failed to remove socket file");
     }
 }
 
@@ -60,8 +71,12 @@ pub struct Client {
 }
 
 impl Client {
-    pub async fn connect() -> std::io::Result<Self> {
-        let stream = UnixStream::connect(SOCK).await?;
+    pub async fn connect() -> Result<Self, SockError> {
+        let sock = get_sock();
+        if !sock.exists() {
+            return Err(SockError::NoValidConnection);
+        }
+        let stream = UnixStream::connect(sock).await?;
         let (read, write) = stream.into_split();
         let framed_writer = get_framed_writer(write);
         let framed_reader = get_framed_reader(read);
@@ -72,7 +87,7 @@ impl Client {
         })
     }
 
-    pub async fn send(&mut self, command: JsonRequest) -> std::io::Result<()> {
+    pub async fn send(&mut self, command: JsonRequest) -> Result<(), SockError> {
         self.framed_writer.send(command).await?;
         Ok(())
     }

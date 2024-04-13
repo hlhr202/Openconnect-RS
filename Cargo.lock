@@ -2784,8 +2784,9 @@ dependencies = [
 
 [[package]]
 name = "openconnect-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
+ "chrono",
  "clap",
  "futures",
  "libc",
@@ -2793,9 +2794,11 @@ dependencies = [
  "serde",
  "serde_json",
  "sudo",
+ "thiserror",
  "tokio",
  "tokio-serde",
  "tokio-util",
+ "tracing",
 ]
 
 [[package]]

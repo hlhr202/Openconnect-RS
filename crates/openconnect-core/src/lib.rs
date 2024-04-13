@@ -325,6 +325,13 @@ impl VpnClient {
         }
     }
 
+    pub fn get_server_name(&self) -> Option<String> {
+        {
+            let entrypoint = self.entrypoint.read().ok()?;
+            (*entrypoint).as_ref()?.name.clone()
+        }
+    }
+
     pub fn get_port(&self) -> i32 {
         unsafe { openconnect_get_port(self.vpninfo) }
     }
