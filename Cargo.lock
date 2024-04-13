@@ -2824,6 +2824,7 @@ dependencies = [
  "clap",
  "comfy-table",
  "futures",
+ "home",
  "libc",
  "openconnect-core",
  "serde",

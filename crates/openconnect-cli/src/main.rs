@@ -46,9 +46,12 @@ async fn connect_password_server(
     stored_configs: &StoredConfigs,
 ) -> Result<Arc<VpnClient>, Box<dyn Error>> {
     let password_server = password_server.decrypted_by(&stored_configs.cipher);
+    let homedir = home::home_dir().ok_or("Failed to get home directory")?;
+    let vpncscript = homedir.join(".oidcvpn/bin/vpnc-script");
+    let vpncscript = vpncscript.to_str().ok_or("Failed to get vpncscript path")?;
 
     let config = ConfigBuilder::default()
-        .vpncscript("/opt/vpnc-scripts/vpnc-script")
+        .vpncscript(vpncscript)
         .loglevel(LogLevel::Info)
         .build()?;
 
