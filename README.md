@@ -19,7 +19,7 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
 <img src="./doc/screenshot/openconnect-2.png" width="360px" height="320px" alt="Edit">
 <img src="./doc/screenshot/openconnect-3.png" width="360px" height="320px" alt="Connect">
 
-## Installation
+## Installation of Client
 
 - GUI:
 
@@ -36,6 +36,59 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
     ```bash
     curl -sL https://raw.githubusercontent.com/hlhr202/Openconnect-RS/main/install-cli.sh | sh
     ```
+
+## Usage of CLI client
+
+- Run the following command in your terminal:
+
+  ```bash
+  openconnect --help
+  ```
+
+  This will print the following help message:
+
+  ```plaintext
+  A CLI client to connect to VPN using OpenConnect
+
+  Usage: openconnect <COMMAND>
+
+  Commands:
+    start   Connect to a VPN server and run in daemon mode [aliases: connect, run]
+    status  Get the current VPN connection status [aliases: info, stat]
+    stop    Close the current connection and exit the daemon process [aliases: kill, disconnect]
+    add     Add new VPN server configuration to local config file [aliases: new, create, insert]
+    delete  Delete a VPN server configuration from local config file [aliases: rm, remove, del]
+    list    List all VPN server configurations in local config file [aliases: ls, l]
+    logs    Show logs of the daemon process [aliases: log]
+    help    Print this message or the help of the given subcommand(s)
+
+  Options:
+    -h, --help     Print help
+    -V, --version  Print version
+  ```
+
+- For each subcommand, you can run `openconnect <COMMAND> --help` to get more information
+
+  For example:
+
+  ```bash
+  openconnect start --help
+  ```
+
+  This will print the following help message:
+
+  ```plaintext
+  Connect to a VPN server and run in daemon mode
+
+  Usage: openconnect start [OPTIONS] <NAME>
+
+  Arguments:
+    <NAME>  The server name saved in local config file to connect to
+
+  Options:
+    -c, --config-file <CONFIG_FILE>  The path to the local config file
+    -h, --help                       Print help
+  ```
 
 ## Build
 
