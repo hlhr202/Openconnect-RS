@@ -19,6 +19,24 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
 <img src="./doc/screenshot/openconnect-2.png" width="360px" height="320px" alt="Edit">
 <img src="./doc/screenshot/openconnect-3.png" width="360px" height="320px" alt="Connect">
 
+## Installation
+
+- GUI:
+
+  - Supports Windows(x64), Linux(x64), and macOS(aarch64, x64)
+
+  - Download can be found in [Releases](https://github.com/hlhr202/Openconnect-RS/releases)
+
+- CLI install:
+
+  - Only supports Linux(x64) and macOS(aarch64, x64)
+
+  - Run the following command in your terminal:
+
+    ```bash
+    curl -sL https://raw.githubusercontent.com/hlhr202/Openconnect-RS/main/install-cli.sh | sh
+    ```
+
 ## Build
 
 - Read the [System Requirements](./crates/openconnect-sys/README.md) for environment setup
@@ -67,5 +85,9 @@ Special thanks to (MORE THAN) the following projects and technologies for making
 - [x] implement password login
 - [x] implement oidc login
 - [x] implement logs
-  - [ ] waiting tracing file rotation
-- [ ] implement CLI
+  - [x] tracing file rotation
+- [x] implement CLI
+  - [x] Add/Remove configurations
+  - [x] Daemon mode
+  - [x] Password login
+  - [ ] OIDC login
