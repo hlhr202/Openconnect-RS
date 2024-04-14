@@ -1,3 +1,5 @@
+#![allow(unused_imports)]
+
 mod download_prebuilt;
 mod lib_prob;
 
