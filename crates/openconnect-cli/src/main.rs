@@ -1,18 +1,19 @@
 mod cli;
+mod config;
 mod daemon;
 mod sock;
+mod state;
 
-use crate::sock::Server;
+use crate::sock::UnixDomainServer;
+use crate::state::connect_password_server;
 use clap::Parser;
-use cli::{Cli, Commands, ServerType};
+use cli::{Cli, Commands};
 use comfy_table::Table;
 use futures::{SinkExt, TryStreamExt};
 use openconnect_core::{
-    config::{ConfigBuilder, EntrypointBuilder, LogLevel},
-    events::EventHandlers,
     ip_info::IpInfo,
     log::Logger,
-    storage::{OidcServer, PasswordServer, StoredConfigs, StoredServer},
+    storage::{StoredConfigs, StoredServer},
     Connectable, Status, VpnClient,
 };
 use std::{error::Error, io::BufRead, path::PathBuf, sync::Arc};
@@ -39,41 +40,6 @@ pub enum JsonResponse {
         status: String,
         info: Option<Box<IpInfo>>,
     },
-}
-
-async fn connect_password_server(
-    password_server: &PasswordServer,
-    stored_configs: &StoredConfigs,
-) -> Result<Arc<VpnClient>, Box<dyn Error>> {
-    let password_server = password_server.decrypted_by(&stored_configs.cipher);
-    let homedir = home::home_dir().ok_or("Failed to get home directory")?;
-    let vpncscript = homedir.join(".oidcvpn/bin/vpnc-script");
-    let vpncscript = vpncscript.to_str().ok_or("Failed to get vpncscript path")?;
-
-    let config = ConfigBuilder::default()
-        .vpncscript(vpncscript)
-        .loglevel(LogLevel::Info)
-        .build()?;
-
-    let entrypoint = EntrypointBuilder::new()
-        .name(&password_server.name)
-        .server(&password_server.server)
-        .username(&password_server.username)
-        .password(&password_server.password.clone().unwrap_or("".to_string()))
-        .accept_insecure_cert(password_server.allow_insecure.unwrap_or(false))
-        .enable_udp(true)
-        .build()?;
-
-    let event_handler = EventHandlers::default();
-
-    let client = VpnClient::new(config, event_handler)?;
-    let client_clone = client.clone();
-
-    tokio::task::spawn_blocking(move || {
-        let _ = client_clone.connect(entrypoint);
-    });
-
-    Ok(client)
 }
 
 async fn try_accept(listener: &tokio::net::UnixListener, client: Arc<VpnClient>) {
@@ -135,7 +101,7 @@ async fn start_daemon(
     stored_server: &StoredServer,
     stored_configs: &StoredConfigs,
 ) -> Result<(), Box<dyn Error>> {
-    let server = Server::bind()?;
+    let server = UnixDomainServer::bind()?;
     let mut sigterm = signal(SignalKind::terminate())?;
     let mut sigint = signal(SignalKind::interrupt())?;
     let mut sigquit = signal(SignalKind::quit())?;
@@ -169,180 +135,31 @@ async fn start_daemon(
     Ok(())
 }
 
-async fn get_server(
-    server_name: &str,
-    config_file: PathBuf,
-) -> Result<(StoredServer, StoredConfigs), Box<dyn Error>> {
-    let mut stored_configs = StoredConfigs::new(None, config_file);
-    let config = stored_configs.read_from_file().await?;
-    let server = config.servers.get(server_name);
-
-    match server {
-        Some(server) => {
-            match server {
-                StoredServer::Oidc(OidcServer { server, .. }) => {
-                    println!("Connecting to OIDC server: {}", server_name);
-                    println!("Server host: {}", server);
-                }
-                StoredServer::Password(PasswordServer { server, .. }) => {
-                    println!("Connecting to password server: {}", server_name);
-                    println!("Server host: {}", server);
-                }
-            }
-            Ok((server.clone(), stored_configs))
-        }
-        None => Err(std::io::Error::new(
-            std::io::ErrorKind::NotFound,
-            format!("Server {} not found", server_name),
-        ))?,
-    }
-}
-
 fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::Add(server_type) => {
-            let new_server = match server_type {
-                ServerType::Oidc {
-                    name,
-                    server,
-                    issuer,
-                    client_id,
-                    client_secret,
-                    allow_insecure,
-                } => {
-                    let oidc_server = OidcServer {
-                        name,
-                        server,
-                        issuer,
-                        client_id,
-                        client_secret,
-                        allow_insecure,
-                        updated_at: None,
-                    };
+        Commands::Add(server_config) => {
+            crate::config::add_server(server_config);
+        }
 
-                    StoredServer::Oidc(oidc_server)
-                }
-                ServerType::Password {
-                    name,
-                    server,
-                    username,
-                    password,
-                    allow_insecure,
-                } => {
-                    let password_server = PasswordServer {
-                        name,
-                        server,
-                        username,
-                        password: Some(password),
-                        allow_insecure,
-                        updated_at: None,
-                    };
-
-                    StoredServer::Password(password_server)
-                }
-            };
-
-            let config_file =
-                StoredConfigs::getorinit_config_file().expect("Failed to get config file");
-
-            let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-            runtime.block_on(async {
-                let mut stored_configs = StoredConfigs::new(None, config_file);
-
-                stored_configs
-                    .read_from_file()
-                    .await
-                    .expect("Failed to read config file");
-
-                stored_configs
-                    .upsert_server(new_server)
-                    .await
-                    .expect("Failed to add server");
-            });
+        Commands::Import { base64 } => {
+            crate::config::import_server(&base64);
         }
 
         Commands::Delete { name } => {
-            let config_file =
-                StoredConfigs::getorinit_config_file().expect("Failed to get config file");
-
-            let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-            runtime.block_on(async {
-                let mut stored_configs = StoredConfigs::new(None, config_file);
-
-                stored_configs
-                    .read_from_file()
-                    .await
-                    .expect("Failed to read config file");
-
-                stored_configs
-                    .remove_server(&name)
-                    .await
-                    .expect("Failed to delete server");
-            });
+            crate::config::delete_server(&name);
         }
 
         Commands::List => {
-            let config_file =
-                StoredConfigs::getorinit_config_file().expect("Failed to get config file");
-
-            let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-            runtime.block_on(async {
-                let mut stored_configs = StoredConfigs::new(None, config_file);
-
-                let stored_configs = stored_configs.read_from_file().await.unwrap();
-                let mut table = Table::new();
-                table.set_header(vec![
-                    "Name".to_string(),
-                    "Type".to_string(),
-                    "Server".to_string(),
-                    "Allow Insecure".to_string(),
-                    "Updated At".to_string(),
-                ]);
-
-                for (name, server) in stored_configs.servers.iter() {
-                    match server {
-                        StoredServer::Oidc(OidcServer {
-                            server,
-                            allow_insecure,
-                            updated_at,
-                            ..
-                        }) => {
-                            table.add_row(vec![
-                                name.clone(),
-                                "OIDC Server".to_string(),
-                                server.clone(),
-                                allow_insecure.unwrap_or(false).to_string(),
-                                updated_at.as_ref().unwrap_or(&"".to_string()).to_owned(),
-                            ]);
-                        }
-                        StoredServer::Password(PasswordServer {
-                            server,
-                            allow_insecure,
-                            updated_at,
-                            ..
-                        }) => {
-                            table.add_row(vec![
-                                name.clone(),
-                                "Password Server".to_string(),
-                                server.clone(),
-                                allow_insecure.unwrap_or(false).to_string(),
-                                updated_at.as_ref().unwrap_or(&"".to_string()).to_owned(),
-                            ]);
-                        }
-                    }
-                }
-
-                println!("{table}");
-            });
+            crate::config::list_servers();
         }
 
         Commands::Status => {
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
             runtime.block_on(async {
-                let client = sock::Client::connect().await;
+                let client = sock::UnixDomainClient::connect().await;
 
                 match client {
                     Ok(mut client) => {
@@ -442,7 +259,7 @@ fn main() {
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
             runtime.block_on(async {
-                let client = sock::Client::connect().await;
+                let client = sock::UnixDomainClient::connect().await;
 
                 match client {
                     Ok(mut client) => {
@@ -489,7 +306,7 @@ fn main() {
                 daemon::ForkResult::Parent => {
                     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
                     runtime.block_on(async {
-                        match get_server(&name, config_file).await {
+                        match crate::config::get_server_config(&name, config_file).await {
                             Ok(_) => {}
                             Err(e) => {
                                 println!("Failed to get server: {}", e);
@@ -511,7 +328,7 @@ fn main() {
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
             let (server, configs) = runtime.block_on(async {
-                get_server(&name, config_file)
+                crate::config::get_server_config(&name, config_file)
                     .await
                     .expect("Failed to get server")
             });

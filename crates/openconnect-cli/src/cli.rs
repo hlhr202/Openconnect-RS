@@ -34,7 +34,13 @@ pub enum Commands {
         about = "Add new VPN server configuration to local config file",
         visible_aliases = ["new", "create", "insert"]
     )]
-    Add(ServerType),
+    Add(SeverConfigArgs),
+
+    #[command(about = "Import VPN server configurations from a base64 encoded string")]
+    Import {
+        /// The base64 encoded string of the VPN server configurations
+        base64: String,
+    },
 
     #[command(about = "Delete a VPN server configuration from local config file", visible_aliases = ["rm", "remove", "del"])]
     Delete {
@@ -50,7 +56,7 @@ pub enum Commands {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum ServerType {
+pub enum SeverConfigArgs {
     #[command(about = "Add an OIDC authentication VPN server")]
     Oidc {
         #[arg(short, long)]

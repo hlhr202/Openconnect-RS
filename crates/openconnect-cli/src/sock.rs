@@ -44,33 +44,33 @@ pub fn exists() -> bool {
     get_sock().exists()
 }
 
-pub struct Server {
+pub struct UnixDomainServer {
     pub listener: UnixListener,
 }
 
-impl Server {
+impl UnixDomainServer {
     pub fn bind() -> Result<Self, SockError> {
         let listener = UnixListener::bind(get_sock())?;
         let listener = listener.into_std()?;
         listener.set_nonblocking(true)?;
         let listener = UnixListener::from_std(listener)?;
-        Ok(Server { listener })
+        Ok(UnixDomainServer { listener })
     }
 }
 
-impl Drop for Server {
+impl Drop for UnixDomainServer {
     fn drop(&mut self) {
         // There's no way to return a useful error here
         std::fs::remove_file(get_sock()).expect("Failed to remove socket file");
     }
 }
 
-pub struct Client {
+pub struct UnixDomainClient {
     framed_writer: FramedWriter<JsonRequest>,
     pub framed_reader: FramedReader<JsonResponse>,
 }
 
-impl Client {
+impl UnixDomainClient {
     pub async fn connect() -> Result<Self, SockError> {
         let sock = get_sock();
         if !sock.exists() {
@@ -81,7 +81,7 @@ impl Client {
         let framed_writer = get_framed_writer(write);
         let framed_reader = get_framed_reader(read);
 
-        Ok(Client {
+        Ok(UnixDomainClient {
             framed_writer,
             framed_reader,
         })

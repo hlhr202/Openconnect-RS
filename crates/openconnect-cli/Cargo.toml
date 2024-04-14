@@ -5,6 +5,7 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
+base64 = { workspace = true }
 clap = { workspace = true }
 tokio = { workspace = true }
 tokio-serde = { workspace = true }
@@ -20,3 +21,4 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 home = { workspace = true }
 comfy-table = "7.1.1"
+dialoguer = "0.11.0"
