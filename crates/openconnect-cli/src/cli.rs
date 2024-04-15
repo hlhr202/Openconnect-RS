@@ -42,6 +42,12 @@ pub enum Commands {
         base64: String,
     },
 
+    #[command(about = "Export VPN server configurations to a base64 encoded string")]
+    Export {
+        /// The name of the VPN server configuration to export
+        name: String,
+    },
+
     #[command(about = "Delete a VPN server configuration from local config file", visible_aliases = ["rm", "remove", "del"])]
     Delete {
         /// The server name saved in local config file to delete

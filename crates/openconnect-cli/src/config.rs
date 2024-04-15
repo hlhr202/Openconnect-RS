@@ -4,7 +4,7 @@ use comfy_table::Table;
 use openconnect_core::storage::{OidcServer, PasswordServer, StoredConfigs, StoredServer};
 use std::{error::Error, path::PathBuf};
 
-pub async fn get_server_config(
+pub async fn read_server_config_from_fs(
     server_name: &str,
     config_file: PathBuf,
 ) -> Result<(StoredServer, StoredConfigs), Box<dyn Error>> {
@@ -52,7 +52,7 @@ fn add_server_internal(stored_server: StoredServer) {
     });
 }
 
-pub fn add_server(server_config: SeverConfigArgs) {
+pub fn request_add_server(server_config: SeverConfigArgs) {
     let new_server = match server_config {
         SeverConfigArgs::Oidc {
             name,
@@ -97,7 +97,7 @@ pub fn add_server(server_config: SeverConfigArgs) {
     add_server_internal(new_server);
 }
 
-pub fn delete_server(name: &str) {
+pub fn request_delete_server(name: &str) {
     let config_file = StoredConfigs::getorinit_config_file().expect("Failed to get config file");
 
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
@@ -116,7 +116,7 @@ pub fn delete_server(name: &str) {
     });
 }
 
-pub fn list_servers() {
+pub fn request_list_servers() {
     let config_file = StoredConfigs::getorinit_config_file().expect("Failed to get config file");
 
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
@@ -172,7 +172,7 @@ pub fn list_servers() {
 
 #[derive(Debug, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase", tag = "authType")]
-pub enum PartialImportServer {
+pub enum SharableServer {
     #[serde(rename_all = "camelCase")]
     Oidc {
         server: String,
@@ -188,21 +188,72 @@ pub enum PartialImportServer {
     },
 }
 
-pub fn import_server(base64: &str) {
+pub fn request_export_server(server_name: &str) {
+    let config_file = StoredConfigs::getorinit_config_file().expect("Failed to get config file");
+
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+    runtime.block_on(async {
+        let mut stored_configs = StoredConfigs::new(None, config_file);
+
+        stored_configs
+            .read_from_file()
+            .await
+            .expect("Failed to read config file");
+
+        let server = stored_configs.servers.get(server_name);
+
+        match server {
+            Some(stored_server) => {
+                let base64 = match stored_server {
+                    StoredServer::Oidc(oidc_server) => {
+                        let oidc_server = oidc_server.clone();
+                        let partial_server = SharableServer::Oidc {
+                            server: oidc_server.server,
+                            allow_insecure: oidc_server.allow_insecure,
+                            issuer: oidc_server.issuer,
+                            client_id: oidc_server.client_id,
+                            client_secret: oidc_server.client_secret,
+                        };
+                        let json =
+                            serde_json::to_string(&partial_server).expect("Failed to serialize");
+                        base64::prelude::BASE64_STANDARD.encode(json.as_bytes())
+                    }
+                    StoredServer::Password(password_server) => {
+                        let password_server = password_server.clone();
+                        let partial_server = SharableServer::Password {
+                            server: password_server.server,
+                            allow_insecure: password_server.allow_insecure,
+                        };
+                        let json =
+                            serde_json::to_string(&partial_server).expect("Failed to serialize");
+                        base64::prelude::BASE64_STANDARD.encode(json.as_bytes())
+                    }
+                };
+
+                println!("Share this: {}", base64);
+            }
+            None => {
+                eprintln!("Server {} not found", server_name);
+            }
+        }
+    });
+}
+
+pub fn request_import_server(base64: &str) {
     let decoded = base64::prelude::BASE64_STANDARD
         .decode(base64.as_bytes())
         .expect("Failed to decode base64");
 
     let string = String::from_utf8(decoded).expect("Failed to convert to string");
 
-    let server: PartialImportServer =
+    let server: SharableServer =
         serde_json::from_str(&string).expect("Failed to parse your import string");
 
     println!("==============================================");
     println!("Existing configs: {:#?}\n", server);
 
     let new_server = match server {
-        PartialImportServer::Password {
+        SharableServer::Password {
             server,
             allow_insecure,
         } => {
@@ -235,7 +286,7 @@ pub fn import_server(base64: &str) {
                 updated_at: None,
             })
         }
-        PartialImportServer::Oidc {
+        SharableServer::Oidc {
             server,
             allow_insecure,
             issuer,
@@ -268,6 +319,15 @@ pub fn import_server(base64: &str) {
 
 #[test]
 fn test_import_server() {
-    // "{"authType":"oidc","server":"https://example.com","issuer":"https://example.com","clientId":"12345","clientSecret":"123456","allowInsecure":true}"
-    import_server("eyJhdXRoVHlwZSI6Im9pZGMiLCJzZXJ2ZXIiOiJodHRwczovL2V4YW1wbGUuY29tIiwiaXNzdWVyIjoiaHR0cHM6Ly9leGFtcGxlLmNvbSIsImNsaWVudElkIjoiMTIzNDUiLCJjbGllbnRTZWNyZXQiOiIxMjM0NTYiLCJhbGxvd0luc2VjdXJlIjp0cnVlfQ==");
+    let partial_import_server = SharableServer::Oidc {
+        server: "https://example.com".to_string(),
+        allow_insecure: Some(true),
+        issuer: "https://example.com".to_string(),
+        client_id: "12345".to_string(),
+        client_secret: Some("123456".to_string()),
+    };
+
+    let json = serde_json::to_string(&partial_import_server).expect("Failed to serialize");
+    let base64 = base64::prelude::BASE64_STANDARD.encode(json.as_bytes());
+    request_import_server(&base64);
 }
