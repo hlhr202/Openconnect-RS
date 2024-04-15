@@ -78,9 +78,13 @@ pub fn request_add_server(server_config: SeverConfigArgs) {
             name,
             server,
             username,
-            password,
             allow_insecure,
         } => {
+            let password = dialoguer::Password::new()
+                .with_prompt("Enter password")
+                .interact()
+                .expect("Failed to get password");
+
             let password_server = PasswordServer {
                 name,
                 server,

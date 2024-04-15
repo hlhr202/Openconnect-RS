@@ -1,10 +1,11 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 
 #[derive(Parser, Debug)]
 #[clap(
     name = env!("CARGO_PKG_NAME"),
     version = env!("CARGO_PKG_VERSION"),
-    about = env!("CARGO_PKG_DESCRIPTION"),
+    long_about = env!("CARGO_PKG_DESCRIPTION"),
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -59,46 +60,70 @@ pub enum Commands {
 
     #[command(about = "Show logs of the daemon process", visible_aliases = ["log"])]
     Logs,
+
+    #[command(about = "Generate shell completion script")]
+    GenComplete { generator: Shell },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum SeverConfigArgs {
-    #[command(about = "Add an OIDC authentication VPN server")]
+    #[command(long_about = "Add an OIDC authentication VPN server")]
     Oidc {
+        /// The unique name of the VPN server configuration
         #[arg(short, long)]
         name: String,
 
+        /// The VPN server URL
         #[arg(short, long, value_hint = clap::ValueHint::Url)]
         server: String,
 
+        /// The OIDC issuer URL
         #[arg(short = 'I', long)]
         issuer: String,
 
+        /// The OIDC client ID
         #[arg(short = 'i', long)]
         client_id: String,
 
+        /// The OIDC client secret
         #[arg(short = 'k', long)]
         client_secret: Option<String>,
 
+        /// Allow insecure peer certificate verification
         #[arg(short, long, default_value = "false")]
         allow_insecure: Option<bool>,
     },
 
-    #[command(about = "Add a password authentication VPN server")]
+    #[command(
+        long_about = "Add a password authentication VPN server. For safty reason, the password input will be prompted in terminal later"
+    )]
     Password {
+        /// The unique name of the VPN server configuration
         #[arg(short, long)]
         name: String,
 
+        /// The VPN server URL
         #[arg(short, long, value_hint = clap::ValueHint::Url)]
         server: String,
 
+        /// The username for password authentication
         #[arg(short, long)]
         username: String,
 
-        #[arg(short, long)]
-        password: String,
-
+        /// Allow insecure peer certificate verification
         #[arg(short, long, default_value = "false")]
         allow_insecure: Option<bool>,
     },
+}
+
+pub fn print_completions(generator: Shell) {
+    let mut cmd = Cli::command();
+    let cmd = &mut cmd;
+
+    generate(
+        generator,
+        cmd,
+        cmd.get_name().to_string(),
+        &mut std::io::stdout(),
+    );
 }

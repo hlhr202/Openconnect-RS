@@ -33,6 +33,9 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::GenComplete { generator } => {
+            cli::print_completions(generator);
+        }
         Commands::Add(server_config) => {
             crate::client::config::request_add_server(server_config);
         }
