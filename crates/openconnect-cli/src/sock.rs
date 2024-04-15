@@ -23,6 +23,18 @@ pub fn get_sock() -> PathBuf {
     tmp.join("openconnect-rs.sock")
 }
 
+pub fn exit_when_socket_exists() {
+    if get_sock().exists() {
+        eprintln!("Socket already exists. You may have a connected VPN session or a stale socket file. You may solve by:");
+        eprintln!("1. Stopping the connection by sending stop command.");
+        eprintln!(
+            "2. Manually deleting the socket file which located at: {}",
+            get_sock().display()
+        );
+        std::process::exit(1);
+    }
+}
+
 pub type FramedWriter<T> =
     Framed<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>, T, T, SymmetricalJson<T>>;
 pub type FramedReader<T> =
@@ -38,10 +50,6 @@ pub fn get_framed_reader<T: Sized>(read_half: OwnedReadHalf) -> FramedReader<T> 
     let length_delimited = FramedRead::new(read_half, LengthDelimitedCodec::new());
     let codec = SymmetricalJson::<T>::default();
     tokio_serde::SymmetricallyFramed::new(length_delimited, codec)
-}
-
-pub fn exists() -> bool {
-    get_sock().exists()
 }
 
 pub struct UnixDomainServer {
