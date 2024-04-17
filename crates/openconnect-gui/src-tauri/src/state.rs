@@ -1,12 +1,13 @@
-use crate::{
-    oidc::{OpenID, OpenIDConfig, OpenIDError, OIDC_REDIRECT_URI},
-    system_tray::AppSystemTray,
-};
+use crate::system_tray::AppSystemTray;
 use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
     storage::{StoredConfigError, StoredConfigs, StoredServer},
     Connectable, Status, VpnClient,
+};
+use openconnect_oidc::{
+    obtain_cookie_by_oidc_token,
+    oidc_token::{OpenIDTokenAuth, OpenIDTokenAuthConfig, OpenIDTokenAuthError, OIDC_REDIRECT_URI},
 };
 use std::{path::PathBuf, sync::Arc};
 use tauri::{
@@ -31,7 +32,7 @@ pub enum StateError {
     TauriError(#[from] tauri::Error),
 
     #[error("OpenID error: {0}")]
-    OpenIdError(#[from] crate::oidc::OpenIDError),
+    OpenIdError(#[from] OpenIDTokenAuthError),
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
@@ -39,10 +40,7 @@ pub enum StateError {
 
 #[derive(Debug, Clone)]
 pub enum VpnEvent {
-    Status {
-        status: StatusPayload,
-        server_name: Option<String>,
-    },
+    Status { status: StatusPayload },
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -91,7 +89,7 @@ impl AppState {
                 let handle = handle.clone();
                 let app_system_tray: State<'_, Arc<AppSystemTray>> = handle.state();
                 match event {
-                    VpnEvent::Status { status, .. } => {
+                    VpnEvent::Status { status } => {
                         let result = handle.emit_all("vpnStatus", Some(status));
                         app_system_tray.recreate(&handle).await.unwrap();
                         if let Err(e) = result {
@@ -119,14 +117,8 @@ impl AppState {
     }
 
     pub async fn trigger_state_retrieve(&self) -> Result<(), StateError> {
-        let (status, server_name) = self.get_status_and_name().await?;
-        Ok(self
-            .event_tx
-            .send(VpnEvent::Status {
-                status,
-                server_name,
-            })
-            .await?)
+        let (status, _server_name) = self.get_status_and_name().await?;
+        Ok(self.event_tx.send(VpnEvent::Status { status }).await?)
     }
 
     pub async fn connect_with_server_name(&self, server_name: &str) -> Result<(), StateError> {
@@ -160,7 +152,7 @@ impl AppState {
             .enable_udp(true)
             .build()?;
 
-        let event_handlers = self.create_event_handler(server_name);
+        let event_handlers = self.create_event_handler();
 
         let client = VpnClient::new(config, event_handlers)?;
         {
@@ -177,7 +169,7 @@ impl AppState {
         let stored_server = self.stored_configs.read().await;
         let oidc_server = stored_server.get_server_as_oidc_server(server_name)?;
 
-        let openid_config = OpenIDConfig {
+        let openid_config = OpenIDTokenAuthConfig {
             issuer_url: oidc_server.issuer.clone(),
             redirect_uri: OIDC_REDIRECT_URI.to_string(),
             client_id: oidc_server.client_id.clone(),
@@ -185,21 +177,20 @@ impl AppState {
             use_pkce_challenge: true,
         };
 
-        let mut openid = OpenID::new(openid_config).await?;
+        let mut openid = OpenIDTokenAuth::new(openid_config).await?;
         let (authorize_url, req_state, _) = openid.auth_request();
 
         open::that(authorize_url.to_string())?;
         let (code, callback_state) = openid.wait_for_callback().await?;
 
         if req_state.secret() != callback_state.secret() {
-            return Err(OpenIDError::StateValidationError(
+            return Err(OpenIDTokenAuthError::StateValidationError(
                 "State validation failed".to_string(),
             ))?;
         }
 
         let token = openid.exchange_token(code).await?;
-        let cookie = openid
-            .obtain_cookie_by_oidc(&oidc_server.server, &token)
+        let cookie = obtain_cookie_by_oidc_token(&oidc_server.server, &token)
             .await
             .ok_or(StateError::IoError(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,
@@ -220,7 +211,7 @@ impl AppState {
             .accept_insecure_cert(oidc_server.allow_insecure.unwrap_or(false))
             .build()?;
 
-        let event_handlers = self.create_event_handler(server_name);
+        let event_handlers = self.create_event_handler();
 
         let client = VpnClient::new(config, event_handlers)?;
         {
@@ -245,24 +236,17 @@ impl AppState {
         Ok(())
     }
 
-    pub fn create_event_handler(
-        &self,
-        server_name: &str,
-    ) -> openconnect_core::events::EventHandlers {
+    pub fn create_event_handler(&self) -> openconnect_core::events::EventHandlers {
         let event_tx_for_state = self.event_tx.clone();
         let event_tx_for_cert = self.event_tx.clone();
-        let server_name_for_state = server_name.to_string();
-        let server_name_for_cert = server_name.to_string();
 
         EventHandlers::default()
             .with_handle_connection_state_change(move |state| {
                 let event_tx = event_tx_for_state.clone();
-                let server_name = Some(server_name_for_state.to_string());
                 tauri::async_runtime::spawn(async move {
                     let _ = event_tx
                         .send(VpnEvent::Status {
                             status: state.into(),
-                            server_name,
                         })
                         .await;
                     // ignore the result
@@ -270,7 +254,6 @@ impl AppState {
             })
             .with_handle_peer_cert_invalid(move |reason| {
                 let event_tx = event_tx_for_cert.clone();
-                let server_name = Some(server_name_for_cert.to_string());
                 let reason = reason.to_string();
                 tauri::async_runtime::spawn(async move {
                     let _ = event_tx
@@ -279,7 +262,6 @@ impl AppState {
                                 status: "ERROR".to_string(),
                                 message: Some(format!("Peer certificate invalid, if you want to connect this insecure server, please tick 'Allow insecure' in the config. Server fingerprint: {}", reason)),
                             },
-                            server_name,
                         })
                         .await;
                     // ignore the result

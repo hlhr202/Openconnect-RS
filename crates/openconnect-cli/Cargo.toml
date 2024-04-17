@@ -5,7 +5,10 @@ version = "0.1.1"
 edition = "2021"
 
 [dependencies]
+anyhow = { workspace = true }
+base64 = { workspace = true }
 clap = { workspace = true }
+clap_complete = { workspace = true }
 tokio = { workspace = true }
 tokio-serde = { workspace = true }
 tokio-util = { workspace = true }
@@ -13,6 +16,7 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 libc = { workspace = true }
+openconnect-oidc = { path = "../openconnect-oidc", version = "0.1.1" }
 openconnect-core = { path = "../openconnect-core", version = "0.1.1" }
 sudo = { workspace = true }
 tracing = { workspace = true }
@@ -20,3 +24,4 @@ thiserror = { workspace = true }
 chrono = { workspace = true }
 home = { workspace = true }
 comfy-table = "7.1.1"
+dialoguer = "0.11.0"

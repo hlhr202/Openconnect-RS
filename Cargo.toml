@@ -1,11 +1,11 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/openconnect-build",
     "crates/openconnect-sys",
     "crates/openconnect-core",
     "crates/openconnect-gui/src-tauri",
     "crates/openconnect-cli",
+    "crates/openconnect-oidc",
 ]
 
 [workspace.dependencies]
@@ -15,7 +15,9 @@ reqwest = { version = "0.12.2", features = [
     "blocking",
     "cookies",
 ] }
+base64 = "0.22.0"
 clap = { version = "4.5.4", features = ["derive"] }
+clap_complete = "4.5.2"
 tokio = { version = "1.37.0", features = ["full"] }
 tokio-serde = { version = "0.9.0", features = ["json", "serde"] }
 tokio-util = { version = "0.7.10", features = ["codec"] }

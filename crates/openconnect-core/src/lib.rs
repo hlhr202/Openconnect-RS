@@ -211,9 +211,6 @@ impl VpnClient {
 
     pub fn obtain_cookie(&self) -> OpenconnectResult<()> {
         let ret = unsafe {
-            println!();
-            println!("obtain_cookie");
-            println!();
             openconnect_obtain_cookie(self.vpninfo)
         };
         match ret {
@@ -428,6 +425,7 @@ impl Drop for VpnClient {
 pub trait Connectable {
     fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>>;
     fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()>;
+    fn connect_for_cookie(&self, entrypoint: Entrypoint) -> OpenconnectResult<Option<String>>;
     fn disconnect(&self);
     fn get_status(&self) -> Status;
     fn get_server_name(&self) -> Option<String>;
@@ -491,7 +489,7 @@ impl Connectable for VpnClient {
         Ok(instance)
     }
 
-    fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
+    fn connect_for_cookie(&self, entrypoint: Entrypoint) -> OpenconnectResult<Option<String>> {
         self.emit_state_change(Status::Connecting("Initializing connection".to_string()));
         {
             if let Ok(mut form_context) = self.form_manager.try_write() {
@@ -548,7 +546,12 @@ impl Connectable for VpnClient {
             self.obtain_cookie().emit_error(self)?;
         }
 
+        Ok(self.get_cookie())
+    }
+
+    fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
         self.emit_state_change(Status::Connecting("Make CSTP connection".to_string()));
+        self.connect_for_cookie(entrypoint)?;
         self.make_cstp_connection().emit_error(self)?;
         self.emit_state_change(Status::Connected);
 

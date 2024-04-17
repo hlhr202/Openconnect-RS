@@ -20,7 +20,8 @@ tauri = { version = "1.6.1", features = [ "os-all", "global-shortcut-all", "app-
 dotenvy = { workspace = true }
 lazy_static = { workspace = true }
 open = "5.1.2"
-openconnect-core = { path = "../../openconnect-core" }
+openconnect-core = { path = "../../openconnect-core", version = "0.1.1" }
+openconnect-oidc = { path = "../../openconnect-oidc", version = "0.1.1" }
 openidconnect = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
