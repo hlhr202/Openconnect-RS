@@ -98,14 +98,19 @@ fn main() {
         Commands::Start { name, config_file } => {
             sock::exit_when_socket_exists();
 
+            #[cfg(target_os = "macos")]
+            sudo::escalate_if_needed().expect("Failed to escalate permissions");
+
+            #[cfg(target_os = "linux")]
+            sudo::with_env(&["HOME"]).expect("Failed to escalate permissions"); // keep HOME env so that we can find the config file and vpnc script
+
             let config_file = config_file.map(PathBuf::from).unwrap_or(
                 StoredConfigs::getorinit_config_file().expect("Failed to get config file"),
             );
 
-            sudo::escalate_if_needed().expect("Failed to escalate permissions");
-
             match daemon::daemonize() {
                 daemon::ForkResult::Parent => {
+                    println!("Using Config file: {:?}", config_file);
                     crate::client::state::request_start_server(name, config_file);
                     println!("The process will be running in the background, you should use cli to interact with it.");
                     std::process::exit(0);
