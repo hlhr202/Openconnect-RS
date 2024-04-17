@@ -2,7 +2,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod command;
-mod oidc;
 mod state;
 mod system_tray;
 

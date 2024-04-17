@@ -23,6 +23,18 @@ pub fn get_sock() -> PathBuf {
     tmp.join("openconnect-rs.sock")
 }
 
+pub fn exit_when_socket_exists() {
+    if get_sock().exists() {
+        eprintln!("Socket already exists. You may have a connected VPN session or a stale socket file. You may solve by:");
+        eprintln!("1. Stopping the connection by sending stop command.");
+        eprintln!(
+            "2. Manually deleting the socket file which located at: {}",
+            get_sock().display()
+        );
+        std::process::exit(1);
+    }
+}
+
 pub type FramedWriter<T> =
     Framed<FramedWrite<OwnedWriteHalf, LengthDelimitedCodec>, T, T, SymmetricalJson<T>>;
 pub type FramedReader<T> =
@@ -40,37 +52,33 @@ pub fn get_framed_reader<T: Sized>(read_half: OwnedReadHalf) -> FramedReader<T> 
     tokio_serde::SymmetricallyFramed::new(length_delimited, codec)
 }
 
-pub fn exists() -> bool {
-    get_sock().exists()
-}
-
-pub struct Server {
+pub struct UnixDomainServer {
     pub listener: UnixListener,
 }
 
-impl Server {
+impl UnixDomainServer {
     pub fn bind() -> Result<Self, SockError> {
         let listener = UnixListener::bind(get_sock())?;
         let listener = listener.into_std()?;
         listener.set_nonblocking(true)?;
         let listener = UnixListener::from_std(listener)?;
-        Ok(Server { listener })
+        Ok(UnixDomainServer { listener })
     }
 }
 
-impl Drop for Server {
+impl Drop for UnixDomainServer {
     fn drop(&mut self) {
         // There's no way to return a useful error here
         std::fs::remove_file(get_sock()).expect("Failed to remove socket file");
     }
 }
 
-pub struct Client {
+pub struct UnixDomainClient {
     framed_writer: FramedWriter<JsonRequest>,
     pub framed_reader: FramedReader<JsonResponse>,
 }
 
-impl Client {
+impl UnixDomainClient {
     pub async fn connect() -> Result<Self, SockError> {
         let sock = get_sock();
         if !sock.exists() {
@@ -81,7 +89,7 @@ impl Client {
         let framed_writer = get_framed_writer(write);
         let framed_reader = get_framed_reader(read);
 
-        Ok(Client {
+        Ok(UnixDomainClient {
             framed_writer,
             framed_reader,
         })

@@ -1,10 +1,11 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
+use clap_complete::{generate, Shell};
 
 #[derive(Parser, Debug)]
 #[clap(
     name = env!("CARGO_PKG_NAME"),
     version = env!("CARGO_PKG_VERSION"),
-    about = env!("CARGO_PKG_DESCRIPTION"),
+    long_about = env!("CARGO_PKG_DESCRIPTION"),
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -34,7 +35,19 @@ pub enum Commands {
         about = "Add new VPN server configuration to local config file",
         visible_aliases = ["new", "create", "insert"]
     )]
-    Add(ServerType),
+    Add(SeverConfigArgs),
+
+    #[command(about = "Import VPN server configurations from a base64 encoded string")]
+    Import {
+        /// The base64 encoded string of the VPN server configurations
+        base64: String,
+    },
+
+    #[command(about = "Export VPN server configurations to a base64 encoded string")]
+    Export {
+        /// The name of the VPN server configuration to export
+        name: String,
+    },
 
     #[command(about = "Delete a VPN server configuration from local config file", visible_aliases = ["rm", "remove", "del"])]
     Delete {
@@ -47,46 +60,70 @@ pub enum Commands {
 
     #[command(about = "Show logs of the daemon process", visible_aliases = ["log"])]
     Logs,
+
+    #[command(about = "Generate shell completion script")]
+    GenComplete { generator: Shell },
 }
 
 #[derive(Subcommand, Debug)]
-pub enum ServerType {
-    #[command(about = "Add an OIDC authentication VPN server")]
+pub enum SeverConfigArgs {
+    #[command(long_about = "Add an OIDC authentication VPN server")]
     Oidc {
+        /// The unique name of the VPN server configuration
         #[arg(short, long)]
         name: String,
 
+        /// The VPN server URL
         #[arg(short, long, value_hint = clap::ValueHint::Url)]
         server: String,
 
+        /// The OIDC issuer URL
         #[arg(short = 'I', long)]
         issuer: String,
 
+        /// The OIDC client ID
         #[arg(short = 'i', long)]
         client_id: String,
 
+        /// The OIDC client secret
         #[arg(short = 'k', long)]
         client_secret: Option<String>,
 
+        /// Allow insecure peer certificate verification
         #[arg(short, long, default_value = "false")]
         allow_insecure: Option<bool>,
     },
 
-    #[command(about = "Add a password authentication VPN server")]
+    #[command(
+        long_about = "Add a password authentication VPN server. For safty reason, the password input will be prompted in terminal later"
+    )]
     Password {
+        /// The unique name of the VPN server configuration
         #[arg(short, long)]
         name: String,
 
+        /// The VPN server URL
         #[arg(short, long, value_hint = clap::ValueHint::Url)]
         server: String,
 
+        /// The username for password authentication
         #[arg(short, long)]
         username: String,
 
-        #[arg(short, long)]
-        password: String,
-
+        /// Allow insecure peer certificate verification
         #[arg(short, long, default_value = "false")]
         allow_insecure: Option<bool>,
     },
+}
+
+pub fn print_completions(generator: Shell) {
+    let mut cmd = Cli::command();
+    let cmd = &mut cmd;
+
+    generate(
+        generator,
+        cmd,
+        cmd.get_name().to_string(),
+        &mut std::io::stdout(),
+    );
 }

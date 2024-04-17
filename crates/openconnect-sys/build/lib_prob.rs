@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[macro_export]
 macro_rules! print_build_warning {
     ($($arg:tt)*) => {

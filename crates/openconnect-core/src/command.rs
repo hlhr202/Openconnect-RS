@@ -127,8 +127,6 @@ impl SignalHandle {
                 .expect("Failed to register signal handler");
 
             std::thread::spawn(move || {
-                println!("Signal handler thread started");
-
                 for sig in signals.forever() {
                     let cmd = match sig {
                         SIGINT | SIGTERM => {
