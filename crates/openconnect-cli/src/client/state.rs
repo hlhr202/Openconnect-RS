@@ -199,6 +199,7 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                         .await
                         .ok()
                         .flatten();
+                        // TODO: optimize error message handling
 
                         (
                             cookie,
@@ -215,6 +216,7 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                         .await
                         .ok()
                         .flatten();
+                        // TODO: optimize error message handling
 
                         (
                             cookie,
@@ -263,7 +265,7 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                         }
                     }
                 } else {
-                    eprintln!("Failed to obtain cookie, check logs for more information");
+                    eprintln!("Failed to obtain cookie, check logs for more information"); // TODO: improve error message
                     std::process::exit(1);
                 }
             }
