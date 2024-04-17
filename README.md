@@ -34,7 +34,7 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
   - Run the following command in your terminal:
 
     ```bash
-    curl -sL https://raw.githubusercontent.com/hlhr202/Openconnect-RS/main/install-cli.sh | sh
+    curl -sL https://raw.githubusercontent.com/hlhr202/Openconnect-RS/main/install-cli.sh | bash
     ```
 
 ## Usage of CLI client
