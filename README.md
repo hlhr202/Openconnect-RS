@@ -53,14 +53,17 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
   Usage: openconnect <COMMAND>
 
   Commands:
-    start   Connect to a VPN server and run in daemon mode [aliases: connect, run]
-    status  Get the current VPN connection status [aliases: info, stat]
-    stop    Close the current connection and exit the daemon process [aliases: kill, disconnect]
-    add     Add new VPN server configuration to local config file [aliases: new, create, insert]
-    delete  Delete a VPN server configuration from local config file [aliases: rm, remove, del]
-    list    List all VPN server configurations in local config file [aliases: ls, l]
-    logs    Show logs of the daemon process [aliases: log]
-    help    Print this message or the help of the given subcommand(s)
+    start         Connect to a VPN server and run in daemon mode [aliases: connect, run]
+    status        Get the current VPN connection status [aliases: info, stat]
+    stop          Close the current connection and exit the daemon process [aliases: kill, disconnect]
+    add           Add new VPN server configuration to local config file [aliases: new, create, insert]
+    import        Import VPN server configurations from a base64 encoded string
+    export        Export VPN server configurations to a base64 encoded string
+    delete        Delete a VPN server configuration from local config file [aliases: rm, remove, del]
+    list          List all VPN server configurations in local config file [aliases: ls, l]
+    logs          Show logs of the daemon process [aliases: log]
+    gen-complete  Generate shell completion script
+    help          Print this message or the help of the given subcommand(s)
 
   Options:
     -h, --help     Print help
@@ -88,6 +91,24 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
   Options:
     -c, --config-file <CONFIG_FILE>  The path to the local config file
     -h, --help                       Print help
+  ```
+
+### Generate shell completion script
+
+- ZSH (Oh My Zsh!)
+
+  ```bash
+  mkdir -p ~/.oh-my-zsh/custom/plugins/openconnect
+  openconnect gen-complete zsh > ~/.oh-my-zsh/custom/plugins/openconnect/openconnect.plugin.zsh
+  echo "plugins+=(openconnect)" >> ~/.zshrc
+  ```
+
+- Bash
+
+  ```bash
+  mkdir -p ~/.bash_completion
+  openconnect gen-complete bash > ~/.bash_completion/openconnect
+  echo "source ~/.bash_completion/openconnect" >> ~/.bashrc
   ```
 
 ## Build
@@ -139,8 +160,9 @@ Special thanks to (MORE THAN) the following projects and technologies for making
 - [x] implement oidc login
 - [x] implement logs
   - [x] tracing file rotation
+  - [ ] optimize log search
 - [x] implement CLI
   - [x] Add/Remove configurations
   - [x] Daemon mode
   - [x] Password login
-  - [ ] OIDC login
+  - [x] OIDC login

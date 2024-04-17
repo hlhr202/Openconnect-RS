@@ -7,7 +7,7 @@ use openidconnect::{
     },
     reqwest::async_http_client,
     AdditionalProviderMetadata, AuthType, ClientId, ClientSecret, DeviceAuthorizationUrl,
-    IssuerUrl, ProviderMetadata, RedirectUrl, TokenResponse,
+    IssuerUrl, ProviderMetadata, TokenResponse,
 };
 use std::{future::Future, time::Duration};
 
@@ -42,7 +42,6 @@ type DeviceProviderMetadata = ProviderMetadata<
 
 pub struct OpenIDDeviceAuthConfig {
     pub issuer_url: String,
-    pub redirect_uri: Option<String>,
     pub client_id: String,
     pub client_secret: Option<String>,
 }
@@ -77,18 +76,13 @@ impl OpenIDDeviceAuth {
             .device_authorization_endpoint
             .clone();
 
-        let redirect_uri = config.redirect_uri.and_then(|x| RedirectUrl::new(x).ok());
         let client_id = ClientId::new(config.client_id);
         let client_secret = config.client_secret.map(ClientSecret::new);
 
-        let mut client =
+        let client =
             CoreClient::from_provider_metadata(provider_metadata, client_id, client_secret)
                 .set_device_authorization_uri(device_authorization_endpoint)
                 .set_auth_type(AuthType::RequestBody);
-
-        if let Some(redirect_uri) = redirect_uri {
-            client = client.set_redirect_uri(redirect_uri);
-        }
 
         Ok(OpenIDDeviceAuth { client })
     }

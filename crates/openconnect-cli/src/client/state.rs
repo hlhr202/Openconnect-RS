@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use crate::{sock, JsonRequest, JsonResponse};
 use comfy_table::Table;
 use futures::TryStreamExt;
@@ -7,9 +5,14 @@ use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
     result::OpenconnectError,
-    storage::{PasswordServer, StoredConfigs, StoredServer},
+    storage::{OidcServer, PasswordServer, StoredConfigs, StoredServer},
     Connectable, VpnClient,
 };
+use openconnect_oidc::{
+    obtain_cookie_by_oidc_token,
+    oidc_device::{OpenIDDeviceAuth, OpenIDDeviceAuthConfig, OpenIDDeviceAuthError},
+};
+use std::path::PathBuf;
 
 #[allow(clippy::enum_variant_names)]
 #[derive(thiserror::Error, Debug)]
@@ -22,6 +25,9 @@ pub enum StateError {
 
     #[error("Tokio task error: {0}")]
     TokioTaskError(#[from] tokio::task::JoinError),
+
+    #[error("OpenID device auth error: {0}")]
+    OpenIDAuthError(#[from] OpenIDDeviceAuthError),
 }
 
 pub fn get_vpnc_script() -> Result<String, StateError> {
@@ -66,6 +72,33 @@ pub async fn obtain_cookie_from_password_server(
     let client_clone = client.clone();
 
     Ok(tokio::task::spawn_blocking(move || client_clone.connect_for_cookie(entrypoint)).await??)
+}
+
+pub async fn obtain_cookie_from_oidc_server(
+    oidc_server: &OidcServer,
+    _stored_configs: &StoredConfigs,
+) -> Result<Option<String>, StateError> {
+    let openid_config = OpenIDDeviceAuthConfig {
+        issuer_url: oidc_server.issuer.clone(),
+        client_id: oidc_server.client_id.clone(),
+        client_secret: oidc_server.client_secret.clone(),
+    };
+
+    let mut openid = OpenIDDeviceAuth::new(openid_config).await?;
+    let device_auth_response = openid.exchange_device_token().await?;
+    let verification_url = device_auth_response.verification_uri().url();
+    let user_code = device_auth_response.user_code();
+    println!(
+        "Please visit {} and enter code {}",
+        verification_url,
+        user_code.secret()
+    );
+
+    let token = openid
+        .exchange_token(&device_auth_response, tokio::time::sleep, None)
+        .await?;
+
+    Ok(obtain_cookie_by_oidc_token(&oidc_server.server, &token).await)
 }
 
 pub fn request_get_status() {
@@ -166,6 +199,7 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                         .await
                         .ok()
                         .flatten();
+
                         (
                             cookie,
                             password_server.name,
@@ -173,8 +207,21 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                             password_server.allow_insecure,
                         )
                     }
-                    StoredServer::Oidc(_) => {
-                        todo!("OIDC server not implemented");
+                    StoredServer::Oidc(oidc_server) => {
+                        let cookie = crate::client::state::obtain_cookie_from_oidc_server(
+                            &oidc_server,
+                            &stored_configs,
+                        )
+                        .await
+                        .ok()
+                        .flatten();
+
+                        (
+                            cookie,
+                            oidc_server.name,
+                            oidc_server.server,
+                            oidc_server.allow_insecure,
+                        )
                     }
                 };
 

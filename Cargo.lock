@@ -2872,6 +2872,7 @@ dependencies = [
  "home",
  "libc",
  "openconnect-core",
+ "openconnect-oidc",
  "serde",
  "serde_json",
  "sudo",
@@ -2941,7 +2942,7 @@ dependencies = [
 
 [[package]]
 name = "openconnect-oidc"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "openidconnect",
  "reqwest 0.12.3",

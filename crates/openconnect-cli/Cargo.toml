@@ -16,6 +16,7 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 libc = { workspace = true }
+openconnect-oidc = { path = "../openconnect-oidc", version = "0.1.1" }
 openconnect-core = { path = "../openconnect-core", version = "0.1.1" }
 sudo = { workspace = true }
 tracing = { workspace = true }
