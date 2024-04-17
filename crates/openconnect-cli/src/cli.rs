@@ -62,7 +62,13 @@ pub enum Commands {
     Logs,
 
     #[command(about = "Generate shell completion script")]
-    GenComplete { generator: Shell },
+    GenComplete {
+        generator: Shell,
+
+        /// The CLI binary name, default to 'openconnect', must be the same as the binary name used to run the CLI
+        #[arg(short = 'n', long, default_value = "openconnect")]
+        binary_name: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -116,14 +122,14 @@ pub enum SeverConfigArgs {
     },
 }
 
-pub fn print_completions(generator: Shell) {
+pub fn print_completions(generator: Shell, binary_name: Option<String>) {
     let mut cmd = Cli::command();
     let cmd = &mut cmd;
 
     generate(
         generator,
         cmd,
-        cmd.get_name().to_string(),
+        binary_name.unwrap_or(cmd.get_name().to_string()),
         &mut std::io::stdout(),
     );
 }

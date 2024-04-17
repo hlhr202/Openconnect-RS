@@ -44,8 +44,11 @@ fn main() {
     let cli = Cli::parse();
 
     match cli.command {
-        Commands::GenComplete { generator } => {
-            crate::cli::print_completions(generator);
+        Commands::GenComplete {
+            generator,
+            binary_name,
+        } => {
+            crate::cli::print_completions(generator, binary_name);
         }
         Commands::Add(server_config) => {
             crate::client::config::request_add_server(server_config);
