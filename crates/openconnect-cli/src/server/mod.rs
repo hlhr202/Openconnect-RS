@@ -1,5 +1,5 @@
 use crate::{
-    client::state::get_vpnc_script,
+    client::state::{get_vpnc_script, StateError},
     sock::{self, UnixDomainServer},
     JsonRequest, JsonResponse,
 };
@@ -34,6 +34,39 @@ trait Acceptable {
     async fn try_accept(self);
 }
 
+async fn connect_to_vpn_server(
+    name: &str,
+    server: &str,
+    allow_insecure: bool,
+    cookie: &str,
+) -> Result<Arc<VpnClient>, StateError> {
+    let vpncscript = get_vpnc_script()?;
+
+    let config = ConfigBuilder::default()
+        .vpncscript(&vpncscript)
+        .loglevel(LogLevel::Info)
+        .build()?;
+
+    let entrypoint = EntrypointBuilder::new()
+        .name(name)
+        .server(server)
+        .accept_insecure_cert(allow_insecure)
+        .cookie(cookie)
+        .enable_udp(true)
+        .build()?;
+
+    let event_handler = EventHandlers::default();
+
+    let client = VpnClient::new(config, event_handler)?;
+
+    let client_cloned = client.clone();
+    tokio::task::spawn_blocking(move || {
+        let _ = client_cloned.connect(entrypoint);
+    });
+
+    Ok(client)
+}
+
 impl Acceptable for Arc<State> {
     async fn try_accept(self) {
         if let Ok((stream, _)) = self.server.listener.accept().await {
@@ -45,40 +78,38 @@ impl Acceptable for Arc<State> {
                 while let Ok(Some(command)) = framed_reader.try_next().await {
                     match command {
                         JsonRequest::Start {
-                            name: server_name,
-                            server: server_url,
+                            name,
+                            server,
                             allow_insecure,
                             cookie,
                         } => {
-                            let vpncscript = get_vpnc_script().unwrap();
+                            let connection_result =
+                                connect_to_vpn_server(&name, &server, allow_insecure, &cookie)
+                                    .await;
 
-                            let config = ConfigBuilder::default()
-                                .vpncscript(&vpncscript)
-                                .loglevel(LogLevel::Info)
-                                .build()
-                                .unwrap();
-
-                            let entrypoint = EntrypointBuilder::new()
-                                .name(&server_name)
-                                .server(&server_url)
-                                .accept_insecure_cert(allow_insecure)
-                                .cookie(&cookie)
-                                .enable_udp(true)
-                                .build()
-                                .unwrap();
-
-                            let event_handler = EventHandlers::default();
-
-                            let client = VpnClient::new(config, event_handler).unwrap();
-                            let client_cloned = client.clone();
-
-                            tokio::task::spawn_blocking(move || {
-                                let _ = client.connect(entrypoint);
-                            });
-
-                            {
-                                let mut client_to_write = self.client.write().await;
-                                *client_to_write = Some(client_cloned);
+                            match connection_result {
+                                Ok(client) => {
+                                    {
+                                        let mut client_to_write = self.client.write().await;
+                                        *client_to_write = Some(client);
+                                    }
+                                    let _ = framed_writer
+                                        .send(JsonResponse::StartResult {
+                                            name,
+                                            success: true,
+                                            err_message: None,
+                                        })
+                                        .await;
+                                }
+                                Err(e) => {
+                                    let _ = framed_writer
+                                        .send(JsonResponse::StartResult {
+                                            name,
+                                            success: false,
+                                            err_message: Some(e.to_string()),
+                                        })
+                                        .await;
+                                }
                             }
                         }
 
@@ -92,7 +123,7 @@ impl Acceptable for Arc<State> {
 
                                     // ignore send error
                                     let _ = framed_writer
-                                        .send(JsonResponse::StopResult { server_name })
+                                        .send(JsonResponse::StopResult { name: server_name })
                                         .await;
                                     unsafe {
                                         libc::raise(libc::SIGTERM);

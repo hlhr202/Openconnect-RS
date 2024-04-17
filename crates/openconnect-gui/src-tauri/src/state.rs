@@ -40,10 +40,7 @@ pub enum StateError {
 
 #[derive(Debug, Clone)]
 pub enum VpnEvent {
-    Status {
-        status: StatusPayload,
-        server_name: Option<String>,
-    },
+    Status { status: StatusPayload },
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -92,7 +89,7 @@ impl AppState {
                 let handle = handle.clone();
                 let app_system_tray: State<'_, Arc<AppSystemTray>> = handle.state();
                 match event {
-                    VpnEvent::Status { status, .. } => {
+                    VpnEvent::Status { status } => {
                         let result = handle.emit_all("vpnStatus", Some(status));
                         app_system_tray.recreate(&handle).await.unwrap();
                         if let Err(e) = result {
@@ -120,14 +117,8 @@ impl AppState {
     }
 
     pub async fn trigger_state_retrieve(&self) -> Result<(), StateError> {
-        let (status, server_name) = self.get_status_and_name().await?;
-        Ok(self
-            .event_tx
-            .send(VpnEvent::Status {
-                status,
-                server_name,
-            })
-            .await?)
+        let (status, _server_name) = self.get_status_and_name().await?;
+        Ok(self.event_tx.send(VpnEvent::Status { status }).await?)
     }
 
     pub async fn connect_with_server_name(&self, server_name: &str) -> Result<(), StateError> {
@@ -161,7 +152,7 @@ impl AppState {
             .enable_udp(true)
             .build()?;
 
-        let event_handlers = self.create_event_handler(server_name);
+        let event_handlers = self.create_event_handler();
 
         let client = VpnClient::new(config, event_handlers)?;
         {
@@ -220,7 +211,7 @@ impl AppState {
             .accept_insecure_cert(oidc_server.allow_insecure.unwrap_or(false))
             .build()?;
 
-        let event_handlers = self.create_event_handler(server_name);
+        let event_handlers = self.create_event_handler();
 
         let client = VpnClient::new(config, event_handlers)?;
         {
@@ -245,24 +236,17 @@ impl AppState {
         Ok(())
     }
 
-    pub fn create_event_handler(
-        &self,
-        server_name: &str,
-    ) -> openconnect_core::events::EventHandlers {
+    pub fn create_event_handler(&self) -> openconnect_core::events::EventHandlers {
         let event_tx_for_state = self.event_tx.clone();
         let event_tx_for_cert = self.event_tx.clone();
-        let server_name_for_state = server_name.to_string();
-        let server_name_for_cert = server_name.to_string();
 
         EventHandlers::default()
             .with_handle_connection_state_change(move |state| {
                 let event_tx = event_tx_for_state.clone();
-                let server_name = Some(server_name_for_state.to_string());
                 tauri::async_runtime::spawn(async move {
                     let _ = event_tx
                         .send(VpnEvent::Status {
                             status: state.into(),
-                            server_name,
                         })
                         .await;
                     // ignore the result
@@ -270,7 +254,6 @@ impl AppState {
             })
             .with_handle_peer_cert_invalid(move |reason| {
                 let event_tx = event_tx_for_cert.clone();
-                let server_name = Some(server_name_for_cert.to_string());
                 let reason = reason.to_string();
                 tauri::async_runtime::spawn(async move {
                     let _ = event_tx
@@ -279,7 +262,6 @@ impl AppState {
                                 status: "ERROR".to_string(),
                                 message: Some(format!("Peer certificate invalid, if you want to connect this insecure server, please tick 'Allow insecure' in the config. Server fingerprint: {}", reason)),
                             },
-                            server_name,
                         })
                         .await;
                     // ignore the result

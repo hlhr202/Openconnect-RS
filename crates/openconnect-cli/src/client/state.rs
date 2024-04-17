@@ -1,14 +1,30 @@
+use std::path::PathBuf;
+
 use crate::{sock, JsonRequest, JsonResponse};
 use comfy_table::Table;
 use futures::TryStreamExt;
 use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
-    storage::{PasswordServer, StoredConfigs},
+    result::OpenconnectError,
+    storage::{PasswordServer, StoredConfigs, StoredServer},
     Connectable, VpnClient,
 };
 
-pub fn get_vpnc_script() -> anyhow::Result<String> {
+#[allow(clippy::enum_variant_names)]
+#[derive(thiserror::Error, Debug)]
+pub enum StateError {
+    #[error("IO error: {0}")]
+    IoError(#[from] std::io::Error),
+
+    #[error("Openconnect error: {0}")]
+    OpenconnectError(#[from] OpenconnectError),
+
+    #[error("Tokio task error: {0}")]
+    TokioTaskError(#[from] tokio::task::JoinError),
+}
+
+pub fn get_vpnc_script() -> Result<String, StateError> {
     let homedir = home::home_dir().ok_or(std::io::Error::new(
         std::io::ErrorKind::NotFound,
         "Failed to get home directory",
@@ -25,7 +41,7 @@ pub fn get_vpnc_script() -> anyhow::Result<String> {
 pub async fn obtain_cookie_from_password_server(
     password_server: &PasswordServer,
     stored_configs: &StoredConfigs,
-) -> anyhow::Result<Option<String>> {
+) -> Result<Option<String>, StateError> {
     let password_server = password_server.decrypted_by(&stored_configs.cipher);
 
     let vpncscript = get_vpnc_script()?;
@@ -49,14 +65,7 @@ pub async fn obtain_cookie_from_password_server(
     let client = VpnClient::new(config, event_handler)?;
     let client_clone = client.clone();
 
-    let result =
-        tokio::task::spawn_blocking(move || client_clone.connect_for_cookie(entrypoint)).await;
-
-    match result {
-        Ok(Ok(cookie)) => Ok(cookie),
-        Ok(Err(e)) => Err(e.into()),
-        Err(e) => Err(e.into()),
-    }
+    Ok(tokio::task::spawn_blocking(move || client_clone.connect_for_cookie(entrypoint)).await??)
 }
 
 pub fn request_get_status() {
@@ -143,6 +152,82 @@ pub fn request_get_status() {
     });
 }
 
+pub fn request_start_server(name: String, config_file: PathBuf) {
+    let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+    runtime.block_on(async {
+        match crate::client::config::read_server_config_from_fs(&name, config_file).await {
+            Ok((stored_server, stored_configs)) => {
+                let (cookie, name, server, allow_insecure) = match stored_server {
+                    StoredServer::Password(password_server) => {
+                        let cookie = crate::client::state::obtain_cookie_from_password_server(
+                            &password_server,
+                            &stored_configs,
+                        )
+                        .await
+                        .ok()
+                        .flatten();
+                        (
+                            cookie,
+                            password_server.name,
+                            password_server.server,
+                            password_server.allow_insecure,
+                        )
+                    }
+                    StoredServer::Oidc(_) => {
+                        todo!("OIDC server not implemented");
+                    }
+                };
+
+                if let Some(cookie) = cookie {
+                    let mut unix_client = sock::UnixDomainClient::connect()
+                        .await
+                        .expect("Failed to connect to daemon");
+
+                    unix_client
+                        .send(JsonRequest::Start {
+                            name,
+                            server,
+                            allow_insecure: allow_insecure.unwrap_or(false),
+                            cookie,
+                        })
+                        .await
+                        .expect("Failed to send start command");
+
+                    if let Ok(Some(response)) = unix_client.framed_reader.try_next().await {
+                        match response {
+                            JsonResponse::StartResult {
+                                name,
+                                success,
+                                err_message,
+                            } => {
+                                if success {
+                                    println!("Started connection to server: {}", name);
+                                } else {
+                                    eprintln!(
+                                        "Failed to start connection: {}",
+                                        err_message.unwrap_or("Unknown error".to_string())
+                                    );
+                                    std::process::exit(1);
+                                }
+                            }
+                            _ => {
+                                println!("Received unexpected response");
+                            }
+                        }
+                    }
+                } else {
+                    eprintln!("Failed to obtain cookie, check logs for more information");
+                    std::process::exit(1);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to get server: {}", e);
+                std::process::exit(1);
+            }
+        }
+    });
+}
+
 pub fn request_stop_server() {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
@@ -158,7 +243,7 @@ pub fn request_stop_server() {
 
                 if let Ok(Some(response)) = client.framed_reader.try_next().await {
                     match response {
-                        JsonResponse::StopResult { server_name } => {
+                        JsonResponse::StopResult { name: server_name } => {
                             println!("Stopped connection to server: {}", server_name)
                         }
                         _ => {

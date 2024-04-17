@@ -6,14 +6,8 @@ mod sock;
 
 use clap::Parser;
 use cli::{Cli, Commands};
-use openconnect_core::{
-    ip_info::IpInfo,
-    log::Logger,
-    storage::{StoredConfigs, StoredServer},
-};
+use openconnect_core::{ip_info::IpInfo, log::Logger, storage::StoredConfigs};
 use std::{io::BufRead, path::PathBuf};
-
-use crate::sock::UnixDomainClient;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum JsonRequest {
@@ -30,10 +24,12 @@ pub enum JsonRequest {
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum JsonResponse {
     StartResult {
-        server_name: String,
+        name: String,
+        success: bool,
+        err_message: Option<String>,
     },
     StopResult {
-        server_name: String,
+        name: String,
     },
     InfoResult {
         server_name: String,
@@ -107,42 +103,7 @@ fn main() {
 
             match daemon::daemonize() {
                 daemon::ForkResult::Parent => {
-                    let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-                    runtime.block_on(async {
-                        match crate::client::config::read_server_config_from_fs(&name, config_file)
-                            .await
-                        {
-                            Ok((stored_server, stored_configs)) => {
-                                let (cookie, name, server, allow_insecure) = match stored_server {
-                                    StoredServer::Password(password_server) => {
-                                        let cookie = crate::client::state::obtain_cookie_from_password_server(
-                                            &password_server,
-                                            &stored_configs,
-                                        )
-                                        .await.unwrap();
-                                        (cookie, password_server.name, password_server.server, password_server.allow_insecure)
-                                    }
-                                    StoredServer::Oidc(_) => {
-                                        todo!("OIDC server not implemented");
-                                    }
-                                };
-                                
-                                if let Some(cookie) = cookie {
-                                    let mut unix_client = UnixDomainClient::connect().await.unwrap();
-                                    let _ = unix_client.send(JsonRequest::Start {
-                                        name,
-                                        server,
-                                        allow_insecure: allow_insecure.unwrap_or(false),
-                                        cookie,
-                                    }).await;
-                                }
-                            }
-                            Err(e) => {
-                                eprintln!("Failed to get server: {}", e);
-                                std::process::exit(1);
-                            }
-                        }
-                    });
+                    crate::client::state::request_start_server(name, config_file);
                     println!("The process will be running in the background, you should use cli to interact with it.");
                     std::process::exit(0);
                 }
@@ -155,12 +116,6 @@ fn main() {
             }
 
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-
-            runtime.block_on(async {
-                crate::client::config::read_server_config_from_fs(&name, config_file)
-                        .await
-                        .expect("Failed to get server");
-            });
 
             runtime.block_on(async {
                 Logger::init().expect("Failed to initialize logger");
