@@ -2861,6 +2861,7 @@ dependencies = [
 name = "openconnect-cli"
 version = "0.1.1"
 dependencies = [
+ "anyhow",
  "base64 0.22.0",
  "chrono",
  "clap",
@@ -2923,6 +2924,7 @@ dependencies = [
  "libc",
  "open 5.1.2",
  "openconnect-core",
+ "openconnect-oidc",
  "openidconnect",
  "reqwest 0.12.3",
  "serde",
@@ -2935,6 +2937,18 @@ dependencies = [
  "url",
  "window-shadows",
  "windows-sys 0.52.0",
+]
+
+[[package]]
+name = "openconnect-oidc"
+version = "0.1.0"
+dependencies = [
+ "openidconnect",
+ "reqwest 0.12.3",
+ "serde",
+ "thiserror",
+ "tokio",
+ "url",
 ]
 
 [[package]]

@@ -1,12 +1,13 @@
-use crate::{
-    oidc::{OpenID, OpenIDConfig, OpenIDError, OIDC_REDIRECT_URI},
-    system_tray::AppSystemTray,
-};
+use crate::system_tray::AppSystemTray;
 use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
     storage::{StoredConfigError, StoredConfigs, StoredServer},
     Connectable, Status, VpnClient,
+};
+use openconnect_oidc::{
+    obtain_cookie_by_oidc_token,
+    oidc_token::{OpenIDTokenAuth, OpenIDTokenAuthConfig, OpenIDTokenAuthError, OIDC_REDIRECT_URI},
 };
 use std::{path::PathBuf, sync::Arc};
 use tauri::{
@@ -31,7 +32,7 @@ pub enum StateError {
     TauriError(#[from] tauri::Error),
 
     #[error("OpenID error: {0}")]
-    OpenIdError(#[from] crate::oidc::OpenIDError),
+    OpenIdError(#[from] OpenIDTokenAuthError),
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
@@ -177,7 +178,7 @@ impl AppState {
         let stored_server = self.stored_configs.read().await;
         let oidc_server = stored_server.get_server_as_oidc_server(server_name)?;
 
-        let openid_config = OpenIDConfig {
+        let openid_config = OpenIDTokenAuthConfig {
             issuer_url: oidc_server.issuer.clone(),
             redirect_uri: OIDC_REDIRECT_URI.to_string(),
             client_id: oidc_server.client_id.clone(),
@@ -185,21 +186,20 @@ impl AppState {
             use_pkce_challenge: true,
         };
 
-        let mut openid = OpenID::new(openid_config).await?;
+        let mut openid = OpenIDTokenAuth::new(openid_config).await?;
         let (authorize_url, req_state, _) = openid.auth_request();
 
         open::that(authorize_url.to_string())?;
         let (code, callback_state) = openid.wait_for_callback().await?;
 
         if req_state.secret() != callback_state.secret() {
-            return Err(OpenIDError::StateValidationError(
+            return Err(OpenIDTokenAuthError::StateValidationError(
                 "State validation failed".to_string(),
             ))?;
         }
 
         let token = openid.exchange_token(code).await?;
-        let cookie = openid
-            .obtain_cookie_by_oidc(&oidc_server.server, &token)
+        let cookie = obtain_cookie_by_oidc_token(&oidc_server.server, &token)
             .await
             .ok_or(StateError::IoError(std::io::Error::new(
                 std::io::ErrorKind::InvalidData,

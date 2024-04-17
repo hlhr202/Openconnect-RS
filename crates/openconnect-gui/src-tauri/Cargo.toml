@@ -21,6 +21,7 @@ dotenvy = { workspace = true }
 lazy_static = { workspace = true }
 open = "5.1.2"
 openconnect-core = { path = "../../openconnect-core" }
+openconnect-oidc = { path = "../../openconnect-oidc" }
 openidconnect = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }

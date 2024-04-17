@@ -2,12 +2,12 @@ use crate::cli::SeverConfigArgs;
 use base64::Engine;
 use comfy_table::Table;
 use openconnect_core::storage::{OidcServer, PasswordServer, StoredConfigs, StoredServer};
-use std::{error::Error, path::PathBuf};
+use std::path::PathBuf;
 
 pub async fn read_server_config_from_fs(
     server_name: &str,
     config_file: PathBuf,
-) -> Result<(StoredServer, StoredConfigs), Box<dyn Error>> {
+) -> anyhow::Result<(StoredServer, StoredConfigs)> {
     let mut stored_configs = StoredConfigs::new(None, config_file);
     let config = stored_configs.read_from_file().await?;
     let server = config.servers.get(server_name);

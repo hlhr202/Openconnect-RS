@@ -5,7 +5,7 @@ members = [
     "crates/openconnect-sys",
     "crates/openconnect-core",
     "crates/openconnect-gui/src-tauri",
-    "crates/openconnect-cli",
+    "crates/openconnect-cli", "crates/openconnect-oidc",
 ]
 
 [workspace.dependencies]

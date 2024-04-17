@@ -7,19 +7,31 @@ use openconnect_core::{
     storage::{PasswordServer, StoredConfigs},
     Connectable, VpnClient,
 };
-use std::{error::Error, sync::Arc};
 
-pub async fn connect_password_server(
+pub fn get_vpnc_script() -> anyhow::Result<String> {
+    let homedir = home::home_dir().ok_or(std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        "Failed to get home directory",
+    ))?;
+    let vpncscript = homedir.join(".oidcvpn/bin/vpnc-script");
+    let vpncscript = vpncscript.to_str().ok_or(std::io::Error::new(
+        std::io::ErrorKind::InvalidData,
+        "Failed to get vpnc-script path as string",
+    ))?;
+
+    Ok(vpncscript.to_string())
+}
+
+pub async fn obtain_cookie_from_password_server(
     password_server: &PasswordServer,
     stored_configs: &StoredConfigs,
-) -> Result<Arc<VpnClient>, Box<dyn Error>> {
+) -> anyhow::Result<Option<String>> {
     let password_server = password_server.decrypted_by(&stored_configs.cipher);
-    let homedir = home::home_dir().ok_or("Failed to get home directory")?;
-    let vpncscript = homedir.join(".oidcvpn/bin/vpnc-script");
-    let vpncscript = vpncscript.to_str().ok_or("Failed to get vpncscript path")?;
+
+    let vpncscript = get_vpnc_script()?;
 
     let config = ConfigBuilder::default()
-        .vpncscript(vpncscript)
+        .vpncscript(&vpncscript)
         .loglevel(LogLevel::Info)
         .build()?;
 
@@ -37,11 +49,14 @@ pub async fn connect_password_server(
     let client = VpnClient::new(config, event_handler)?;
     let client_clone = client.clone();
 
-    tokio::task::spawn_blocking(move || {
-        let _ = client_clone.connect(entrypoint);
-    });
+    let result =
+        tokio::task::spawn_blocking(move || client_clone.connect_for_cookie(entrypoint)).await;
 
-    Ok(client)
+    match result {
+        Ok(Ok(cookie)) => Ok(cookie),
+        Ok(Err(e)) => Err(e.into()),
+        Err(e) => Err(e.into()),
+    }
 }
 
 pub fn request_get_status() {

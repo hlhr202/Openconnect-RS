@@ -6,17 +6,32 @@ mod sock;
 
 use clap::Parser;
 use cli::{Cli, Commands};
-use openconnect_core::{ip_info::IpInfo, log::Logger, storage::StoredConfigs};
+use openconnect_core::{
+    ip_info::IpInfo,
+    log::Logger,
+    storage::{StoredConfigs, StoredServer},
+};
 use std::{io::BufRead, path::PathBuf};
+
+use crate::sock::UnixDomainClient;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum JsonRequest {
+    Start {
+        name: String,
+        server: String,
+        allow_insecure: bool,
+        cookie: String,
+    },
     Stop,
     Info,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub enum JsonResponse {
+    StartResult {
+        server_name: String,
+    },
     StopResult {
         server_name: String,
     },
@@ -34,7 +49,7 @@ fn main() {
 
     match cli.command {
         Commands::GenComplete { generator } => {
-            cli::print_completions(generator);
+            crate::cli::print_completions(generator);
         }
         Commands::Add(server_config) => {
             crate::client::config::request_add_server(server_config);
@@ -97,7 +112,31 @@ fn main() {
                         match crate::client::config::read_server_config_from_fs(&name, config_file)
                             .await
                         {
-                            Ok(_) => {}
+                            Ok((stored_server, stored_configs)) => {
+                                let (cookie, name, server, allow_insecure) = match stored_server {
+                                    StoredServer::Password(password_server) => {
+                                        let cookie = crate::client::state::obtain_cookie_from_password_server(
+                                            &password_server,
+                                            &stored_configs,
+                                        )
+                                        .await.unwrap();
+                                        (cookie, password_server.name, password_server.server, password_server.allow_insecure)
+                                    }
+                                    StoredServer::Oidc(_) => {
+                                        todo!("OIDC server not implemented");
+                                    }
+                                };
+                                
+                                if let Some(cookie) = cookie {
+                                    let mut unix_client = UnixDomainClient::connect().await.unwrap();
+                                    let _ = unix_client.send(JsonRequest::Start {
+                                        name,
+                                        server,
+                                        allow_insecure: allow_insecure.unwrap_or(false),
+                                        cookie,
+                                    }).await;
+                                }
+                            }
                             Err(e) => {
                                 eprintln!("Failed to get server: {}", e);
                                 std::process::exit(1);
@@ -117,19 +156,17 @@ fn main() {
 
             let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
 
-            let (server, configs) = runtime.block_on(async {
+            runtime.block_on(async {
                 crate::client::config::read_server_config_from_fs(&name, config_file)
-                    .await
-                    .expect("Failed to get server")
+                        .await
+                        .expect("Failed to get server");
             });
 
             runtime.block_on(async {
                 Logger::init().expect("Failed to initialize logger");
-                let _ = crate::server::start_daemon(&server, &configs)
-                    .await
-                    .inspect_err(|e| {
-                        tracing::error!("Failed to start daemon: {}", e);
-                    });
+                let _ = crate::server::start_daemon().await.inspect_err(|e| {
+                    tracing::error!("Failed to start daemon: {}", e);
+                });
             });
         }
     }

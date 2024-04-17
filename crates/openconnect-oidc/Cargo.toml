@@ -1,0 +1,15 @@
+[package]
+name = "openconnect-oidc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+openidconnect = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+url = { workspace = true }
+reqwest = { workspace = true }
+
+[lib]
+crate-type = ["lib"]
