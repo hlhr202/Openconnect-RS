@@ -100,8 +100,9 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
   ```bash
   mkdir -p ~/.oh-my-zsh/custom/plugins/openconnect
   openconnect gen-complete zsh > ~/.oh-my-zsh/custom/plugins/openconnect/openconnect.plugin.zsh
-  echo "plugins+=(openconnect)" >> ~/.zshrc
   ```
+
+  Then add `openconnect` to the `plugins` array in your `~/.zshrc` file:
 
 - Bash
 
