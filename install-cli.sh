@@ -8,17 +8,18 @@
 COLOR_PRIMARY="\033[0;34m"
 COLOR_WARN="\033[1;33m"
 COLOR_SUCCESS="\033[0;32m"
+COLOR_FAILURE="\033[0;31m"
 COLOR_RESET="\033[0m"
 
 echo ""
 echo "=================================="
 echo ""
-echo "${COLOR_PRIMARY}Installing Openconnect-RS CLI${COLOR_RESET}"
+echo -e "${COLOR_PRIMARY}Installing Openconnect-RS CLI${COLOR_RESET}"
 echo ""
 echo ""
-echo "This script will download the Openconnect CLI and vpnc-script and install them in $HOME/.oidcvpn/bin"
-echo "${COLOR_WARN}WARNING: Openconnect-RS CLI has the same installed binary name as the original Openconnect CLI."
-echo "Please remove the original Openconnect CLI if you wish to use Openconnect-RS CLI.${COLOR_RESET}"
+echo -e "This script will download the Openconnect CLI and vpnc-script and install them in $HOME/.oidcvpn/bin"
+echo -e "${COLOR_WARN}WARNING: Openconnect-RS CLI has the same installed binary name as the original Openconnect CLI."
+echo -e "Please remove the original Openconnect CLI if you wish to use Openconnect-RS CLI.${COLOR_RESET}"
 echo ""
 echo "=================================="
 echo ""
@@ -43,7 +44,7 @@ if [[ "$OSTYPE" = "darwin"* ]]; then
         # install macos cli
         CLI_DOWNLOAD_URL="https://github.com/hlhr202/Openconnect-RS/releases/download/v0.0.0-pre1/openconnect-cli_osx-aarch64"
     else
-        echo "unsupported arch"
+        echo -e "${COLOR_FAILURE}unsupported arch${COLOR_RESET}"
         exit 1
     fi
 
@@ -51,12 +52,12 @@ elif [[ "$OSTYPE" = "linux-gnu" ]]; then
     if [[ "$HOSTTYPE" = "x86_64" ]]; then
         CLI_DOWNLOAD_URL="https://github.com/hlhr202/Openconnect-RS/releases/download/v0.0.0-pre1/openconnect-cli_linux-x86_64"
     else
-        echo "unsupported arch"
+        echo -e "${COLOR_FAILURE}unsupported arch${COLOR_RESET}"
         exit 1
     fi
 
 else
-    echo "unsupported os"
+    echo -e "${COLOR_FAILURE}unsupported os${COLOR_RESET}"
     exit 1
 fi
 
@@ -66,7 +67,7 @@ if [[ ! -d "$HOME/.oidcvpn/bin" ]]; then
 fi
 
 # download cli
-echo "${COLOR_PRIMARY}Downloading cli${COLOR_RESET}"
+echo -e "${COLOR_PRIMARY}Downloading cli${COLOR_RESET}"
 echo ""
 curl -L $CLI_DOWNLOAD_URL >$HOME/.oidcvpn/bin/openconnect
 chmod +x $HOME/.oidcvpn/bin/openconnect
@@ -75,7 +76,7 @@ echo "=================================="
 echo ""
 
 # download vpnc-script
-echo "${COLOR_PRIMARY}Downloading vpnc-script${COLOR_RESET}"
+echo -e "${COLOR_PRIMARY}Downloading vpnc-script${COLOR_RESET}"
 echo ""
 curl -L $VPNC_SCRIPT_URL >$HOME/.oidcvpn/bin/vpnc-script
 chmod +x $HOME/.oidcvpn/bin/vpnc-script
@@ -84,7 +85,7 @@ echo "=================================="
 echo ""
 
 # add .oidcvpn/bin to PATH
-echo "${COLOR_PRIMARY}Adding .oidcvpn/bin to PATH${COLOR_RESET}"
+echo -e "${COLOR_PRIMARY}Adding .oidcvpn/bin to PATH${COLOR_RESET}"
 echo ""
 if [[ ":$PATH:" != *":$HOME/.oidcvpn/bin:"* ]]; then
 
@@ -113,4 +114,4 @@ echo ""
 echo "=================================="
 echo ""
 
-echo "${COLOR_SUCCESS}Installation complete!${COLOR_RESET}"
+echo -e "${COLOR_SUCCESS}Installation complete!${COLOR_RESET}"
