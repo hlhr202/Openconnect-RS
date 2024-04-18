@@ -1,6 +1,6 @@
 [package]
 name = "openconnect-sys"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 build = "build/main.rs"
 description = "Rust bindings for OpenConnect"
@@ -25,3 +25,7 @@ pkg-config = "0.3.30"
 home = { workspace = true }
 reqwest = { workspace = true }
 zip = "0.6.6"
+
+[package.metadata.docs.rs]
+default-target = "x86_64-unknown-linux-gnu"
+targets = ["x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-pc-windows-gnu"]

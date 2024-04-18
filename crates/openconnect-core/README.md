@@ -1,6 +1,6 @@
 # Openconnect Core Library
 
-This library provides a Rust API for interacting with underlying Openconnect C library. The unsafe bindings are provided by the [openconnect-sys](https://crates.io/crates/openconnect-sys) crate.
+This library provides a safe Rust API for interacting with underlying Openconnect C library. The unsafe bindings are provided by the [openconnect-sys](https://crates.io/crates/openconnect-sys) crate.
 
 ## Prerequisites
 

@@ -1,7 +1,7 @@
 [package]
 name = "openconnect-cli"
 description = "A CLI client to connect to VPN using OpenConnect"
-version = "0.1.3"
+version = "0.1.4"
 edition = "2021"
 homepage = "https://github.com/hlhr202/Openconnect-RS"
 authors = ["hlhr202"]
@@ -19,8 +19,8 @@ futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 libc = { workspace = true }
-openconnect-oidc = { path = "../openconnect-oidc", version = "0.1.3" }
-openconnect-core = { path = "../openconnect-core", version = "0.1.3" }
+openconnect-oidc = { path = "../openconnect-oidc", version = "0.1.4" }
+openconnect-core = { path = "../openconnect-core", version = "0.1.4" }
 sudo = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }

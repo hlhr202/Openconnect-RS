@@ -1,50 +1,11 @@
-//! Openconnect core library
-//!
-//! This library provides a safe Rust API for interacting with underlying Openconnect C library. The unsafe bindings are provided by the [openconnect-sys](https://crates.io/crates/openconnect-sys) crate.
-//!
-//! Currently only password/oidc server has been supoorted
-//!
-//! # Prerequisites
-//!
-//! Read the [openconnect-sys](https://crates.io/crates/openconnect-sys) crate documentation for installing prerequisites including native system libraries and headers.
-//!
-//! # Example
-//!
-//! ```rust
-//! use openconnect_core::{
-//!   config::{ConfigBuilder, EntrypointBuilder, LogLevel},
-//!   events::EventHandlers,
-//!   protocols::get_anyconnect_protocol,
-//!   Connectable, VpnClient,
-//! };
-//! use std::env;
-//!
-//! fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!   let protocol = get_anyconnect_protocol();
-//!   let config = ConfigBuilder::default().loglevel(LogLevel::Info).build()?;
-//!   let event_handlers = EventHandlers::default();
-//!   let client = VpnClient::new(config, event_handlers)?;
-//!
-//!   let entrypoint = EntrypointBuilder::new()
-//!     .server("vpn.example.com")
-//!     .username("your_username")
-//!     .password("your_password")
-//!     .protocol(protocol)
-//!     .enable_udp(true)
-//!     .accept_insecure_cert(true)
-//!     .build()?;
-//!
-//!   client.connect(entrypoint)?;
-//!
-//!   Ok(())
-//! }
+#![doc = include_str!("../README.md")]
 
-pub mod cert;
+mod cert;
+mod form;
 pub mod command;
 pub mod config;
 pub mod elevator;
 pub mod events;
-pub mod form;
 pub mod ip_info;
 pub mod log;
 pub mod protocols;
