@@ -1,3 +1,43 @@
+/// Openconnect core library
+///
+/// This library provides a Rust API for interacting with underlying Openconnect C library. The unsafe bindings are provided by the [openconnect-sys](https://crates.io/crates/openconnect-sys) crate.
+/// 
+/// Currently only password/oidc server has been supoorted
+///
+/// # Prerequisites
+///
+/// Read the [openconnect-sys](https://crates.io/crates/openconnect-sys) crate documentation for installing prerequisites including native system libraries and headers.
+///
+/// # Example
+/// 
+/// ```rust
+/// use openconnect_core::{
+///   config::{ConfigBuilder, EntrypointBuilder, LogLevel},
+///   events::EventHandlers,
+///   protocols::get_anyconnect_protocol,
+///   Connectable, VpnClient,
+/// };
+/// use std::env;
+///
+/// fn main() -> anyhow::Result<()> {
+///   let protocol = get_anyconnect_protocol();
+/// . let config = ConfigBuilder::default().loglevel(LogLevel::Info).build()?;
+/// . let event_handlers = EventHandlers::default();
+/// . let client = VpnClient::new(config, event_handlers)?;
+///
+/// . let entrypoint = EntrypointBuilder::new()
+///     .server("vpn.example.com")
+///     .username("your_username")
+///     .password("your_password")
+///     .protocol(protocol)
+///     .enable_udp(true)
+///     .accept_insecure_cert(true)
+///     .build()?;
+///
+///   client.connect(entrypoint)?;
+///
+/// . Ok(())
+/// }
 pub mod cert;
 pub mod command;
 pub mod config;
@@ -30,16 +70,31 @@ use std::{
     },
 };
 
+/// Describe the connection status of the client
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
+    /// The client is initialized
     Initialized,
+
+    /// The client is disconnecting to the VPN server
     Disconnecting,
+
+    /// The client is disconnected from the VPN server and command pipe is closed
     Disconnected,
+
+    /// The client is connecting to the VPN server, with several stages described in the string
     Connecting(String),
+
+    /// The client is connected to the VPN server and the main loop is running
     Connected,
+
+    /// The client is in an error state
     Error(OpenconnectError),
 }
 
+/// VpnClient struct
+/// 
+/// This struct is the main entrypoint for interacting with the Openconnect C library (on top of [openconnect-sys](https://crates.io/crates/openconnect-sys))
 #[repr(C)]
 pub struct VpnClient {
     vpninfo: *mut openconnect_info,
@@ -210,9 +265,7 @@ impl VpnClient {
     }
 
     pub fn obtain_cookie(&self) -> OpenconnectResult<()> {
-        let ret = unsafe {
-            openconnect_obtain_cookie(self.vpninfo)
-        };
+        let ret = unsafe { openconnect_obtain_cookie(self.vpninfo) };
         match ret {
             0 => Ok(()),
             _ => Err(result::OpenconnectError::ObtainCookieError(ret)),
@@ -422,6 +475,9 @@ impl Drop for VpnClient {
     }
 }
 
+/// Trait for creating a new instance of VpnClient and connecting to the VPN server
+/// 
+/// This trait is implemented for the lifecycle of the VpnClient
 pub trait Connectable {
     fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>>;
     fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()>;
@@ -432,6 +488,11 @@ pub trait Connectable {
 }
 
 impl Connectable for VpnClient {
+    /// Create a new instance of VpnClient
+    /// 
+    /// config can be created using [config::ConfigBuilder]
+    /// 
+    /// callbacks can be created using [events::EventHandlers]
     fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>> {
         let useragent = std::ffi::CString::new("AnyConnect-compatible OpenConnect VPN Agent")
             .map_err(|_| OpenconnectError::OtherError("useragent is not valid".to_string()))?;
@@ -489,6 +550,13 @@ impl Connectable for VpnClient {
         Ok(instance)
     }
 
+    /// Connect to the VPN server and obtain a cookie
+    /// 
+    /// This function will not keep the connection, it will only connect and obtain a cookie. This function will not block the thread
+    /// 
+    /// The cookie can be used to connect to the VPN server later by passing it to another [config::EntrypointBuilder]
+    /// 
+    /// entrypoint can be created using [config::EntrypointBuilder]
     fn connect_for_cookie(&self, entrypoint: Entrypoint) -> OpenconnectResult<Option<String>> {
         self.emit_state_change(Status::Connecting("Initializing connection".to_string()));
         {
@@ -549,6 +617,9 @@ impl Connectable for VpnClient {
         Ok(self.get_cookie())
     }
 
+    /// Connect to the VPN server and block until the connection is closed
+    /// 
+    /// entrypoint can be created using [config::EntrypointBuilder]
     fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
         self.emit_state_change(Status::Connecting("Make CSTP connection".to_string()));
         self.connect_for_cookie(entrypoint)?;
@@ -570,6 +641,8 @@ impl Connectable for VpnClient {
     }
 
     /// Gracefully stop the main loop
+    /// 
+    /// This function will send a cancel command to the main loop and wait for the main loop to stop
     fn disconnect(&self) {
         if self.get_status() != Status::Connected {
             return;

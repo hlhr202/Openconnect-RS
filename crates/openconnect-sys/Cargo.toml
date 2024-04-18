@@ -1,14 +1,15 @@
 [package]
 name = "openconnect-sys"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2021"
 build = "build/main.rs"
 description = "Rust bindings for OpenConnect"
 license = "LGPL-2.1"
-repository = "https://github.com/hlhr202/Openconnect-RS"
+repository = "https://github.com/hlhr202/Openconnect-RS/tree/main/crates/openconnect-sys"
 homepage = "https://github.com/hlhr202/Openconnect-RS"
 authors = ["hlhr202"]
 keywords = ["openconnect", "vpn", "networking", "security"]
+documentation = "https://docs.rs/openconnect-sys"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 [dependencies]
@@ -24,4 +25,3 @@ pkg-config = "0.3.30"
 home = { workspace = true }
 reqwest = { workspace = true }
 zip = "0.6.6"
-# openconnect-build = { path = "../openconnect-build", version = "0.1.0" }

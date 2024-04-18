@@ -6,7 +6,7 @@ use openconnect_core::{
 };
 use std::env;
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::from_path(".env.local").unwrap();
     env::set_var("OPENSSL_CONF", "/dev/null");
 

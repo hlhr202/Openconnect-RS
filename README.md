@@ -123,7 +123,9 @@ This is a cross-platform GUI client for OpenConnect, written in Rust and designe
 
 ## License
 
-This project is licensed under the GNU Lesser General Public License (LGPL). See the [LICENSE](./LICENSE-LGPL) file for details.
+Since Openconnect is released under LGPL license, the core libraries (openconnect-core and openconnect-sys) of this project is licensed under the GNU Lesser General Public License (LGPL). See the [LICENSE](./LICENSE-LGPL) file for details.
+
+For some part of this library (openconnect-oidc), it is licensed under the MIT license.
 
 ## Acknowledgements
 
@@ -146,6 +148,7 @@ Special thanks to (MORE THAN) the following projects and technologies for making
 - [x] Automatically build openconnect
 - [x] Automatically search library path
   - [ ] Optimize search path for more cases
+- [ ] better docs
 
 ### Openconnect core
 
@@ -154,6 +157,7 @@ Special thanks to (MORE THAN) the following projects and technologies for making
 - [x] implement cookie login
 - [x] implement ssl certificate validation
 - [ ] implement public key login
+- [ ] better docs
 
 ### Client
 

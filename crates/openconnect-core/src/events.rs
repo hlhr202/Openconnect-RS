@@ -1,6 +1,7 @@
 use crate::{result::OpenconnectError, Status};
 use std::sync::Arc;
 
+/// Event handlers for the VPN client.
 #[allow(clippy::type_complexity)]
 #[derive(Clone)]
 pub struct EventHandlers {

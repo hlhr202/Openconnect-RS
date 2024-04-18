@@ -1,7 +1,10 @@
 [package]
 name = "openconnect-oidc"
-version = "0.1.1"
+authors = ["hlhr202"]
+version = "0.1.2"
 edition = "2021"
+license = "MIT"
+documentation = "https://docs.rs/openconnect-oidc"
 
 [dependencies]
 openidconnect = { workspace = true }
