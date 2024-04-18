@@ -9,7 +9,7 @@ use cli::{Cli, Commands};
 use openconnect_core::{ip_info::IpInfo, log::Logger, storage::StoredConfigs};
 use std::{io::BufRead, path::PathBuf};
 
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
 pub enum JsonRequest {
     Start {
         name: String,
@@ -88,6 +88,8 @@ fn main() {
                 for line in reader.lines() {
                     println!("{}", line.unwrap());
                 }
+            } else {
+                println!("No log files found");
             }
         }
 

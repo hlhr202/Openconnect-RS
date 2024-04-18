@@ -4,6 +4,7 @@ use futures::TryStreamExt;
 use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
+    log::Logger,
     result::OpenconnectError,
     storage::{OidcServer, PasswordServer, StoredConfigs, StoredServer},
     Connectable, VpnClient,
@@ -188,6 +189,8 @@ pub fn request_get_status() {
 pub fn request_start_server(name: String, config_file: PathBuf) {
     let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
     runtime.block_on(async {
+        Logger::init().expect("Failed to initialize logger");
+
         match crate::client::config::read_server_config_from_fs(&name, config_file).await {
             Ok((stored_server, stored_configs)) => {
                 let (cookie, name, server, allow_insecure) = match stored_server {
@@ -196,10 +199,15 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                             &password_server,
                             &stored_configs,
                         )
-                        .await
-                        .ok()
-                        .flatten();
-                        // TODO: optimize error message handling
+                        .await;
+
+                        let cookie = match cookie {
+                            Ok(cookie) => cookie,
+                            Err(e) => {
+                                tracing::error!("Failed to obtain cookie: {}", e);
+                                None
+                            }
+                        };
 
                         (
                             cookie,
@@ -209,14 +217,19 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                         )
                     }
                     StoredServer::Oidc(oidc_server) => {
-                        let cookie = crate::client::state::obtain_cookie_from_oidc_server(
+                        let cookie_res = crate::client::state::obtain_cookie_from_oidc_server(
                             &oidc_server,
                             &stored_configs,
                         )
-                        .await
-                        .ok()
-                        .flatten();
-                        // TODO: optimize error message handling
+                        .await;
+
+                        let cookie = match cookie_res {
+                            Ok(cookie) => cookie,
+                            Err(e) => {
+                                tracing::error!("Failed to obtain cookie: {}", e);
+                                None
+                            }
+                        };
 
                         (
                             cookie,
@@ -224,14 +237,16 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                             oidc_server.server,
                             oidc_server.allow_insecure,
                         )
+
+                        // TODO: optimize error message handling
                     }
                 };
 
-                if let Some(cookie) = cookie {
-                    let mut unix_client = sock::UnixDomainClient::connect()
-                        .await
-                        .expect("Failed to connect to daemon");
+                let mut unix_client = sock::UnixDomainClient::connect()
+                    .await
+                    .expect("Failed to connect to daemon");
 
+                if let Some(cookie) = cookie {
                     unix_client
                         .send(JsonRequest::Start {
                             name,
@@ -265,6 +280,11 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                         }
                     }
                 } else {
+                    unix_client
+                        .send(JsonRequest::Stop)
+                        .await
+                        .expect("Failed to send stop command");
+
                     eprintln!("Failed to obtain cookie, check logs for more information"); // TODO: improve error message
                     std::process::exit(1);
                 }

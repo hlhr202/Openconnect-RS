@@ -83,6 +83,7 @@ impl Acceptable for Arc<State> {
                             allow_insecure,
                             cookie,
                         } => {
+                            tracing::debug!("Received start command, name: {}", name);
                             let connection_result =
                                 connect_to_vpn_server(&name, &server, allow_insecure, &cookie)
                                     .await;
@@ -109,11 +110,16 @@ impl Acceptable for Arc<State> {
                                             err_message: Some(e.to_string()),
                                         })
                                         .await;
+
+                                    unsafe {
+                                        libc::raise(libc::SIGTERM);
+                                    }
                                 }
                             }
                         }
 
                         JsonRequest::Stop => {
+                            tracing::debug!("Received stop command");
                             {
                                 let client = self.client.read().await;
                                 if let Some(ref client) = *client {
@@ -125,15 +131,18 @@ impl Acceptable for Arc<State> {
                                     let _ = framed_writer
                                         .send(JsonResponse::StopResult { name: server_name })
                                         .await;
-                                    unsafe {
-                                        libc::raise(libc::SIGTERM);
-                                    }
                                 }
+                            }
+                            {
                                 self.client.write().await.take();
+                            }
+                            unsafe {
+                                libc::raise(libc::SIGTERM);
                             }
                         }
 
                         JsonRequest::Info => {
+                            tracing::debug!("Received info command");
                             {
                                 let client = self.client.read().await;
                                 if let Some(client) = (*client).clone() {

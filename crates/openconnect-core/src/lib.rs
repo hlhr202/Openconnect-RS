@@ -1,11 +1,11 @@
 #![doc = include_str!("../README.md")]
 
 mod cert;
-mod form;
 pub mod command;
 pub mod config;
 pub mod elevator;
 pub mod events;
+mod form;
 pub mod ip_info;
 pub mod log;
 pub mod protocols;
@@ -585,7 +585,7 @@ impl Connectable for VpnClient {
     fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
         self.emit_state_change(Status::Connecting("Make CSTP connection".to_string()));
         self.connect_for_cookie(entrypoint)?;
-        self.make_cstp_connection().emit_error(self)?;
+        self.make_cstp_connection().emit_error(self)?; // TODO: optimize this, split it from connect function
         self.emit_state_change(Status::Connected);
 
         loop {

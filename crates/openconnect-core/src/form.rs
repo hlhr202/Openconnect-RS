@@ -218,7 +218,7 @@ impl FormManager {
                 this.last_form_empty
             } >= 3
             {
-                println!(
+                tracing::debug!(
                     "{} consecutive empty forms, aborting loop",
                     this.last_form_empty
                 );
