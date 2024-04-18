@@ -11,6 +11,11 @@ use crate::download_prebuilt::download_prebuilt_from_sourceforge;
 
 // TODO: optimize path search
 fn main() {
+    // if building docs, skip build
+    if env::var("DOCS_RS").is_ok() {
+        return;
+    }
+
     let use_prebuilt =
         env::var("OPENCONNECT_USE_PREBUILT").unwrap_or("false".to_string()) == "true";
 

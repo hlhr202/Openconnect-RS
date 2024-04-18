@@ -1,6 +1,6 @@
 [package]
 name = "openconnect-gui"
-version = "0.1.2"
+version = "0.1.3"
 description = "A Tauri App"
 authors = ["you"]
 edition = "2021"
@@ -20,8 +20,8 @@ tauri = { version = "1.6.1", features = [ "os-all", "global-shortcut-all", "app-
 dotenvy = { workspace = true }
 lazy_static = { workspace = true }
 open = "5.1.2"
-openconnect-core = { path = "../../openconnect-core", version = "0.1.2" }
-openconnect-oidc = { path = "../../openconnect-oidc", version = "0.1.2" }
+openconnect-core = { path = "../../openconnect-core", version = "0.1.3" }
+openconnect-oidc = { path = "../../openconnect-oidc", version = "0.1.3" }
 openidconnect = { workspace = true }
 reqwest = { workspace = true }
 serde = { workspace = true }
