@@ -11,6 +11,8 @@ COLOR_SUCCESS="\033[0;32m"
 COLOR_FAILURE="\033[0;31m"
 COLOR_RESET="\033[0m"
 
+TAG="v0.1.5"
+
 echo ""
 echo "=================================="
 echo ""
@@ -39,10 +41,10 @@ if [[ "$OSTYPE" = "darwin"* ]]; then
     # detect arch
     if [[ "$HOSTTYPE" = "x86_64" ]]; then
         # install macos cli
-        CLI_DOWNLOAD_URL="https://github.com/hlhr202/Openconnect-RS/releases/download/v0.0.0-pre1/openconnect-cli_osx-x86_64"
+        CLI_DOWNLOAD_URL="https://github.com/hlhr202/Openconnect-RS/releases/download/${TAG}/openconnect-cli_osx-x86_64"
     elif [[ "$HOSTTYPE" = "arm64" ]]; then
         # install macos cli
-        CLI_DOWNLOAD_URL="https://github.com/hlhr202/Openconnect-RS/releases/download/v0.0.0-pre1/openconnect-cli_osx-aarch64"
+        CLI_DOWNLOAD_URL="https://github.com/hlhr202/Openconnect-RS/releases/download/${TAG}/openconnect-cli_osx-aarch64"
     else
         echo -e "${COLOR_FAILURE}unsupported arch${COLOR_RESET}"
         exit 1
@@ -50,7 +52,7 @@ if [[ "$OSTYPE" = "darwin"* ]]; then
 
 elif [[ "$OSTYPE" = "linux-gnu" ]]; then
     if [[ "$HOSTTYPE" = "x86_64" ]]; then
-        CLI_DOWNLOAD_URL="https://github.com/hlhr202/Openconnect-RS/releases/download/v0.0.0-pre1/openconnect-cli_linux-x86_64"
+        CLI_DOWNLOAD_URL="https://github.com/hlhr202/Openconnect-RS/releases/download/${TAG}/openconnect-cli_linux-x86_64"
     else
         echo -e "${COLOR_FAILURE}unsupported arch${COLOR_RESET}"
         exit 1
