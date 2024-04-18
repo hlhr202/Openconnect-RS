@@ -58,10 +58,11 @@ async fn connect_to_vpn_server(
     let event_handler = EventHandlers::default();
 
     let client = VpnClient::new(config, event_handler)?;
+    client.init_connection(entrypoint)?;
 
     let client_cloned = client.clone();
     tokio::task::spawn_blocking(move || {
-        let _ = client_cloned.connect(entrypoint);
+        let _ = client_cloned.run_loop();
     });
 
     Ok(client)

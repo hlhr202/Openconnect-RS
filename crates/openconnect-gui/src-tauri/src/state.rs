@@ -158,8 +158,10 @@ impl AppState {
         {
             self.client.write().await.replace(client.clone());
         }
+        client.init_connection(entrypoint)?;
+
         tauri::async_runtime::spawn_blocking(move || {
-            let _ = client.connect(entrypoint); // ignore the result
+            let _ = client.run_loop(); // ignore the result
         });
 
         Ok(())
@@ -217,8 +219,11 @@ impl AppState {
         {
             self.client.write().await.replace(client.clone());
         }
+
+        client.init_connection(entrypoint)?;
+
         tauri::async_runtime::spawn_blocking(move || {
-            let _ = client.connect(entrypoint); // ignore the result
+            let _ = client.run_loop(); // ignore the result
         });
 
         Ok(())

@@ -112,6 +112,10 @@ fn main() {
 
             match daemon::daemonize() {
                 daemon::ForkResult::Parent => {
+                    println!();
+                    println!("===============================\n");
+                    println!("OpenConnect VPN CLI Client\n");
+                    println!("===============================\n");
                     println!("Using Config file: {:?}", config_file);
                     crate::client::state::request_start_server(name, config_file);
                     println!("The process will be running in the background, you should use cli to interact with it.");

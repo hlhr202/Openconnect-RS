@@ -1,4 +1,5 @@
 use crate::{JsonRequest, JsonResponse};
+use colored::Colorize;
 use futures::SinkExt;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
@@ -25,11 +26,14 @@ pub fn get_sock() -> PathBuf {
 
 pub fn exit_when_socket_exists() {
     if get_sock().exists() {
-        eprintln!("Socket already exists. You may have a connected VPN session or a stale socket file. You may solve by:");
-        eprintln!("1. Stopping the connection by sending stop command.");
+        eprintln!("{}","\nSocket already exists. You may have a connected VPN session or a stale socket file. You may solve by:".red());
+        eprintln!(
+            "{}",
+            "1. Stopping the connection by sending stop command.".red()
+        );
         eprintln!(
             "2. Manually deleting the socket file which located at: {}",
-            get_sock().display()
+            get_sock().display().to_string().red()
         );
         std::process::exit(1);
     }

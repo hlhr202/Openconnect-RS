@@ -1,4 +1,5 @@
 use crate::{sock, JsonRequest, JsonResponse};
+use colored::Colorize;
 use comfy_table::Table;
 use futures::TryStreamExt;
 use openconnect_core::{
@@ -179,7 +180,7 @@ pub fn request_get_status() {
                 }
             }
             Err(e) => {
-                eprintln!("Failed to connect to server: {}", e);
+                eprintln!("{}", format!("\nFailed to connect to server: {}", e).red());
                 std::process::exit(1);
             }
         }
@@ -247,6 +248,8 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                     .expect("Failed to connect to daemon");
 
                 if let Some(cookie) = cookie {
+                    println!("Obtained cookie from server");
+
                     unix_client
                         .send(JsonRequest::Start {
                             name,
@@ -265,17 +268,21 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                                 err_message,
                             } => {
                                 if success {
-                                    println!("Started connection to server: {}", name);
+                                    println!("\nStarted connection to server: {}", name);
                                 } else {
                                     eprintln!(
-                                        "Failed to start connection: {}",
-                                        err_message.unwrap_or("Unknown error".to_string())
+                                        "{}",
+                                        format!(
+                                            "\nFailed to start connection: {}",
+                                            err_message.unwrap_or("Unknown error".to_string())
+                                        )
+                                        .red()
                                     );
                                     std::process::exit(1);
                                 }
                             }
                             _ => {
-                                println!("Received unexpected response");
+                                eprintln!("{}", "\nReceived unexpected response".red());
                             }
                         }
                     }
@@ -285,12 +292,15 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                         .await
                         .expect("Failed to send stop command");
 
-                    eprintln!("Failed to obtain cookie, check logs for more information"); // TODO: improve error message
+                    eprintln!(
+                        "{}",
+                        "\nFailed to obtain cookie, check logs for more information".red()
+                    ); // TODO: improve error message
                     std::process::exit(1);
                 }
             }
             Err(e) => {
-                eprintln!("Failed to get server: {}", e);
+                eprintln!("{}", format!("\nFailed to get server: {}", e).red());
                 std::process::exit(1);
             }
         }
@@ -313,7 +323,7 @@ pub fn request_stop_server() {
                 if let Ok(Some(response)) = client.framed_reader.try_next().await {
                     match response {
                         JsonResponse::StopResult { name: server_name } => {
-                            println!("Stopped connection to server: {}", server_name)
+                            println!("\nStopped connection to server: {}", server_name)
                         }
                         _ => {
                             println!("Received unexpected response");
@@ -322,7 +332,7 @@ pub fn request_stop_server() {
                 }
             }
             Err(e) => {
-                eprintln!("Failed to connect to server: {}", e);
+                eprintln!("{}", format!("\nFailed to connect to server: {}", e).red());
                 std::process::exit(1);
             }
         };

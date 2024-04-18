@@ -442,8 +442,9 @@ impl Drop for VpnClient {
 /// This trait is implemented for the lifecycle of the VpnClient
 pub trait Connectable {
     fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>>;
-    fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()>;
     fn connect_for_cookie(&self, entrypoint: Entrypoint) -> OpenconnectResult<Option<String>>;
+    fn init_connection(&self, entrypoint: Entrypoint) -> OpenconnectResult<()>;
+    fn run_loop(&self) -> OpenconnectResult<()>;
     fn disconnect(&self);
     fn get_status(&self) -> Status;
     fn get_server_name(&self) -> Option<String>;
@@ -579,15 +580,20 @@ impl Connectable for VpnClient {
         Ok(self.get_cookie())
     }
 
-    /// Connect to the VPN server and block until the connection is closed
+    /// Initialize the connection to the VPN server, this function will not block the thread and only make a CSTP connection
     ///
     /// entrypoint can be created using [config::EntrypointBuilder]
-    fn connect(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
+    fn init_connection(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
         self.emit_state_change(Status::Connecting("Make CSTP connection".to_string()));
         self.connect_for_cookie(entrypoint)?;
-        self.make_cstp_connection().emit_error(self)?; // TODO: optimize this, split it from connect function
+        self.make_cstp_connection().emit_error(self)?;
         self.emit_state_change(Status::Connected);
 
+        Ok(())
+    }
+
+    /// Run main loop and block until the connection is closed
+    fn run_loop(&self) -> OpenconnectResult<()> {
         loop {
             if self.main_loop(300, RECONNECT_INTERVAL_MIN).is_err() {
                 break;

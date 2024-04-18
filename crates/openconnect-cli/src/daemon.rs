@@ -1,3 +1,5 @@
+use colored::Colorize;
+
 pub enum ForkResult {
     Parent,
     Child,
@@ -9,7 +11,7 @@ pub fn daemonize() -> ForkResult {
         let pid = libc::fork();
 
         if pid < 0 {
-            eprintln!("Failed to fork");
+            eprintln!("{}", "\nFailed to fork child process".red());
             std::process::exit(1);
         } else if pid != 0 {
             // Parent process
@@ -22,7 +24,7 @@ pub fn daemonize() -> ForkResult {
         let pid = libc::fork();
 
         if pid < 0 {
-            eprintln!("Failed to fork");
+            eprintln!("{}", "\nFailed to fork grand-child process".red());
             std::process::exit(1);
         } else if pid != 0 {
             // Child process

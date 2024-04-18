@@ -1,5 +1,6 @@
 use crate::cli::SeverConfigArgs;
 use base64::Engine;
+use colored::Colorize;
 use comfy_table::Table;
 use openconnect_core::storage::{OidcServer, PasswordServer, StoredConfigs, StoredServer};
 use std::path::PathBuf;
@@ -237,7 +238,7 @@ pub fn request_export_server(server_name: &str) {
                 println!("Share this: {}", base64);
             }
             None => {
-                eprintln!("Server {} not found", server_name);
+                eprintln!("{}", format!("\nServer {} not found", server_name).red());
             }
         }
     });

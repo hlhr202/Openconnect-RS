@@ -27,7 +27,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .accept_insecure_cert(true)
         .build()?;
 
-    client.connect(entrypoint)?;
+    client.init_connection(entrypoint)?;
+    client.run_loop()?;
 
     Ok(())
 }
