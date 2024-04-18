@@ -1,8 +1,8 @@
 # OpenConnect for Rust
 
-<img alt="GitHub License" src="https://img.shields.io/github/license/hlhr202/Openconnect-RS"> <img alt="Crates.io Version" src="https://img.shields.io/crates/v/openconnect-core?label=crates.io%20openconnect-core"> <img alt="GitHub Release" src="https://img.shields.io/github/v/release/hlhr202/Openconnect-RS?include_prereleases">
+<a target="_blank" href="https://github.com/hlhr202/Openconnect-RS/blob/main/LICENSE-LGPL"><img alt="GitHub License" src="https://img.shields.io/github/license/hlhr202/Openconnect-RS"></a> <a target="_blank" href="https://crates.io/crates/openconnect-core"><img alt="Crates.io Version" src="https://img.shields.io/crates/v/openconnect-core?label=crates.io%20openconnect-core"></a> <a target="_blank" href="https://github.com/hlhr202/Openconnect-RS/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/hlhr202/Openconnect-RS?include_prereleases"></a>
 
-<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mingw64.yml?label=win-x86_64%20build"> <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mac-aarch64.yml?label=mac-aarch64%20build" /> <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mac-x64.yml?label=mac-x86_64%20build">
+<img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mingw64.yml?label=win-x86_64%20build"> <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mac-aarch64.yml?label=mac-aarch64%20build" /> <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/mac-x64.yml?label=mac-x86_64%20build"> <img alt="GitHub Actions Workflow Status" src="https://img.shields.io/github/actions/workflow/status/hlhr202/Openconnect-RS/linux-x64.yml?label=linux-x86_64%20build">
 
 This is a cross-platform GUI client for OpenConnect, written in Rust and designed to work seamlessly on Windows, Linux, and macOS desktop systems. The program utilizes various technologies including MSYS2, Tauri, React, and NextUI. It provides a user-friendly interface for connecting to VPN servers using both password and OIDC authentication methods.
 
@@ -153,15 +153,16 @@ Special thanks to (MORE THAN) the following projects and technologies for making
 ### Openconnect core
 
 - [x] implement safe ffi
-- [x] implement password login
+- [x] implement username + password login
 - [x] implement cookie login
 - [x] implement ssl certificate validation
 - [ ] implement public key login
+- [ ] implement various auth methods
 - [ ] better docs
 
 ### Client
 
-- [x] implement password login
+- [x] implement username + password login
 - [x] implement oidc login
 - [x] implement logs
   - [x] tracing file rotation
