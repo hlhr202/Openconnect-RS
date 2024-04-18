@@ -15,9 +15,24 @@ download() {
     echo ""
 
     echo "Renaming the CLI binaries..."
-    mv ./artifacts/openconnect-linux-x64/openconnect-cli ./artifacts/openconnect-linux-x64/openconnect-cli_linux-x86_64
-    mv ./artifacts/openconnect-mac-aarch64/openconnect-cli ./artifacts/openconnect-mac-aarch64/openconnect-cli_osx-aarch64
-    mv ./artifacts/openconnect-mac-x64/openconnect-cli ./artifacts/openconnect-mac-x64/openconnect-cli_osx-x86_64
+    if [ -d "./artifacts/openconnect-linux-x64" ]; then
+        mv ./artifacts/openconnect-linux-x64/openconnect-cli ./artifacts/openconnect-linux-x64/openconnect-cli_linux-x86_64
+    fi
+
+    if [ -d "./artifacts/openconnect-mac-aarch64" ]; then
+        mv ./artifacts/openconnect-mac-aarch64/openconnect-cli ./artifacts/openconnect-mac-aarch64/openconnect-cli_osx-aarch64
+    fi
+
+    if [ -d "./artifacts/openconnect-mac-x64" ]; then
+        mv ./artifacts/openconnect-mac-x64/openconnect-cli ./artifacts/openconnect-mac-x64/openconnect-cli_osx-x86_64
+    fi
+    echo ""
+
+    echo "Renaming the GUI binaries..."
+    if [ -d "./artifacts/openconnect-win" ]; then
+        mv ./artifacts/openconnect-win/msi/*.msi ./artifacts/openconnect-win/msi/openconnect-gui_win-x86_64.msi
+        mv ./artifacts/openconnect-win/nsis/*.exe ./artifacts/openconnect-win/nsis/openconnect-gui_win-x86_64.exe
+    fi
     echo ""
 
     if [[ "$OSTYPE" = "darwin"* ]]; then
