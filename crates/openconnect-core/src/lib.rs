@@ -1,5 +1,13 @@
 #![doc = include_str!("../README.md")]
 
+//! ## Example: Password Server
+//!
+//! This example demonstrates how to connect to a VPN server using username + password authentication
+//!
+//! ```rust
+#![doc = include_str!("../examples/password_server.rs")]
+//! ```
+
 mod cert;
 pub mod command;
 pub mod config;

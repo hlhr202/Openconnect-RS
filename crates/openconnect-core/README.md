@@ -15,37 +15,7 @@ Read the [openconnect-sys](https://crates.io/crates/openconnect-sys) crate docum
   openconnect-core = "0.1"
   ```
 
-- Use the library in your code:
-
-  ```rust
-  use openconnect_core::{
-      config::{ConfigBuilder, EntrypointBuilder, LogLevel},
-      events::EventHandlers,
-      protocols::get_anyconnect_protocol,
-      Connectable, VpnClient,
-  };
-  use std::env;
-
-  fn main() -> Result<(), Box<dyn std::error::Error>> {
-      let protocol = get_anyconnect_protocol();
-      let config = ConfigBuilder::default().loglevel(LogLevel::Info).build()?;
-      let event_handlers = EventHandlers::default();
-      let client = VpnClient::new(config, event_handlers)?;
-
-      let entrypoint = EntrypointBuilder::new()
-          .server("vpn.example.com")
-          .username("your_username")
-          .password("your_password")
-          .protocol(protocol)
-          .enable_udp(true)
-          .accept_insecure_cert(true)
-          .build()?;
-
-      client.connect(entrypoint)?;
-
-      Ok(())
-  }
-  ```
+- For simple use cases, please refer to [openconnect-core docs](https://docs.rs/openconnect-core/).
 
 - For more use cases, you can checkout our CLI application [openconnect-cli](https://github.com/hlhr202/Openconnect-RS/tree/main/crates/openconnect-cli).
 
