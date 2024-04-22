@@ -25,6 +25,12 @@ jobs:
         shell: msys2 {0}
 
     steps:
+      - name: Install webview2 runtime
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/p/?LinkId=2124703' -OutFile 'setup.exe'
+          Start-Process -FilePath setup.exe -Verb RunAs -Wait
+          
       - uses: msys2/setup-msys2@v2
         name: Setup MinGW64
         with:
