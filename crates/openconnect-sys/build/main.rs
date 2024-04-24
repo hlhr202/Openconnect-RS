@@ -69,8 +69,10 @@ fn main() {
         let wintun_dll_target = format!("{}/wintun.dll", target_path.to_string_lossy());
         std::fs::copy(wintun_dll_source, wintun_dll_target).unwrap();
 
-        try_pkg_config(vec!["openssl", "libxml-2.0", "zlib", "liblz4", "iconv"]);
+        try_pkg_config(vec!["libxml-2.0", "zlib", "liblz4", "iconv"]);
         println!("cargo:rustc-link-lib=static=intl");
+        println!("cargo:rustc-link-lib=static=crypto");
+        println!("cargo:rustc-link-lib=static=ssl");
         println!("cargo:rustc-link-lib=dylib=wintun")
     }
 

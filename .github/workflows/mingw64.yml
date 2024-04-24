@@ -93,7 +93,7 @@ jobs:
         with:
           toolchain: stable
           target: x86_64-pc-windows-gnu
-          cache: false
+          cache: true
 
       - name: Build
         run: |
