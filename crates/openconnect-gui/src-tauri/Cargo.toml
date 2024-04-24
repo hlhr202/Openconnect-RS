@@ -12,7 +12,7 @@ tauri-build = { version = "1.5.1", features = [] }
 
 [dependencies]
 anyhow = { workspace = true }
-tauri = { version = "1.6.1", features = [ "os-all", "global-shortcut-all", "app-all", "window-all", "system-tray",
+tauri = { version = "1.6.2", features = [ "os-all", "global-shortcut-all", "app-all", "window-all", "system-tray",
     "macos-private-api",
     "shell-open",
     "icon-png"
@@ -32,9 +32,6 @@ tokio = { workspace = true }
 libc = { workspace = true }
 url = { workspace = true }
 window-shadows = "0.2.2"
-
-[patch.crates-io]
-winres = { git = "https://github.com/Nilstrieb/winres", branch = "linking-flags" }
 
 [features]
 # This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!

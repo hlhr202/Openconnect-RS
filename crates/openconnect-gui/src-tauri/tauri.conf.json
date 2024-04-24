@@ -7,7 +7,7 @@
   },
   "package": {
     "productName": "openconnect-gui",
-    "version": "0.0.0"
+    "version": "0.1.5"
   },
   "tauri": {
     "systemTray": {
@@ -61,7 +61,7 @@
     },
     "bundle": {
       "active": true,
-      "targets": "all",
+      "targets": ["nsis", "app", "deb"],
       "identifier": "com.openconnect-gui.rs",
       "icon": [
         "icons/32x32.png",
@@ -74,6 +74,7 @@
         "vpnc-script",
         "vpnc-script-win.js",
         "wintun.dll",
+        "WebView2Loader.dll",
         "icons/connected-w.png",
         "icons/disconnected-w.png"
       ]
