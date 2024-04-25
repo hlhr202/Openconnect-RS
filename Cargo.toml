@@ -26,10 +26,12 @@ anyhow = "1.0.81"
 dotenvy = "0.15.7"
 thiserror = "1.0.58"
 windows-sys = "0.52.0"
-windows = { version = "0.54.0", features = [
+windows = { version = "0.56.0", features = [
     "Win32_Foundation",
     "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
+    "Win32_Security",
+    "Win32_System_Threading",
 ] }
 security-framework = "2.9.2"
 sudo = "0.6.0"

@@ -26,6 +26,7 @@ tracing = { workspace = true }
 thiserror = { workspace = true }
 chrono = { workspace = true }
 home = { workspace = true }
+windows = { workspace = true }
 colored = "2.1.0"
 comfy-table = "7.1.1"
 dialoguer = "0.11.0"

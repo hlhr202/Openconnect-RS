@@ -1,6 +1,6 @@
 use crate::{
     client::state::{get_vpnc_script, StateError},
-    sock::{self, UnixDomainServer},
+    sock::UnixDomainServer,
     JsonRequest, JsonResponse,
 };
 use futures::{SinkExt, TryStreamExt};
@@ -10,11 +10,10 @@ use openconnect_core::{
     Connectable, Status, VpnClient,
 };
 use std::sync::Arc;
-use tokio::{
-    select,
-    signal::unix::{signal, SignalKind},
-    sync::RwLock,
-};
+use tokio::sync::RwLock;
+
+#[cfg(not(target_os = "windows"))]
+use tokio::signal::unix::{signal, SignalKind};
 
 struct State {
     client: RwLock<Option<Arc<VpnClient>>>,
@@ -70,11 +69,7 @@ async fn connect_to_vpn_server(
 
 impl Acceptable for Arc<State> {
     async fn try_accept(self) {
-        if let Ok((stream, _)) = self.server.listener.accept().await {
-            let (read, write) = stream.into_split();
-            let mut framed_reader = sock::get_framed_reader::<JsonRequest>(read);
-            let mut framed_writer = sock::get_framed_writer::<JsonResponse>(write);
-
+        if let Ok((mut framed_reader, mut framed_writer)) = self.server.accept().await {
             tokio::spawn(async move {
                 while let Ok(Some(command)) = framed_reader.try_next().await {
                     match command {
@@ -184,6 +179,7 @@ impl Acceptable for Arc<State> {
     }
 }
 
+#[cfg(not(target_os = "windows"))]
 pub async fn start_daemon() -> anyhow::Result<()> {
     let server = UnixDomainServer::bind()?;
     let mut sigterm = signal(SignalKind::terminate())?;
@@ -208,6 +204,17 @@ pub async fn start_daemon() -> anyhow::Result<()> {
             }
         };
     }
+
+    Ok(())
+}
+
+// TODO: Implement this function for Windows
+#[cfg(target_os = "windows")]
+pub async fn start_daemon() -> anyhow::Result<()> {
+    let server = UnixDomainServer::bind()?;
+    let state = State::new(server);
+
+    state.try_accept().await;
 
     Ok(())
 }
