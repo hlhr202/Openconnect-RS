@@ -5,7 +5,10 @@ use chacha20poly1305::{
 use rand::SeedableRng;
 use serde::{Deserialize, Serialize};
 use sha2::Digest;
-use std::{collections::HashMap, path::PathBuf};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    path::PathBuf,
+};
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct StoredConfigsJson {
@@ -272,6 +275,36 @@ impl StoredConfigs {
                 "Server '{}' not found",
                 name
             )))
+    }
+
+    pub async fn add_server(
+        &mut self,
+        server: StoredServer,
+    ) -> Result<&mut Self, StoredConfigError> {
+        let update_at = chrono::Utc::now().to_rfc3339();
+        let mut server = server.clone();
+        let name = match &mut server {
+            StoredServer::Oidc(oidc_server) => {
+                oidc_server.updated_at = Some(update_at);
+                oidc_server.name.to_owned()
+            }
+            StoredServer::Password(password_server) => {
+                password_server.updated_at = Some(update_at);
+                *password_server = password_server.encrypted_by(&self.cipher);
+                password_server.name.to_owned()
+            }
+        };
+
+        if let Entry::Vacant(e) = self.servers.entry(name.clone()) {
+            e.insert(server);
+            self.save_to_file().await?;
+            Ok(self)
+        } else {
+            Err(StoredConfigError::BadInput(format!(
+                "Server {} already exists",
+                name
+            )))
+        }
     }
 
     pub async fn upsert_server(

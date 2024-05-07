@@ -59,7 +59,7 @@ impl CmdPipe for VpnClient {
         {
             let cmd_fd = self.cmd_fd.load(Ordering::SeqCst);
             if cmd != 0 && cmd_fd >= 0 {
-                let ret = unsafe { libc::write(cmd_fd, std::ptr::from_ref(&cmd) as *const _, 1) };
+                let ret = unsafe { libc::write(cmd_fd, &cmd as *const _ as *const std::ffi::c_void, 1) };
 
                 if ret < 0 {
                     // TODO: log error

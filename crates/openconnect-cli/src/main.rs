@@ -133,9 +133,10 @@ fn main() {
 
             runtime.block_on(async {
                 Logger::init().expect("Failed to initialize logger");
-                let _ = crate::server::start_daemon().await.inspect_err(|e| {
+                let start_result = crate::server::start_daemon().await;
+                if let Err(e) = start_result {
                     tracing::error!("Failed to start daemon: {}", e);
-                });
+                }
             });
         }
     }

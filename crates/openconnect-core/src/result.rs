@@ -63,6 +63,9 @@ pub trait EmitError<T> {
 
 impl<T> EmitError<T> for OpenconnectResult<T> {
     fn emit_error(self, client: &VpnClient) -> OpenconnectResult<T> {
-        self.inspect_err(|e| client.emit_error(e))
+        if let Err(err) = &self {
+            client.emit_error(err);
+        }
+        self
     }
 }
