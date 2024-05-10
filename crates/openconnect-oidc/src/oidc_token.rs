@@ -51,7 +51,13 @@ impl OpenIDTokenAuth {
             .map_err(|e| OpenIDTokenAuthError::InitError(e.to_string()))?;
         let redirect_uri = RedirectUrl::new(config.redirect_uri)?;
         let client_id = ClientId::new(config.client_id);
-        let client_secret = config.client_secret.map(ClientSecret::new);
+        let client_secret = config.client_secret.and_then(|s| {
+            if config.use_pkce_challenge || s.trim().is_empty() {
+                None
+            } else {
+                Some(ClientSecret::new(s))
+            }
+        });
 
         let client =
             CoreClient::from_provider_metadata(provider_metadata, client_id, client_secret)
@@ -102,7 +108,10 @@ impl OpenIDTokenAuth {
         Some((code, state))
     }
 
-    pub async fn exchange_token(&mut self, code: AuthorizationCode) -> Result<String, OpenIDTokenAuthError> {
+    pub async fn exchange_token(
+        &mut self,
+        code: AuthorizationCode,
+    ) -> Result<String, OpenIDTokenAuthError> {
         let client = self.client.clone();
         let pkce_verifier = self.pkce_verifier.take();
 
@@ -119,13 +128,17 @@ impl OpenIDTokenAuth {
 
         let token = token_response
             .id_token()
-            .ok_or(OpenIDTokenAuthError::TokenExchangeError("No ID token".to_string()))?
+            .ok_or(OpenIDTokenAuthError::TokenExchangeError(
+                "No ID token".to_string(),
+            ))?
             .to_string();
 
         Ok(token)
     }
 
-    pub async fn wait_for_callback(&self) -> Result<(AuthorizationCode, CsrfToken), OpenIDTokenAuthError> {
+    pub async fn wait_for_callback(
+        &self,
+    ) -> Result<(AuthorizationCode, CsrfToken), OpenIDTokenAuthError> {
         let listener =
             tokio::net::TcpListener::bind(format!("127.0.0.1:{}", OIDC_LOCAL_PORT)).await?;
         let (mut stream, _) = listener.accept().await?;
