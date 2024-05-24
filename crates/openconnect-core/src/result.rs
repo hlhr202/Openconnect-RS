@@ -45,7 +45,7 @@ pub enum OpenconnectError {
     #[error("Failed to set MCA certificate. Error code: {0}")]
     SetMCACertError(i32),
 
-    #[error("Failed to set MCA private key. Error code: {0}")]
+    #[error("Main loop error: {0}")]
     MainLoopError(i32),
 
     #[error("Failed to get IP info. Error code: {0}")]

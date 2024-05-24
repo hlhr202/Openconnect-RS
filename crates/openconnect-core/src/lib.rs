@@ -603,7 +603,8 @@ impl Connectable for VpnClient {
     /// Run main loop and block until the connection is closed
     fn run_loop(&self) -> OpenconnectResult<()> {
         loop {
-            if self.main_loop(300, RECONNECT_INTERVAL_MIN).is_err() {
+            if let Err(err) = self.main_loop(300, RECONNECT_INTERVAL_MIN) {
+                tracing::event!(tracing::Level::ERROR, "Main loop failed: {}", err);
                 break;
             }
         }
