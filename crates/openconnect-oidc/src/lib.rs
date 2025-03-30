@@ -25,7 +25,7 @@ pub async fn obtain_cookie_by_oidc_token(server_url: &str, token: &str) -> Optio
     let req_builder = client
         .post(url)
         .header("Accept", "*/*")
-        .header("User-Agent", "AnnyConnect Compatible Client")
+        .header("User-Agent", "AnyConnect Compatible Client")
         .header("Content-Type", "application/x-www-form-urlencoded")
         .bearer_auth(token);
 
