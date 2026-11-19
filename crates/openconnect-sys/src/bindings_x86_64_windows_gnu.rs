@@ -163,7 +163,7 @@ pub const RECONNECT_INTERVAL_MIN: u32 = 10;
 pub const RECONNECT_INTERVAL_MAX: u32 = 100;
 pub type __gnuc_va_list = __builtin_va_list;
 pub type va_list = __gnuc_va_list;
-extern "C" {
+unsafe extern "C" {
     pub fn __mingw_get_crt_info() -> *const ::std::os::raw::c_char;
 }
 pub type rsize_t = usize;
@@ -846,7 +846,7 @@ fn bindgen_test_layout_oc_form_opt() {
         )
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_option_value(
         opt: *mut oc_form_opt,
         value: *const ::std::os::raw::c_char,
@@ -1534,138 +1534,138 @@ pub const oc_compression_mode_t_OC_COMPRESSION_MODE_NONE: oc_compression_mode_t 
 pub const oc_compression_mode_t_OC_COMPRESSION_MODE_STATELESS: oc_compression_mode_t = 1;
 pub const oc_compression_mode_t_OC_COMPRESSION_MODE_ALL: oc_compression_mode_t = 2;
 pub type oc_compression_mode_t = ::std::os::raw::c_uint;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_csd_environ(
         vpninfo: *mut openconnect_info,
         name: *const ::std::os::raw::c_char,
         value: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_peer_cert_hash(
         vpninfo: *mut openconnect_info,
     ) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_check_peer_cert_hash(
         vpninfo: *mut openconnect_info,
         old_hash: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_peer_cert_details(
         vpninfo: *mut openconnect_info,
     ) -> *mut ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_peer_cert_DER(
         vpninfo: *mut openconnect_info,
         buf: *mut *mut ::std::os::raw::c_uchar,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_free_cert_info(
         vpninfo: *mut openconnect_info,
         buf: *mut ::std::os::raw::c_void,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_peer_cert_chain(
         vpninfo: *mut openconnect_info,
         chain: *mut *mut oc_cert,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_free_peer_cert_chain(vpninfo: *mut openconnect_info, chain: *mut oc_cert);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_http_auth(
         vpninfo: *mut openconnect_info,
         methods: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_proxy_auth(
         vpninfo: *mut openconnect_info,
         methods: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_http_proxy(
         vpninfo: *mut openconnect_info,
         proxy: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_useragent(
         vpninfo: *mut openconnect_info,
         useragent: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_passphrase_from_fsid(
         vpninfo: *mut openconnect_info,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_obtain_cookie(vpninfo: *mut openconnect_info) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_init_ssl() -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_cstp_cipher(
         arg1: *mut openconnect_info,
     ) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_dtls_cipher(
         arg1: *mut openconnect_info,
     ) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_cstp_compression(
         arg1: *mut openconnect_info,
     ) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_dtls_compression(
         arg1: *mut openconnect_info,
     ) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_connect_url(
         arg1: *mut openconnect_info,
     ) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_hostname(arg1: *mut openconnect_info) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_dnsname(arg1: *mut openconnect_info) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_hostname(
         arg1: *mut openconnect_info,
         arg2: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_urlpath(arg1: *mut openconnect_info) -> *mut ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_urlpath(
         arg1: *mut openconnect_info,
         arg2: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_localname(
         arg1: *mut openconnect_info,
         arg2: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_sni(
         arg1: *mut openconnect_info,
         arg2: *const ::std::os::raw::c_char,
@@ -1680,7 +1680,7 @@ pub type openconnect_unlock_token_vfn = ::std::option::Option<
         new_tok: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int,
 >;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_token_callbacks(
         arg1: *mut openconnect_info,
         tokdata: *mut ::std::os::raw::c_void,
@@ -1688,46 +1688,46 @@ extern "C" {
         arg3: openconnect_unlock_token_vfn,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_token_mode(
         arg1: *mut openconnect_info,
         arg2: oc_token_mode_t,
         token_str: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_stoken_mode(
         arg1: *mut openconnect_info,
         arg2: ::std::os::raw::c_int,
         arg3: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_compression_mode(
         arg1: *mut openconnect_info,
         arg2: oc_compression_mode_t,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_xmlsha1(
         arg1: *mut openconnect_info,
         arg2: *const ::std::os::raw::c_char,
         size: ::std::os::raw::c_int,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_cafile(
         arg1: *mut openconnect_info,
         arg2: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_system_trust(
         vpninfo: *mut openconnect_info,
         val: ::std::os::raw::c_uint,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_setup_csd(
         arg1: *mut openconnect_info,
         arg2: ::std::os::raw::c_uint,
@@ -1735,22 +1735,22 @@ extern "C" {
         wrapper: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_xmlpost(arg1: *mut openconnect_info, enable: ::std::os::raw::c_int);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_reported_os(
         arg1: *mut openconnect_info,
         os: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_version_string(
         vpninfo: *mut openconnect_info,
         version_string: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_mobile_info(
         vpninfo: *mut openconnect_info,
         mobile_platform_version: *const ::std::os::raw::c_char,
@@ -1758,20 +1758,20 @@ extern "C" {
         mobile_device_uniqueid: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_client_cert(
         arg1: *mut openconnect_info,
         cert: *const ::std::os::raw::c_char,
         sslkey: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_key_password(
         vpninfo: *mut openconnect_info,
         pass: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     #[doc = " Multiple certificate authentication (MCA): the client cert _and_ the\n mca_cert are used for authentication. The mca_cert is used to sign a\n challenge sent by the server."]
     pub fn openconnect_set_mca_cert(
         arg1: *mut openconnect_info,
@@ -1779,34 +1779,34 @@ extern "C" {
         key: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_mca_key_password(
         vpninfo: *mut openconnect_info,
         pass: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_ifname(arg1: *mut openconnect_info) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_reqmtu(arg1: *mut openconnect_info, reqmtu: ::std::os::raw::c_int);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_dpd(arg1: *mut openconnect_info, min_seconds: ::std::os::raw::c_int);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_trojan_interval(
         arg1: *mut openconnect_info,
         seconds: ::std::os::raw::c_int,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_idle_timeout(arg1: *mut openconnect_info) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_auth_expiration(arg1: *mut openconnect_info) -> time_t;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_ip_info(
         arg1: *mut openconnect_info,
         info: *mut *const oc_ip_info,
@@ -1814,91 +1814,91 @@ extern "C" {
         dtls_options: *mut *const oc_vpn_option,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_port(arg1: *mut openconnect_info) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_cookie(arg1: *mut openconnect_info) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_cookie(
         arg1: *mut openconnect_info,
         arg2: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_clear_cookie(arg1: *mut openconnect_info);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_disable_ipv6(vpninfo: *mut openconnect_info) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_disable_dtls(vpninfo: *mut openconnect_info) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_reset_ssl(vpninfo: *mut openconnect_info);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_parse_url(
         vpninfo: *mut openconnect_info,
         url: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_cert_expiry_warning(
         vpninfo: *mut openconnect_info,
         seconds: ::std::os::raw::c_int,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_pfs(vpninfo: *mut openconnect_info, val: ::std::os::raw::c_uint);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_allow_insecure_crypto(
         vpninfo: *mut openconnect_info,
         val: ::std::os::raw::c_uint,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_cancel_fd(vpninfo: *mut openconnect_info, fd: ::std::os::raw::c_int);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_setup_cmd_pipe(vpninfo: *mut openconnect_info) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_version() -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_make_cstp_connection(
         vpninfo: *mut openconnect_info,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_setup_tun_device(
         vpninfo: *mut openconnect_info,
         vpnc_script: *const ::std::os::raw::c_char,
         ifname: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_setup_tun_script(
         vpninfo: *mut openconnect_info,
         tun_script: *const ::std::os::raw::c_char,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_setup_tun_fd(
         vpninfo: *mut openconnect_info,
         tun_fd: isize,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_setup_dtls(
         vpninfo: *mut openconnect_info,
         dtls_attempt_period: ::std::os::raw::c_int,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_mainloop(
         vpninfo: *mut openconnect_info,
         reconnect_timeout: ::std::os::raw::c_int,
@@ -1932,7 +1932,7 @@ pub type openconnect_progress_vfn = ::std::option::Option<
         ...
     ),
 >;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_vpninfo_new(
         useragent: *const ::std::os::raw::c_char,
         arg1: openconnect_validate_peer_cert_vfn,
@@ -1942,7 +1942,7 @@ extern "C" {
         privdata: *mut ::std::os::raw::c_void,
     ) -> *mut openconnect_info;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_vpninfo_free(vpninfo: *mut openconnect_info);
 }
 pub type openconnect_open_webview_vfn = ::std::option::Option<
@@ -1952,19 +1952,19 @@ pub type openconnect_open_webview_vfn = ::std::option::Option<
         privdata: *mut ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int,
 >;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_webview_callback(
         vpninfo: *mut openconnect_info,
         arg1: openconnect_open_webview_vfn,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_webview_load_changed(
         vpninfo: *mut openconnect_info,
         result: *const oc_webview_result,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_external_browser_callback(
         vpninfo: *mut openconnect_info,
         arg1: openconnect_open_webview_vfn,
@@ -1973,62 +1973,62 @@ extern "C" {
 pub type openconnect_protect_socket_vfn = ::std::option::Option<
     unsafe extern "C" fn(privdata: *mut ::std::os::raw::c_void, fd: ::std::os::raw::c_int),
 >;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_protect_socket_handler(
         vpninfo: *mut openconnect_info,
         protect_socket: openconnect_protect_socket_vfn,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_loglevel(vpninfo: *mut openconnect_info, level: ::std::os::raw::c_int);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_pass_tos(vpninfo: *mut openconnect_info, enable: ::std::os::raw::c_int);
 }
 pub type openconnect_stats_vfn = ::std::option::Option<
     unsafe extern "C" fn(privdata: *mut ::std::os::raw::c_void, stats: *const oc_stats),
 >;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_stats_handler(
         vpninfo: *mut openconnect_info,
         stats_handler: openconnect_stats_vfn,
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_has_pkcs11_support() -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_has_tss_blob_support() -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_has_tss2_blob_support() -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_has_stoken_support() -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_has_oath_support() -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_has_yubioath_support() -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_has_system_key_support() -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_supported_protocols(
         protos: *mut *mut oc_vpn_proto,
     ) -> ::std::os::raw::c_int;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_free_supported_protocols(protos: *mut oc_vpn_proto);
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_get_protocol(
         vpninfo: *mut openconnect_info,
     ) -> *const ::std::os::raw::c_char;
 }
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_protocol(
         vpninfo: *mut openconnect_info,
         protocol: *const ::std::os::raw::c_char,
@@ -2048,7 +2048,7 @@ pub type openconnect_getaddrinfo_vfn = ::std::option::Option<
         res: *mut *mut addrinfo,
     ) -> ::std::os::raw::c_int,
 >;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_override_getaddrinfo(
         vpninfo: *mut openconnect_info,
         gai_fn: openconnect_getaddrinfo_vfn,
@@ -2056,7 +2056,7 @@ extern "C" {
 }
 pub type openconnect_setup_tun_vfn =
     ::std::option::Option<unsafe extern "C" fn(privdata: *mut ::std::os::raw::c_void)>;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_setup_tun_handler(
         vpninfo: *mut openconnect_info,
         setup_tun: openconnect_setup_tun_vfn,
@@ -2064,7 +2064,7 @@ extern "C" {
 }
 pub type openconnect_reconnected_vfn =
     ::std::option::Option<unsafe extern "C" fn(privdata: *mut ::std::os::raw::c_void)>;
-extern "C" {
+unsafe extern "C" {
     pub fn openconnect_set_reconnected_handler(
         vpninfo: *mut openconnect_info,
         reconnected_fn: openconnect_reconnected_vfn,
@@ -2077,7 +2077,7 @@ pub type t_global_progress_vfn = ::std::option::Option<
         buf: *const ::std::os::raw::c_char,
     ),
 >;
-extern "C" {
+unsafe extern "C" {
     pub fn helper_format_vargs(
         privdata: *mut ::std::os::raw::c_void,
         level: ::std::os::raw::c_int,
@@ -2085,7 +2085,7 @@ extern "C" {
         ...
     );
 }
-extern "C" {
+unsafe extern "C" {
     pub fn helper_set_global_progress_vfn(cb: t_global_progress_vfn);
 }
 pub type __builtin_va_list = *mut ::std::os::raw::c_char;

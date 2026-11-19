@@ -1,5 +1,5 @@
 #ifdef _WIN32
-#define SOCKET int
+#include <winsock2.h>
 #endif
 
 #include <config.h>
