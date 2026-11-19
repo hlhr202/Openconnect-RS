@@ -4,7 +4,7 @@
 //!
 //! This example demonstrates how to connect to a VPN server using username + password authentication
 //!
-//! ```rust
+//! ```rust,no_run
 #![doc = include_str!("../examples/password_server.rs")]
 //! ```
 
@@ -13,6 +13,7 @@ pub mod command;
 pub mod config;
 pub mod elevator;
 pub mod events;
+mod ffi;
 mod form;
 pub mod ip_info;
 pub mod log;
@@ -21,105 +22,78 @@ pub mod result;
 pub mod stats;
 pub mod storage;
 
-use crate::cert::PeerCerts;
-use crate::command::{CmdPipe, SIGNAL_HANDLE};
-use crate::config::{Config, Entrypoint, LogLevel};
-use crate::events::{EventHandlers, Events};
-use crate::form::FormManager;
-use crate::ip_info::IpInfo;
-use crate::log::Logger;
-use crate::result::{EmitError, OpenconnectError, OpenconnectResult};
-use crate::stats::Stats;
-
-use openconnect_sys::*;
+use crate::{
+    cert::PeerCerts,
+    command::{CmdPipe, CmdPipeFd, SIGNAL_HANDLE},
+    config::{Config, Entrypoint, LogLevel},
+    events::{EventHandlers, Events},
+    ffi::{VpnInfoHandle, c_str_to_option_string, with_callback_context},
+    form::FormManager,
+    ip_info::IpInfo,
+    result::{EmitError, OpenconnectError, OpenconnectResult},
+    stats::Stats,
+};
+use openconnect_sys::{
+    RECONNECT_INTERVAL_MIN, oc_ip_info, openconnect_clear_cookie, openconnect_disable_dtls,
+    openconnect_get_cookie, openconnect_get_dtls_cipher, openconnect_get_hostname,
+    openconnect_get_ip_info, openconnect_get_peer_cert_hash, openconnect_get_port,
+    openconnect_mainloop, openconnect_make_cstp_connection, openconnect_obtain_cookie,
+    openconnect_parse_url, openconnect_reset_ssl, openconnect_set_client_cert,
+    openconnect_set_cookie, openconnect_set_http_proxy, openconnect_set_loglevel,
+    openconnect_set_mca_cert, openconnect_set_protocol, openconnect_set_reported_os,
+    openconnect_set_setup_tun_handler, openconnect_set_stats_handler, openconnect_setup_cmd_pipe,
+    openconnect_setup_tun_device,
+};
 use std::{
     ffi::CString,
-    sync::{
-        atomic::{AtomicI32, Ordering},
-        Arc, RwLock, Weak,
-    },
+    sync::{Arc, Mutex, MutexGuard, RwLock},
 };
 
-/// Describe the connection status of the client
+/// Describe the connection status of the client.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Status {
-    /// The client is initialized
+    /// The client is initialized.
     Initialized,
 
-    /// The client is disconnecting to the VPN server
+    /// The client is disconnecting from the VPN server.
     Disconnecting,
 
-    /// The client is disconnected from the VPN server and command pipe is closed
+    /// The client is disconnected from the VPN server and command pipe is closed.
     Disconnected,
 
-    /// The client is connecting to the VPN server, with several stages described in the string
+    /// The client is connecting to the VPN server, with several stages described in the string.
     Connecting(String),
 
-    /// The client is connected to the VPN server and the main loop is running
+    /// The client is connected to the VPN server and the main loop is running.
     Connected,
 
-    /// The client is in an error state
+    /// The client is in an error state.
     Error(OpenconnectError),
 }
 
-/// VpnClient struct
-///
-/// This struct is the main entrypoint for interacting with the Openconnect C library (on top of [openconnect-sys](https://crates.io/crates/openconnect-sys))
-#[repr(C)]
-pub struct VpnClient {
-    vpninfo: *mut openconnect_info,
-    config: Config,
-    cmd_fd: AtomicI32,
-    status: RwLock<Status>,
-    callbacks: EventHandlers,
-    entrypoint: RwLock<Option<Entrypoint>>,
-    form_manager: RwLock<FormManager>,
-    peer_certs: PeerCerts,
+/// Thread-safe state shared between [`VpnClient`] and C FFI callbacks via `Arc<SharedState>`.
+pub(crate) struct SharedState {
+    pub(crate) config: Config,
+    pub(crate) cmd_fd: Mutex<Option<CmdPipeFd>>,
+    pub(crate) status: RwLock<Status>,
+    pub(crate) callbacks: EventHandlers,
+    pub(crate) entrypoint: RwLock<Option<Entrypoint>>,
+    pub(crate) form_manager: Mutex<FormManager>,
+    pub(crate) peer_certs: PeerCerts,
+    pub(crate) cached_hostname: RwLock<Option<String>>,
+    pub(crate) cached_ip_info: RwLock<Option<IpInfo>>,
 }
 
-unsafe impl Send for VpnClient {}
-unsafe impl Sync for VpnClient {}
-
-impl VpnClient {
-    pub(crate) extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
-        let client = unsafe { VpnClient::ref_from_raw(privdata) };
-
-        #[cfg(target_os = "windows")]
-        {
-            // currently use wintun on windows
-            // https://gitlab.com/openconnect/openconnect-gui/-/blob/main/src/vpninfo.cpp?ref_type=heads#L407
-            // TODO: investigate tap ip address allocation, since it works well in Openconnect-GUI
-            let ifname = client
-                .get_hostname()
-                .map(|hostname| format!("tun_{}", hostname));
-
-            println!("ifname: {:?}", ifname);
-
-            // TODO: handle result
-            let _result = client.setup_tun_device(None, ifname);
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            // TODO: handle result
-            let _result = client.setup_tun_device(None, None);
-        }
-    }
-
-    /// Reclaim a reference from c_void
-    ///
-    /// SAFETY: You must ensure that the pointer is valid and points to a valid instance of `Self`
-    pub(crate) unsafe fn ref_from_raw<'a>(ptr: *mut std::os::raw::c_void) -> &'a Self {
-        let ptr = ptr.cast::<Self>();
-        &*ptr
-    }
-
+impl SharedState {
     pub(crate) fn handle_text_input(&self, field_name: &str) -> Option<String> {
         let entrypoint = self.entrypoint.read().ok()?;
         let entrypoint = (*entrypoint).as_ref()?;
         match field_name {
             "username" | "user" | "uname" => entrypoint.username.clone(),
-            _ => todo!("handle_text_input: {}", field_name),
+            other => {
+                tracing::warn!("Unsupported auth form text input field: {}", other);
+                None
+            }
         }
     }
 
@@ -128,22 +102,17 @@ impl VpnClient {
         (*entrypoint).as_ref()?.password.clone()
     }
 
-    pub(crate) fn handle_stats(&self, (dlts, stats): (Option<String>, Option<Stats>)) {
-        println!("stats: {:?}, {:?}", dlts, stats);
+    pub(crate) fn handle_stats(&self, (dtls, stats): (Option<String>, Option<Stats>)) {
+        tracing::debug!("VPN stats: dtls={:?}, stats={:?}", dtls, stats);
     }
 
     pub(crate) fn handle_accept_insecure_cert(&self, fingerprint: &str) -> bool {
-        let entrypoint = self.entrypoint.read();
-        let accept_in_entrypoint_config = {
-            if let Ok(entrypoint) = entrypoint {
-                (*entrypoint)
-                    .as_ref()
-                    .map(|entrypoint| entrypoint.accept_insecure_cert)
-                    .unwrap_or(false)
-            } else {
-                false
-            }
-        };
+        let accept_in_entrypoint_config = self
+            .entrypoint
+            .read()
+            .ok()
+            .and_then(|ep| ep.as_ref().map(|e| e.accept_insecure_cert))
+            .unwrap_or(false);
 
         if accept_in_entrypoint_config {
             return true;
@@ -156,16 +125,105 @@ impl VpnClient {
         }
     }
 
+    pub(crate) fn resolve_vpnc_script(
+        &self,
+        vpnc_script: Option<String>,
+    ) -> OpenconnectResult<CString> {
+        let script = vpnc_script.or_else(|| self.config.vpncscript.clone());
+        let script_str = match script {
+            Some(s) => s,
+            None => {
+                #[cfg(not(target_os = "windows"))]
+                const DEFAULT_SCRIPT: &str = "./vpnc-script";
+                #[cfg(target_os = "windows")]
+                const DEFAULT_SCRIPT: &str = "./vpnc-script-win.js";
+                DEFAULT_SCRIPT.to_string()
+            }
+        };
+        CString::new(script_str).map_err(|_| OpenconnectError::SetupTunDeviceError(libc::EINVAL))
+    }
+}
+
+/// Main safe entrypoint for interacting with the OpenConnect C library.
+///
+/// `VpnClient` automatically derives `Send + Sync` with zero `unsafe impl Send/Sync`:
+/// - `handle` serializes all non-thread-safe `libopenconnect` calls behind a `Mutex`.
+/// - `state` holds thread-safe metadata, snapshots, callbacks, and the command pipe FD.
+pub struct VpnClient {
+    handle: Mutex<VpnInfoHandle>,
+    pub(crate) state: Arc<SharedState>,
+}
+
+// Compile-time guarantee that `VpnClient` is soundly `Send + Sync`.
+const _: () = {
+    const fn assert_send_sync<T: Send + Sync>() {}
+    assert_send_sync::<VpnClient>();
+};
+
+impl VpnClient {
+    fn lock_handle(&self) -> OpenconnectResult<MutexGuard<'_, VpnInfoHandle>> {
+        self.handle
+            .lock()
+            .map_err(|_| OpenconnectError::LockError("vpninfo handle mutex poisoned".to_string()))
+    }
+
+    pub(crate) extern "C" fn default_setup_tun_vfn(privdata: *mut ::std::os::raw::c_void) {
+        let body = |ctx: &crate::ffi::CallbackContext| {
+            let Some(vpninfo) = ctx.vpninfo_ptr() else {
+                return;
+            };
+            let vpninfo_ptr = vpninfo.as_ptr();
+
+            let Ok(vpnc_script) = ctx.state.resolve_vpnc_script(None) else {
+                tracing::error!("Invalid vpnc-script path in default_setup_tun_vfn");
+                return;
+            };
+
+            #[cfg(target_os = "windows")]
+            let ifname_cstr = {
+                // SAFETY: `vpninfo_ptr` is valid during this synchronous callback.
+                let raw_host = unsafe { openconnect_get_hostname(vpninfo_ptr) };
+                // SAFETY: `openconnect_get_hostname` returns NULL or a valid C string.
+                let hostname = unsafe { c_str_to_option_string(raw_host) };
+                hostname.and_then(|h| CString::new(format!("tun_{}", h)).ok())
+            };
+
+            #[cfg(not(target_os = "windows"))]
+            let ifname_cstr: Option<CString> = None;
+
+            let ifname_ptr = ifname_cstr
+                .as_ref()
+                .map_or(std::ptr::null(), |s| s.as_ptr());
+
+            // SAFETY: `vpninfo_ptr`, `vpnc_script`, and `ifname_ptr` are valid for this call.
+            let ret = unsafe {
+                openconnect_setup_tun_device(vpninfo_ptr, vpnc_script.as_ptr(), ifname_ptr)
+            };
+            drop(ifname_cstr);
+            if ret != 0 {
+                tracing::error!("openconnect_setup_tun_device failed with code {}", ret);
+            }
+        };
+
+        // SAFETY: Invoked synchronously by `libopenconnect` while `VpnInfoHandle` is alive.
+        unsafe { with_callback_context(privdata, (), body) };
+    }
+
     pub fn set_loglevel(&self, level: LogLevel) {
-        unsafe {
-            openconnect_set_loglevel(self.vpninfo, level as i32);
+        if let Ok(handle) = self.lock_handle() {
+            // SAFETY: `handle.as_ptr()` is a valid, exclusively locked `openconnect_info`.
+            unsafe {
+                openconnect_set_loglevel(handle.as_ptr(), level as i32);
+            }
         }
     }
 
     pub fn set_protocol(&self, protocol: &str) -> OpenconnectResult<()> {
         let protocol =
-            CString::new(protocol).map_err(|_| OpenconnectError::SetProtocolError(libc::EIO))?;
-        let ret = unsafe { openconnect_set_protocol(self.vpninfo, protocol.as_ptr()) };
+            CString::new(protocol).map_err(|_| OpenconnectError::SetProtocolError(libc::EINVAL))?;
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked; `libopenconnect` copies `protocol`.
+        let ret = unsafe { openconnect_set_protocol(handle.as_ptr(), protocol.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenconnectError::SetProtocolError(ret)),
@@ -173,8 +231,11 @@ impl VpnClient {
     }
 
     pub fn set_stats_handler(&self) {
-        unsafe {
-            openconnect_set_stats_handler(self.vpninfo, Some(stats::stats_fn));
+        if let Ok(handle) = self.lock_handle() {
+            // SAFETY: `handle.as_ptr()` is exclusively locked and `stats::stats_fn` has matching C ABI.
+            unsafe {
+                openconnect_set_stats_handler(handle.as_ptr(), Some(stats::stats_fn));
+            }
         }
     }
 
@@ -183,51 +244,45 @@ impl VpnClient {
         vpnc_script: Option<String>,
         ifname: Option<String>,
     ) -> OpenconnectResult<()> {
-        let vpnc_script_from_config = vpnc_script.or_else(|| self.config.vpncscript.clone());
+        let vpnc_script = self.state.resolve_vpnc_script(vpnc_script)?;
+        let ifname = ifname
+            .map(|s| {
+                CString::new(s).map_err(|_| OpenconnectError::SetupTunDeviceError(libc::EINVAL))
+            })
+            .transpose()?;
 
-        let vpnc_script = {
-            if let Some(vpnc_script) = vpnc_script_from_config {
-                CString::new(vpnc_script)
-                    .map_err(|_| OpenconnectError::SetupTunDeviceEror(libc::EIO))?
-            } else {
-                #[cfg(not(target_os = "windows"))]
-                const DEFAULT_SCRIPT: &str = "./vpnc-script";
+        let handle = self.lock_handle()?;
+        let ifname_ptr = ifname.as_ref().map_or(std::ptr::null(), |s| s.as_ptr());
 
-                #[cfg(target_os = "windows")]
-                const DEFAULT_SCRIPT: &str = "./vpnc-script-win.js";
-
-                CString::new(DEFAULT_SCRIPT)
-                    .map_err(|_| OpenconnectError::SetupTunDeviceEror(libc::EIO))?
-            }
-        };
-
-        let ifname = ifname.and_then(|s| CString::new(s).ok());
-
+        // SAFETY: `handle.as_ptr()`, `vpnc_script`, and `ifname_ptr` are valid for this synchronous call.
         let ret = unsafe {
-            openconnect_setup_tun_device(
-                self.vpninfo,
-                vpnc_script.as_ptr(),
-                ifname.as_ref().map_or_else(std::ptr::null, |s| s.as_ptr()),
-            )
+            openconnect_setup_tun_device(handle.as_ptr(), vpnc_script.as_ptr(), ifname_ptr)
         };
-
-        let _manually_dropped = ifname; // SAFETY: dont remove this line, ifname's lifetime should be extended
+        drop(ifname);
 
         match ret {
             0 => Ok(()),
-            _ => Err(OpenconnectError::SetupTunDeviceEror(ret)),
+            _ => Err(OpenconnectError::SetupTunDeviceError(ret)),
         }
     }
 
     pub fn set_setup_tun_handler(&self) {
-        unsafe {
-            openconnect_set_setup_tun_handler(self.vpninfo, Some(VpnClient::default_setup_tun_vfn));
+        if let Ok(handle) = self.lock_handle() {
+            // SAFETY: `handle.as_ptr()` is exclusively locked and callback has matching C ABI.
+            unsafe {
+                openconnect_set_setup_tun_handler(
+                    handle.as_ptr(),
+                    Some(VpnClient::default_setup_tun_vfn),
+                );
+            }
         }
     }
 
     pub fn set_report_os(&self, os: &str) -> OpenconnectResult<()> {
-        let os = CString::new(os).map_err(|_| OpenconnectError::SetReportOSError(libc::EIO))?;
-        let ret = unsafe { openconnect_set_reported_os(self.vpninfo, os.as_ptr()) };
+        let os = CString::new(os).map_err(|_| OpenconnectError::SetReportOSError(libc::EINVAL))?;
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked; `libopenconnect` copies `os`.
+        let ret = unsafe { openconnect_set_reported_os(handle.as_ptr(), os.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenconnectError::SetReportOSError(ret)),
@@ -235,17 +290,21 @@ impl VpnClient {
     }
 
     pub fn obtain_cookie(&self) -> OpenconnectResult<()> {
-        let ret = unsafe { openconnect_obtain_cookie(self.vpninfo) };
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        let ret = unsafe { openconnect_obtain_cookie(handle.as_ptr()) };
         match ret {
             0 => Ok(()),
-            _ => Err(result::OpenconnectError::ObtainCookieError(ret)),
+            _ => Err(OpenconnectError::ObtainCookieError(ret)),
         }
     }
 
     pub fn set_cookie(&self, cookie: &str) -> OpenconnectResult<()> {
         let cookie =
-            CString::new(cookie).map_err(|_| OpenconnectError::SetCookieError(libc::EIO))?;
-        let ret = unsafe { openconnect_set_cookie(self.vpninfo, cookie.as_ptr()) };
+            CString::new(cookie).map_err(|_| OpenconnectError::SetCookieError(libc::EINVAL))?;
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked; `libopenconnect` copies `cookie`.
+        let ret = unsafe { openconnect_set_cookie(handle.as_ptr(), cookie.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenconnectError::SetCookieError(ret)),
@@ -253,74 +312,97 @@ impl VpnClient {
     }
 
     pub fn clear_cookie(&self) {
-        unsafe {
-            openconnect_clear_cookie(self.vpninfo);
+        if let Ok(handle) = self.lock_handle() {
+            // SAFETY: `handle.as_ptr()` is exclusively locked.
+            unsafe {
+                openconnect_clear_cookie(handle.as_ptr());
+            }
         }
     }
 
     pub fn get_cookie(&self) -> Option<String> {
-        unsafe {
-            let cookie = openconnect_get_cookie(self.vpninfo);
-            std::ffi::CStr::from_ptr(cookie)
-                .to_str()
-                .map(|s| s.to_string())
-                .ok()
-        }
+        let handle = self.lock_handle().ok()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        let cookie = unsafe { openconnect_get_cookie(handle.as_ptr()) };
+        // SAFETY: `openconnect_get_cookie` returns NULL or a valid C string while `handle` is locked.
+        unsafe { c_str_to_option_string(cookie) }
     }
 
     pub fn setup_cmd_pipe(&self) -> OpenconnectResult<()> {
-        let cmd_fd = unsafe {
-            let cmd_fd = openconnect_setup_cmd_pipe(self.vpninfo);
-            self.cmd_fd.store(cmd_fd, Ordering::Relaxed);
-            if cmd_fd < 0 {
-                return Err(result::OpenconnectError::CmdPipeError(cmd_fd));
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        let raw_fd = unsafe { openconnect_setup_cmd_pipe(handle.as_ptr()) };
+        #[cfg(not(target_os = "windows"))]
+        if raw_fd < 0 {
+            return Err(OpenconnectError::CmdPipeError(raw_fd));
+        }
+
+        #[cfg(not(target_os = "windows"))]
+        let cmd_fd: CmdPipeFd = raw_fd;
+        #[cfg(target_os = "windows")]
+        let cmd_fd: CmdPipeFd = {
+            if raw_fd == usize::MAX as _ {
+                return Err(OpenconnectError::CmdPipeError(-1));
             }
-            cmd_fd
+            raw_fd as usize
         };
+
+        {
+            let mut guard =
+                self.state.cmd_fd.lock().map_err(|_| {
+                    OpenconnectError::LockError("cmd_fd mutex poisoned".to_string())
+                })?;
+            *guard = Some(cmd_fd);
+        }
         self.set_sock_block(cmd_fd);
         Ok(())
     }
 
     pub fn reset_ssl(&self) {
-        unsafe {
-            openconnect_reset_ssl(self.vpninfo);
-        }
-    }
-
-    pub fn make_cstp_connection(&self) -> OpenconnectResult<()> {
-        let ret = unsafe { openconnect_make_cstp_connection(self.vpninfo) };
-        match ret {
-            0 => Ok(()),
-            _ => Err(OpenconnectError::MakeCstpError(ret)),
-        }
-    }
-
-    pub fn get_dlts_cipher(&self) -> Option<String> {
-        unsafe {
-            let cipher = openconnect_get_dtls_cipher(self.vpninfo);
-            if !cipher.is_null() {
-                Some(
-                    std::ffi::CStr::from_ptr(cipher)
-                        .to_str()
-                        .unwrap()
-                        .to_string(),
-                )
-            } else {
-                None
+        if let Ok(handle) = self.lock_handle() {
+            // SAFETY: `handle.as_ptr()` is exclusively locked.
+            unsafe {
+                openconnect_reset_ssl(handle.as_ptr());
             }
         }
     }
 
-    pub fn get_peer_cert_hash(&self) -> String {
-        // SAFETY: we should not use CString::from_raw(peer_fingerprint)
-        // because peer_fingerprint will be deallocated in rust and cause a double free
-        unsafe { std::ffi::CStr::from_ptr(openconnect_get_peer_cert_hash(self.vpninfo)) }
-            .to_string_lossy()
-            .to_string()
+    pub fn make_cstp_connection(&self) -> OpenconnectResult<()> {
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        let ret = unsafe { openconnect_make_cstp_connection(handle.as_ptr()) };
+        if ret != 0 {
+            return Err(OpenconnectError::MakeCstpError(ret));
+        }
+
+        // Refresh cached IP info snapshot before `run_loop` holds `handle` exclusively.
+        let info = Self::query_ip_info_locked(&handle).ok().flatten();
+        if let Ok(mut cached) = self.state.cached_ip_info.write() {
+            *cached = info;
+        }
+        Ok(())
+    }
+
+    pub fn get_dtls_cipher(&self) -> Option<String> {
+        let handle = self.lock_handle().ok()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        let cipher = unsafe { openconnect_get_dtls_cipher(handle.as_ptr()) };
+        // SAFETY: `openconnect_get_dtls_cipher` returns NULL or a valid C string.
+        unsafe { c_str_to_option_string(cipher) }
+    }
+
+    pub fn get_peer_cert_hash(&self) -> Option<String> {
+        let handle = self.lock_handle().ok()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        let hash = unsafe { openconnect_get_peer_cert_hash(handle.as_ptr()) };
+        // SAFETY: `openconnect_get_peer_cert_hash` returns NULL or a valid C string owned by C.
+        unsafe { c_str_to_option_string(hash) }
     }
 
     pub fn disable_dtls(&self) -> OpenconnectResult<()> {
-        let ret = unsafe { openconnect_disable_dtls(self.vpninfo) };
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        let ret = unsafe { openconnect_disable_dtls(handle.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenconnectError::DisableDTLSError(ret)),
@@ -328,8 +410,11 @@ impl VpnClient {
     }
 
     pub fn set_http_proxy(&self, proxy: &str) -> OpenconnectResult<()> {
-        let proxy = CString::new(proxy).map_err(|_| OpenconnectError::SetProxyError(libc::EIO))?;
-        let ret = unsafe { openconnect_set_http_proxy(self.vpninfo, proxy.as_ptr()) };
+        let proxy =
+            CString::new(proxy).map_err(|_| OpenconnectError::SetProxyError(libc::EINVAL))?;
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked; `libopenconnect` copies `proxy`.
+        let ret = unsafe { openconnect_set_http_proxy(handle.as_ptr(), proxy.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenconnectError::SetProxyError(ret)),
@@ -337,49 +422,67 @@ impl VpnClient {
     }
 
     pub fn parse_url(&self, url: &str) -> OpenconnectResult<()> {
-        let url = CString::new(url).map_err(|_| OpenconnectError::ParseUrlError(libc::EIO))?;
-        let ret = unsafe { openconnect_parse_url(self.vpninfo, url.as_ptr()) };
-        match ret {
-            0 => Ok(()),
-            _ => Err(OpenconnectError::ParseUrlError(ret)),
+        let url = CString::new(url).map_err(|_| OpenconnectError::ParseUrlError(libc::EINVAL))?;
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked; `libopenconnect` copies `url`.
+        let ret = unsafe { openconnect_parse_url(handle.as_ptr(), url.as_ptr()) };
+        if ret != 0 {
+            return Err(OpenconnectError::ParseUrlError(ret));
         }
+
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        let raw_host = unsafe { openconnect_get_hostname(handle.as_ptr()) };
+        // SAFETY: `openconnect_get_hostname` returns NULL or a valid C string.
+        let host = unsafe { c_str_to_option_string(raw_host) };
+        if let Ok(mut cached) = self.state.cached_hostname.write() {
+            *cached = host;
+        }
+        Ok(())
     }
 
     pub fn get_server_name(&self) -> Option<String> {
-        {
-            let entrypoint = self.entrypoint.read().ok()?;
-            (*entrypoint).as_ref()?.name.clone()
-        }
+        let entrypoint = self.state.entrypoint.read().ok()?;
+        (*entrypoint).as_ref()?.name.clone()
     }
 
     pub fn get_server_url(&self) -> Option<String> {
-        {
-            let entrypoint = self.entrypoint.read().ok()?;
-            Some((*entrypoint).as_ref()?.server.clone())
-        }
+        let entrypoint = self.state.entrypoint.read().ok()?;
+        Some((*entrypoint).as_ref()?.server.clone())
     }
 
     pub fn get_port(&self) -> i32 {
-        unsafe { openconnect_get_port(self.vpninfo) }
+        let Ok(handle) = self.lock_handle() else {
+            return 0;
+        };
+        // SAFETY: `handle.as_ptr()` is exclusively locked.
+        unsafe { openconnect_get_port(handle.as_ptr()) }
     }
 
+    /// Returns the VPN hostname. If `run_loop` is currently holding the C handle lock,
+    /// returns the cached hostname snapshot without racing on `openconnect_info`.
     pub fn get_hostname(&self) -> Option<String> {
-        unsafe {
-            let hostname = openconnect_get_hostname(self.vpninfo);
-            std::ffi::CStr::from_ptr(hostname)
-                .to_str()
-                .map(|s| s.to_string())
-                .ok()
+        if let Ok(handle) = self.handle.try_lock() {
+            // SAFETY: `handle.as_ptr()` is exclusively locked.
+            let hostname = unsafe { openconnect_get_hostname(handle.as_ptr()) };
+            // SAFETY: `openconnect_get_hostname` returns NULL or a valid C string.
+            let host = unsafe { c_str_to_option_string(hostname) };
+            if let Ok(mut cached) = self.state.cached_hostname.write() {
+                *cached = host.clone();
+            }
+            return host;
         }
+        self.state.cached_hostname.read().ok()?.clone()
     }
 
     pub fn set_client_cert(&self, cert: &str, sslkey: &str) -> OpenconnectResult<()> {
         let cert =
-            CString::new(cert).map_err(|_| OpenconnectError::SetClientCertError(libc::EIO))?;
+            CString::new(cert).map_err(|_| OpenconnectError::SetClientCertError(libc::EINVAL))?;
         let sslkey =
-            CString::new(sslkey).map_err(|_| OpenconnectError::SetClientCertError(libc::EIO))?;
+            CString::new(sslkey).map_err(|_| OpenconnectError::SetClientCertError(libc::EINVAL))?;
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked; `libopenconnect` copies both strings.
         let ret =
-            unsafe { openconnect_set_client_cert(self.vpninfo, cert.as_ptr(), sslkey.as_ptr()) };
+            unsafe { openconnect_set_client_cert(handle.as_ptr(), cert.as_ptr(), sslkey.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenconnectError::SetClientCertError(ret)),
@@ -387,33 +490,52 @@ impl VpnClient {
     }
 
     pub fn set_mca_cert(&self, cert: &str, key: &str) -> OpenconnectResult<()> {
-        let cert = CString::new(cert).map_err(|_| OpenconnectError::SetMCACertError(libc::EIO))?;
-        let key = CString::new(key).map_err(|_| OpenconnectError::SetMCACertError(libc::EIO))?;
-        let ret = unsafe { openconnect_set_mca_cert(self.vpninfo, cert.as_ptr(), key.as_ptr()) };
+        let cert =
+            CString::new(cert).map_err(|_| OpenconnectError::SetMCACertError(libc::EINVAL))?;
+        let key = CString::new(key).map_err(|_| OpenconnectError::SetMCACertError(libc::EINVAL))?;
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked; `libopenconnect` copies both strings.
+        let ret = unsafe { openconnect_set_mca_cert(handle.as_ptr(), cert.as_ptr(), key.as_ptr()) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenconnectError::SetMCACertError(ret)),
         }
     }
 
-    pub fn get_info(&self) -> OpenconnectResult<Option<IpInfo>> {
-        unsafe {
-            let info = std::ptr::null_mut();
-            let ret = openconnect_get_ip_info(
-                self.vpninfo,
-                info,
+    fn query_ip_info_locked(handle: &VpnInfoHandle) -> OpenconnectResult<Option<IpInfo>> {
+        let mut info_ptr: *const oc_ip_info = std::ptr::null();
+        // SAFETY: `handle.as_ptr()` is exclusively locked and `&mut info_ptr` is a valid out-pointer.
+        let ret = unsafe {
+            openconnect_get_ip_info(
+                handle.as_ptr(),
+                &mut info_ptr,
                 std::ptr::null_mut(),
                 std::ptr::null_mut(),
-            );
-
-            match ret {
-                0 => Ok(info
-                    .as_ref()
-                    .and_then(|info| info.as_ref())
-                    .map(IpInfo::from)),
-                _ => Err(OpenconnectError::GetIpInfoError(ret)),
-            }
+            )
+        };
+        if ret != 0 {
+            return Err(OpenconnectError::GetIpInfoError(ret));
         }
+        // SAFETY: `info_ptr`, if non-null, points to a valid `oc_ip_info` owned by `handle`.
+        Ok(unsafe { IpInfo::from_raw(info_ptr) })
+    }
+
+    /// Returns IP configuration info. If `run_loop` holds the C handle lock, returns the
+    /// cached snapshot captured after CSTP setup without racing on `openconnect_info`.
+    pub fn get_info(&self) -> OpenconnectResult<Option<IpInfo>> {
+        if let Ok(handle) = self.handle.try_lock() {
+            let info = Self::query_ip_info_locked(&handle)?;
+            if let Ok(mut cached) = self.state.cached_ip_info.write() {
+                *cached = info.clone();
+            }
+            return Ok(info);
+        }
+        Ok(self
+            .state
+            .cached_ip_info
+            .read()
+            .ok()
+            .and_then(|c| c.clone()))
     }
 
     pub(crate) fn main_loop(
@@ -421,33 +543,48 @@ impl VpnClient {
         reconnect_timeout: i32,
         reconnect_interval: u32,
     ) -> OpenconnectResult<()> {
-        let ret = unsafe {
-            openconnect_mainloop(self.vpninfo, reconnect_timeout, reconnect_interval as i32)
-        };
+        let reconnect_interval = i32::try_from(reconnect_interval).unwrap_or(i32::MAX);
+        let handle = self.lock_handle()?;
+        // SAFETY: `handle.as_ptr()` is exclusively locked for the duration of `openconnect_mainloop`.
+        let ret =
+            unsafe { openconnect_mainloop(handle.as_ptr(), reconnect_timeout, reconnect_interval) };
         match ret {
             0 => Ok(()),
             _ => Err(OpenconnectError::MainLoopError(ret)),
         }
     }
 
-    pub(crate) fn free(&self) {
-        unsafe {
-            openconnect_vpninfo_free(self.vpninfo);
+    /// Test-only helpers for exercising C mock fault injection & callback triggers under `mock-ffi`.
+    #[cfg(feature = "mock-ffi")]
+    pub fn with_mock_vpninfo<R>(
+        &self,
+        f: impl FnOnce(*mut openconnect_sys::openconnect_info) -> R,
+    ) -> R {
+        let handle = self.lock_handle().expect("vpninfo lock poisoned");
+        f(handle.as_ptr())
+    }
+
+    #[cfg(feature = "mock-ffi")]
+    pub fn save_mock_form_field(&self, form_id: &str, opt_id: &str, value: Option<&str>) {
+        if let Ok(mut fm) = self.state.form_manager.lock() {
+            fm.save_field(
+                form_id.to_string(),
+                opt_id.to_string(),
+                value.map(str::to_string),
+            );
         }
-        tracing::debug!("Client instance is dropped");
     }
 }
 
 impl Drop for VpnClient {
     fn drop(&mut self) {
         self.disconnect();
-        self.free();
+        // `self.handle` (`VpnInfoHandle`) drops automatically after `VpnClient::drop`,
+        // clearing `cmd_fd`, calling `openconnect_vpninfo_free`, and freeing `CallbackContext`.
     }
 }
 
-/// Trait for creating a new instance of VpnClient and connecting to the VPN server
-///
-/// This trait is implemented for the lifecycle of the VpnClient
+/// Trait for creating a new instance of [`VpnClient`] and connecting to the VPN server.
 pub trait Connectable {
     fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>>;
     fn connect_for_cookie(&self, entrypoint: Entrypoint) -> OpenconnectResult<Option<String>>;
@@ -459,58 +596,34 @@ pub trait Connectable {
 }
 
 impl Connectable for VpnClient {
-    /// Create a new instance of VpnClient
-    ///
-    /// config can be created using [config::ConfigBuilder]
-    ///
-    /// callbacks can be created using [events::EventHandlers]
     fn new(config: Config, callbacks: EventHandlers) -> OpenconnectResult<Arc<Self>> {
-        let useragent = std::ffi::CString::new("AnyConnect-compatible OpenConnect VPN Agent")
+        let useragent = CString::new("AnyConnect-compatible OpenConnect VPN Agent")
             .map_err(|_| OpenconnectError::OtherError("useragent is not valid".to_string()))?;
 
-        let instance = Arc::new(Self {
-            vpninfo: std::ptr::null_mut(),
+        let state = Arc::new(SharedState {
             config,
-            cmd_fd: (-1).into(),
+            cmd_fd: Mutex::new(None),
             status: RwLock::new(Status::Initialized),
             callbacks,
             entrypoint: RwLock::new(None),
-            form_manager: RwLock::new(FormManager::default()),
+            form_manager: Mutex::new(FormManager::default()),
             peer_certs: PeerCerts::default(),
+            cached_hostname: RwLock::new(None),
+            cached_ip_info: RwLock::new(None),
         });
 
-        unsafe {
-            let weak_instance = Arc::downgrade(&instance);
-            let raw_instance = Weak::into_raw(weak_instance) as *mut VpnClient; // dangerous, leak for assign to vpninfo
-            let ret = openconnect_init_ssl();
-            if ret != 0 {
-                panic!("openconnect_init_ssl failed");
-            }
+        let handle = VpnInfoHandle::new(&useragent, Arc::clone(&state))?;
 
-            // format args on C side
-            helper_set_global_progress_vfn(Some(Logger::raw_handle_process_log));
-
-            let vpninfo = openconnect_vpninfo_new(
-                useragent.as_ptr(),
-                Some(PeerCerts::validate_peer_cert),
-                None,
-                Some(FormManager::process_auth_form_cb),
-                Some(helper_format_vargs), // format args on C side
-                raw_instance as *mut ::std::os::raw::c_void,
-            );
-
-            if vpninfo.is_null() {
-                panic!("openconnect_vpninfo_new failed");
-            }
-
-            (*raw_instance).vpninfo = vpninfo;
-        };
+        let instance = Arc::new(Self {
+            handle: Mutex::new(handle),
+            state,
+        });
 
         SIGNAL_HANDLE.update_client_singleton(Arc::downgrade(&instance));
-        instance.set_loglevel(instance.config.loglevel);
+        instance.set_loglevel(instance.state.config.loglevel);
         instance.set_setup_tun_handler();
 
-        if let Some(proxy) = &instance.config.http_proxy {
+        if let Some(proxy) = &instance.state.config.http_proxy {
             instance
                 .set_http_proxy(proxy.as_str())
                 .emit_error(&instance)?;
@@ -521,20 +634,12 @@ impl Connectable for VpnClient {
         Ok(instance)
     }
 
-    /// Connect to the VPN server and obtain a cookie
-    ///
-    /// This function will not keep the connection, it will only connect and obtain a cookie. This function will not block the thread
-    ///
-    /// The cookie can be used to connect to the VPN server later by passing it to another [config::EntrypointBuilder]
-    ///
-    /// entrypoint can be created using [config::EntrypointBuilder]
     fn connect_for_cookie(&self, entrypoint: Entrypoint) -> OpenconnectResult<Option<String>> {
         self.emit_state_change(Status::Connecting("Initializing connection".to_string()));
-        {
-            if let Ok(mut form_context) = self.form_manager.try_write() {
-                form_context.reset();
-            }
+        if let Ok(mut form_context) = self.state.form_manager.lock() {
+            form_context.reset();
         }
+
         self.set_protocol(&entrypoint.protocol.name)
             .emit_error(self)?;
         self.emit_state_change(Status::Connecting("Setting up system pipe".to_string()));
@@ -554,6 +659,7 @@ impl Connectable for VpnClient {
 
         {
             let mut entrypoint_write_guard = self
+                .state
                 .entrypoint
                 .write()
                 .map_err(|_| {
@@ -564,7 +670,6 @@ impl Connectable for VpnClient {
                 .emit_error(self)?;
 
             *entrypoint_write_guard = Some(entrypoint.clone());
-            // drop entrypoint_write_guard
         }
 
         if !entrypoint.enable_udp {
@@ -577,10 +682,10 @@ impl Connectable for VpnClient {
 
         self.emit_state_change(Status::Connecting(format!(
             "Obtaining cookie from: {}",
-            hostname.unwrap_or("".to_string())
+            hostname.unwrap_or_default()
         )));
-        if let Some(cookie) = entrypoint.cookie.clone() {
-            self.set_cookie(&cookie).emit_error(self)?;
+        if let Some(cookie) = entrypoint.cookie.as_deref() {
+            self.set_cookie(cookie).emit_error(self)?;
         } else {
             self.obtain_cookie().emit_error(self)?;
         }
@@ -588,9 +693,6 @@ impl Connectable for VpnClient {
         Ok(self.get_cookie())
     }
 
-    /// Initialize the connection to the VPN server, this function will not block the thread and only make a CSTP connection
-    ///
-    /// entrypoint can be created using [config::EntrypointBuilder]
     fn init_connection(&self, entrypoint: Entrypoint) -> OpenconnectResult<()> {
         self.emit_state_change(Status::Connecting("Make CSTP connection".to_string()));
         self.connect_for_cookie(entrypoint)?;
@@ -600,7 +702,6 @@ impl Connectable for VpnClient {
         Ok(())
     }
 
-    /// Run main loop and block until the connection is closed
     fn run_loop(&self) -> OpenconnectResult<()> {
         loop {
             if let Err(err) = self.main_loop(300, RECONNECT_INTERVAL_MIN) {
@@ -609,17 +710,10 @@ impl Connectable for VpnClient {
             }
         }
 
-        // TODO: check if the following should be invoke?
-        // self.reset_ssl();
-        // self.clear_cookie();
         self.emit_state_change(Status::Disconnected);
-
         Ok(())
     }
 
-    /// Gracefully stop the main loop
-    ///
-    /// This function will send a cancel command to the main loop and wait for the main loop to stop
     fn disconnect(&self) {
         if self.get_status() != Status::Connected {
             return;
@@ -627,20 +721,24 @@ impl Connectable for VpnClient {
 
         self.emit_state_change(Status::Disconnecting);
         self.send_command(command::Command::Cancel);
-        self.cmd_fd.store(-1, Ordering::SeqCst);
+        if let Ok(mut fd_guard) = self.state.cmd_fd.lock() {
+            *fd_guard = None;
+        }
 
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
 
     fn get_server_name(&self) -> Option<String> {
-        self.entrypoint
+        self.state
+            .entrypoint
             .read()
             .ok()
             .and_then(|r| r.as_ref().and_then(|e| e.name.clone()))
     }
 
     fn get_status(&self) -> Status {
-        self.status
+        self.state
+            .status
             .read()
             .ok()
             .map_or(Status::Initialized, |r| r.clone())
@@ -649,21 +747,15 @@ impl Connectable for VpnClient {
 
 impl Events for VpnClient {
     fn emit_state_change(&self, status: Status) {
-        if let Some(ref handler) = self.callbacks.handle_connection_state_change {
-            handler(status.clone());
+        if let Ok(mut write) = self.state.status.write() {
+            *write = status.clone();
         }
 
-        {
-            let status_write_guard = self.status.write();
-            if let Ok(mut write) = status_write_guard {
-                *write = status;
-            } else {
-                // FIXME: handle error?
-            }
+        if let Some(ref handler) = self.state.callbacks.handle_connection_state_change {
+            handler(status);
         }
     }
 
-    /// Change state and emit error to state change handler
     fn emit_error(&self, error: &OpenconnectError) {
         self.emit_state_change(Status::Error(error.clone()));
     }

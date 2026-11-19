@@ -1,9 +1,14 @@
 use crate::VpnClient;
-use lazy_static::lazy_static;
 use openconnect_sys::{OC_CMD_CANCEL, OC_CMD_DETACH, OC_CMD_PAUSE, OC_CMD_STATS};
-use std::sync::{atomic::Ordering, Mutex, Weak};
+use std::sync::{LazyLock, Mutex, Weak};
 
-#[derive(Debug, Clone, Copy)]
+#[cfg(not(target_os = "windows"))]
+pub(crate) type CmdPipeFd = std::os::fd::RawFd;
+
+#[cfg(target_os = "windows")]
+pub(crate) type CmdPipeFd = usize;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
     Cancel,
     Detach,
@@ -23,19 +28,35 @@ impl From<Command> for u8 {
 }
 
 pub trait CmdPipe {
-    fn set_sock_block(&self, cmd_fd: i32);
+    fn set_sock_block(&self, cmd_fd: CmdPipeFd);
     fn send_command(&self, cmd: Command);
 }
 
 impl CmdPipe for VpnClient {
-    fn set_sock_block(&self, cmd_fd: i32) {
+    fn set_sock_block(&self, cmd_fd: CmdPipeFd) {
         #[cfg(not(target_os = "windows"))]
         {
-            unsafe {
-                libc::fcntl(
+            if cmd_fd < 0 {
+                tracing::warn!("Ignoring invalid cmd_fd: {}", cmd_fd);
+                return;
+            }
+            // SAFETY: `cmd_fd` is a valid non-negative descriptor owned by `libopenconnect`.
+            let flags = unsafe { libc::fcntl(cmd_fd, libc::F_GETFL) };
+            if flags < 0 {
+                tracing::warn!(
+                    "fcntl(F_GETFL) failed for cmd_fd {}: {}",
                     cmd_fd,
-                    libc::F_SETFL,
-                    libc::fcntl(cmd_fd, libc::F_GETFL) & !libc::O_NONBLOCK,
+                    std::io::Error::last_os_error()
+                );
+                return;
+            }
+            // SAFETY: `cmd_fd` is valid and `flags` was returned by `F_GETFL`.
+            let ret = unsafe { libc::fcntl(cmd_fd, libc::F_SETFL, flags & !libc::O_NONBLOCK) };
+            if ret < 0 {
+                tracing::warn!(
+                    "fcntl(F_SETFL) failed for cmd_fd {}: {}",
+                    cmd_fd,
+                    std::io::Error::last_os_error()
                 );
             }
         }
@@ -43,63 +64,85 @@ impl CmdPipe for VpnClient {
         #[cfg(target_os = "windows")]
         {
             let mut mode: u32 = 0;
-            unsafe {
+            // SAFETY: `cmd_fd` is a valid WinSock SOCKET returned by `openconnect_setup_cmd_pipe`.
+            let ret = unsafe {
                 windows_sys::Win32::Networking::WinSock::ioctlsocket(
-                    cmd_fd as usize,
+                    cmd_fd,
                     windows_sys::Win32::Networking::WinSock::FIONBIO,
                     &mut mode,
-                );
+                )
+            };
+            if ret != 0 {
+                tracing::warn!("ioctlsocket(FIONBIO) failed with code {}", ret);
             }
         }
     }
+
     fn send_command(&self, cmd: Command) {
-        let cmd: u8 = cmd.into();
+        let cmd_byte: u8 = cmd.into();
+        if cmd_byte == 0 {
+            return;
+        }
+
+        // Hold `cmd_fd` mutex across the write syscall so `VpnInfoHandle::drop` cannot
+        // close and reuse the FD concurrently while we write to it.
+        let Ok(fd_guard) = self.state.cmd_fd.lock() else {
+            tracing::error!("Failed to lock cmd_fd mutex while sending command");
+            return;
+        };
+        let Some(cmd_fd) = *fd_guard else {
+            return;
+        };
 
         #[cfg(not(target_os = "windows"))]
         {
-            let cmd_fd = self.cmd_fd.load(Ordering::SeqCst);
-            if cmd != 0 && cmd_fd >= 0 {
-                let ret =
-                    unsafe { libc::write(cmd_fd, &cmd as *const _ as *const std::ffi::c_void, 1) };
-
-                if ret < 0 {
-                    tracing::event!(
-                        tracing::Level::ERROR,
-                        "{}",
-                        format!(
-                            "Failed to send command to VPN process, ret: {}, command: {}",
-                            ret, cmd
-                        )
-                    );
+            if cmd_fd < 0 {
+                return;
+            }
+            loop {
+                // SAFETY: `cmd_fd` is kept live by `fd_guard` (invalidated before `vpninfo_free`)
+                // and `&cmd_byte` points to 1 readable byte.
+                let ret = unsafe {
+                    libc::write(
+                        cmd_fd,
+                        (&cmd_byte as *const u8).cast::<std::ffi::c_void>(),
+                        1,
+                    )
+                };
+                if ret >= 0 {
+                    break;
                 }
+                let err = std::io::Error::last_os_error();
+                if err.kind() == std::io::ErrorKind::Interrupted {
+                    continue;
+                }
+                tracing::error!(
+                    "Failed to send command {} to VPN pipe (fd={}): {}",
+                    cmd_byte,
+                    cmd_fd,
+                    err
+                );
+                break;
             }
         }
 
         #[cfg(target_os = "windows")]
         {
-            let cmd_fd = self.cmd_fd.load(Ordering::SeqCst);
-            if cmd_fd >= 0 {
-                let ret = {
-                    unsafe {
-                        windows_sys::Win32::Networking::WinSock::send(
-                            cmd_fd as usize,
-                            std::ptr::from_ref(&cmd) as *const _,
-                            1,
-                            0,
-                        )
-                    }
-                };
-
-                if ret < 0 {
-                    tracing::event!(
-                        tracing::Level::ERROR,
-                        "{}",
-                        format!(
-                            "Failed to send command to VPN process, ret: {}, command: {}",
-                            ret, cmd
-                        )
-                    );
-                }
+            // SAFETY: `cmd_fd` is kept live by `fd_guard` and `&cmd_byte` points to 1 readable byte.
+            let ret = unsafe {
+                windows_sys::Win32::Networking::WinSock::send(
+                    cmd_fd,
+                    std::ptr::from_ref(&cmd_byte),
+                    1,
+                    0,
+                )
+            };
+            if ret < 0 {
+                tracing::error!(
+                    "Failed to send command {} to VPN socket: ret={}",
+                    cmd_byte,
+                    ret
+                );
             }
         }
     }
@@ -109,27 +152,23 @@ pub struct SignalHandle {
     client: Mutex<Weak<VpnClient>>,
 }
 
-lazy_static! {
-    pub static ref SIGNAL_HANDLE: SignalHandle = {
-        let sig_handle = SignalHandle {
-            client: Mutex::new(Weak::new()),
-        };
-        sig_handle.set_sig_handler();
-        sig_handle
+pub static SIGNAL_HANDLE: LazyLock<SignalHandle> = LazyLock::new(|| {
+    let sig_handle = SignalHandle {
+        client: Mutex::new(Weak::new()),
     };
-}
+    sig_handle.set_sig_handler();
+    sig_handle
+});
 
 impl SignalHandle {
     /// Set the current client singleton to the given client.
     /// This is used when signal handler is called to send command to the client.
     pub fn update_client_singleton(&self, client: Weak<VpnClient>) {
-        let saved_client = self.client.lock();
-        if let Ok(mut saved_client) = saved_client {
+        if let Ok(mut saved_client) = self.client.lock() {
             *saved_client = client;
         }
     }
 
-    /// Set the signal handler for the current process.
     fn set_sig_handler(&self) {
         #[cfg(not(target_os = "windows"))]
         {
@@ -138,48 +177,32 @@ impl SignalHandle {
                 iterator::Signals,
             };
 
-            let mut signals = Signals::new([SIGINT, SIGTERM, SIGHUP, SIGUSR1, SIGUSR2])
-                .expect("Failed to register signal handler");
+            let Ok(mut signals) = Signals::new([SIGINT, SIGTERM, SIGHUP, SIGUSR1, SIGUSR2]) else {
+                tracing::error!("Failed to register OS signal handler");
+                return;
+            };
 
             std::thread::spawn(move || {
                 for sig in signals.forever() {
                     let cmd = match sig {
-                        SIGINT | SIGTERM => {
-                            println!("Received SIGINT or SIGTERM");
-                            Command::Cancel
-                        }
-                        SIGHUP => {
-                            println!("Received SIGHUP");
-                            Command::Detach
-                        }
-                        SIGUSR2 => {
-                            println!("Received SIGUSR2");
-                            Command::Pause
-                        }
-                        SIGUSR1 => {
-                            println!("Received SIGUSR1");
-                            Command::Stats
-                        }
-                        _ => {
-                            println!("Received unknown signal");
-                            unreachable!()
-                        }
+                        SIGINT | SIGTERM => Command::Cancel,
+                        SIGHUP => Command::Detach,
+                        SIGUSR2 => Command::Pause,
+                        SIGUSR1 => Command::Stats,
+                        _ => continue,
                     };
 
-                    {
-                        let this = SIGNAL_HANDLE
-                            .client
-                            .lock()
-                            .ok()
-                            .and_then(|this| this.upgrade());
+                    let client = SIGNAL_HANDLE
+                        .client
+                        .lock()
+                        .ok()
+                        .and_then(|weak| weak.upgrade());
 
-                        if let Some(this) = this {
-                            this.send_command(cmd);
-                        }
+                    if let Some(client) = client {
+                        client.send_command(cmd);
                     }
 
                     if sig == SIGINT || sig == SIGTERM {
-                        // Exit the signal handler thread since the process is going to exit
                         break;
                     }
                 }
@@ -189,36 +212,41 @@ impl SignalHandle {
         #[cfg(target_os = "windows")]
         {
             use windows_sys::Win32::System::Console::{
-                SetConsoleCtrlHandler, CTRL_BREAK_EVENT, CTRL_CLOSE_EVENT, CTRL_C_EVENT,
-                CTRL_LOGOFF_EVENT, CTRL_SHUTDOWN_EVENT,
+                CTRL_BREAK_EVENT, CTRL_C_EVENT, CTRL_CLOSE_EVENT, CTRL_LOGOFF_EVENT,
+                CTRL_SHUTDOWN_EVENT, SetConsoleCtrlHandler,
             };
 
             unsafe extern "system" fn console_control_handle(dw_ctrl_type: u32) -> i32 {
-                let cmd = match dw_ctrl_type {
-                    CTRL_C_EVENT | CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT | CTRL_SHUTDOWN_EVENT => {
-                        Command::Cancel
-                    }
-                    CTRL_BREAK_EVENT => Command::Detach,
-                    _ => unreachable!(),
-                };
+                crate::ffi::ffi_catch_unwind(0, || {
+                    let cmd = match dw_ctrl_type {
+                        CTRL_C_EVENT | CTRL_CLOSE_EVENT | CTRL_LOGOFF_EVENT
+                        | CTRL_SHUTDOWN_EVENT => Command::Cancel,
+                        CTRL_BREAK_EVENT => Command::Detach,
+                        _ => return 0,
+                    };
 
-                {
-                    let this = SIGNAL_HANDLE
+                    let client = SIGNAL_HANDLE
                         .client
-                        .lock()
+                        .try_lock()
                         .ok()
-                        .and_then(|this| this.upgrade());
+                        .and_then(|weak| weak.upgrade());
 
-                    if let Some(this) = this {
-                        this.send_command(cmd);
+                    if let Some(client) = client {
+                        client.send_command(cmd);
                     }
-                }
 
-                1
+                    1
+                })
             }
 
-            unsafe {
-                SetConsoleCtrlHandler(Some(console_control_handle), 1);
+            // SAFETY: `console_control_handle` has the required `PHANDLER_ROUTINE` ABI
+            // and never unwinds across FFI.
+            let ok = unsafe { SetConsoleCtrlHandler(Some(console_control_handle), 1) };
+            if ok == 0 {
+                tracing::warn!(
+                    "SetConsoleCtrlHandler failed: {}",
+                    std::io::Error::last_os_error()
+                );
             }
         }
     }

@@ -1,5 +1,5 @@
 use crate::{
-    protocols::{get_anyconnect_protocol, Protocol},
+    protocols::{Protocol, get_anyconnect_protocol},
     result::{OpenconnectError, OpenconnectResult},
 };
 use openconnect_sys::{PRG_DEBUG, PRG_ERR, PRG_INFO, PRG_TRACE};
@@ -151,14 +151,12 @@ impl EntrypointBuilder {
         let server = self
             .server
             .clone()
-            .ok_or(OpenconnectError::EntrypointConfigError(
-                "Server is required".to_string(),
-            ))?;
+            .ok_or_else(|| OpenconnectError::EntrypointConfigError("Server is required".into()))?;
 
-        let protocol = self
-            .protocol
-            .clone()
-            .unwrap_or_else(get_anyconnect_protocol);
+        let protocol = match &self.protocol {
+            Some(p) => p.clone(),
+            None => get_anyconnect_protocol()?,
+        };
 
         Ok(Entrypoint {
             name: self.name.clone(),

@@ -1,8 +1,8 @@
+use crate::ffi::{c_str_to_option_string, ffi_catch_unwind};
 use openconnect_sys::{PRG_DEBUG, PRG_ERR, PRG_INFO, PRG_TRACE};
 use tracing::{
-    event,
-    subscriber::{set_global_default, SetGlobalDefaultError},
-    Level,
+    Level, event,
+    subscriber::{SetGlobalDefaultError, set_global_default},
 };
 use tracing_appender::rolling::{RollingFileAppender, Rotation};
 
@@ -30,7 +30,6 @@ impl Logger {
             .build(Self::get_log_path())
             .expect("failed to create file appender");
 
-        // for file based logging, waiting https://github.com/tokio-rs/tracing/pull/2497 to be merged
         let subscriber = tracing_subscriber::fmt()
             .compact()
             .with_level(true)
@@ -42,23 +41,32 @@ impl Logger {
         set_global_default(subscriber)
     }
 
+    /// C progress log callback invoked by `helper_format_vargs`.
+    ///
+    /// # Safety
+    /// If `buf` is non-null, it must point to a valid NUL-terminated C string for the
+    /// duration of this call.
     pub(crate) unsafe extern "C" fn raw_handle_process_log(
         _privdata: *mut ::std::os::raw::c_void,
         level: ::std::os::raw::c_int,
         buf: *const ::std::os::raw::c_char,
     ) {
-        let buf = std::ffi::CStr::from_ptr(buf).to_str().ok();
-        let level = level as u32;
-        let level = match level {
-            PRG_ERR => Level::ERROR,
-            PRG_INFO => Level::INFO,
-            PRG_DEBUG => Level::DEBUG,
-            PRG_TRACE => Level::TRACE,
-            _ => unreachable!("unknown log level: {}", level),
-        };
-        if buf.is_some() {
-            Logger::log(level, buf.unwrap_or(""));
-        }
+        ffi_catch_unwind((), || {
+            // SAFETY: Caller guarantees `buf`, when non-null, is a valid NUL-terminated C string.
+            let Some(message) = (unsafe { c_str_to_option_string(buf) }) else {
+                return;
+            };
+
+            let level = match level as u32 {
+                PRG_ERR => Level::ERROR,
+                PRG_INFO => Level::INFO,
+                PRG_DEBUG => Level::DEBUG,
+                PRG_TRACE => Level::TRACE,
+                _ => Level::TRACE,
+            };
+
+            Logger::log(level, &message);
+        });
     }
 
     pub fn log(level: Level, message: &str) {
