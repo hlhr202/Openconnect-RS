@@ -1,31 +1,40 @@
 [package]
 name = "openconnect-sys"
-version = "0.1.5"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+homepage.workspace = true
 build = "build/main.rs"
 description = "Rust bindings for OpenConnect"
 license = "LGPL-2.1"
 repository = "https://github.com/hlhr202/Openconnect-RS/tree/main/crates/openconnect-sys"
-homepage = "https://github.com/hlhr202/Openconnect-RS"
-authors = ["hlhr202"]
 keywords = ["openconnect", "vpn", "networking", "security"]
 documentation = "https://docs.rs/openconnect-sys"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["native"]
+native = ["dep:openssl-sys", "dep:bindgen", "dep:pkg-config", "dep:reqwest", "dep:zip", "dep:sha2", "dep:hex"]
+mock-ffi = []
+
 [dependencies]
-openssl-sys = "0.9.101"
+openssl-sys = { version = "0.9", optional = true }
 
 [lib]
 crate-type = ["lib"]
 
 [build-dependencies]
-bindgen = "0.69.4"
-cc = "1.0.90"
-pkg-config = "0.3.30"
-home = { workspace = true }
-reqwest = { workspace = true }
-zip = "0.6.6"
+cc = "1.2"
+bindgen = { version = "0.71", optional = true }
+pkg-config = { version = "0.3.32", optional = true }
+reqwest = { workspace = true, optional = true }
+zip = { version = "2.6", default-features = false, features = ["deflate"], optional = true }
+sha2 = { workspace = true, optional = true }
+hex = { workspace = true, optional = true }
 
 [package.metadata.docs.rs]
 default-target = "x86_64-unknown-linux-gnu"
 targets = ["x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-pc-windows-gnu"]
+
+[lints]
+workspace = true

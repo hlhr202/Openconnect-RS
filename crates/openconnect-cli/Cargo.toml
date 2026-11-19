@@ -1,31 +1,40 @@
 [package]
 name = "openconnect-cli"
 description = "A CLI client to connect to VPN using OpenConnect"
-version = "0.1.5"
-edition = "2021"
-homepage = "https://github.com/hlhr202/Openconnect-RS"
-authors = ["hlhr202"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+repository = "https://github.com/hlhr202/Openconnect-RS/tree/main/crates/openconnect-cli"
 license = "LGPL-2.1"
+
+[features]
+default = ["native"]
+native = ["openconnect-core/native"]
+mock-ffi = ["openconnect-core/mock-ffi"]
 
 [dependencies]
 anyhow = { workspace = true }
 base64 = { workspace = true }
 clap = { workspace = true }
 clap_complete = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
 tokio-serde = { workspace = true }
 tokio-util = { workspace = true }
 futures = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 libc = { workspace = true }
-openconnect-oidc = { path = "../openconnect-oidc", version = "0.1.5" }
-openconnect-core = { path = "../openconnect-core", version = "0.1.5" }
+openconnect-oidc = { path = "../openconnect-oidc", version = "0.2.0" }
+openconnect-core = { path = "../openconnect-core", version = "0.2.0", default-features = false }
 sudo = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
-chrono = { workspace = true }
 home = { workspace = true }
-colored = "2.1.0"
-comfy-table = "7.1.1"
-dialoguer = "0.11.0"
+colored = { workspace = true }
+comfy-table = { workspace = true }
+dialoguer = { workspace = true }
+
+[lints]
+workspace = true
