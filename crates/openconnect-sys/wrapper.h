@@ -1,5 +1,6 @@
 #ifdef _WIN32
-#include <winsock2.h>
+#include <stdint.h>
+typedef uintptr_t SOCKET;
 #endif
 
 #include <config.h>

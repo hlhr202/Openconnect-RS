@@ -16,7 +16,8 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          brew install libxml2 zlib openssl lz4 xz pkg-config automake autoconf libtool gettext
+          brew install libxml2 zlib openssl@3 lz4 xz pkg-config automake autoconf libtool gettext
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4

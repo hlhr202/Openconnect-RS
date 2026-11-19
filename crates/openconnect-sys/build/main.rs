@@ -171,9 +171,11 @@ fn build_native() {
     let builder = {
         let mingw_root = get_cygpath("/mingw64");
         let mingw_include = get_cygpath("/mingw64/include");
+        let mingw_target_include = get_cygpath("/mingw64/x86_64-w64-mingw32/include");
         builder
             .clang_arg(format!("--sysroot={}", mingw_root))
-            .clang_arg(format!("-I{}", mingw_include))
+            .clang_arg(format!("-isystem{}", mingw_include))
+            .clang_arg(format!("-isystem{}", mingw_target_include))
     };
 
     let bindings = builder.generate().expect("Unable to generate bindings");

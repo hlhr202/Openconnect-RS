@@ -14,7 +14,7 @@ jobs:
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
         run: |
-          brew install libxml2 zlib openssl lz4 xz pkg-config automake autoconf libtool gettext zip
+          brew install libxml2 zlib openssl@3 lz4 xz pkg-config automake autoconf libtool gettext zip
 
       - name: "🚧 Build TOOL"
         run: |
