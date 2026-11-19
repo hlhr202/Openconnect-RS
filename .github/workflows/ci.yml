@@ -72,6 +72,28 @@ jobs:
           pnpm install --frozen-lockfile
           pnpm build
 
+      - name: Verify Tauri Rust & NPM package version parity
+        run: |
+          python3 - <<'PY'
+          import json, tomllib
+          with open("Cargo.lock", "rb") as f:
+              cargo_pkgs = {p["name"]: p["version"] for p in tomllib.load(f)["package"]}
+          with open("crates/openconnect-gui/node_modules/@tauri-apps/api/package.json") as f:
+              npm_api = json.load(f)["version"]
+          with open("crates/openconnect-gui/node_modules/@tauri-apps/plugin-os/package.json") as f:
+              npm_os = json.load(f)["version"]
+          with open("crates/openconnect-gui/node_modules/@tauri-apps/plugin-shell/package.json") as f:
+              npm_shell = json.load(f)["version"]
+          pairs = [
+              ("tauri", cargo_pkgs["tauri"], "@tauri-apps/api", npm_api),
+              ("tauri-plugin-os", cargo_pkgs["tauri-plugin-os"], "@tauri-apps/plugin-os", npm_os),
+              ("tauri-plugin-shell", cargo_pkgs["tauri-plugin-shell"], "@tauri-apps/plugin-shell", npm_shell),
+          ]
+          for r_name, r_ver, j_name, j_ver in pairs:
+              assert r_ver.split(".")[:2] == j_ver.split(".")[:2], f"Version mismatch: {r_name} ({r_ver}) vs {j_name} ({j_ver})"
+              print(f"OK: {r_name} ({r_ver}) == {j_name} ({j_ver})")
+          PY
+
   gui-tauri-check:
     runs-on: ubuntu-latest
     steps:

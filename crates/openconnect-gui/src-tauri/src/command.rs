@@ -86,11 +86,16 @@ pub async fn get_stored_configs(
 
 #[tauri::command]
 pub async fn upsert_stored_server(
+    app_handle: tauri::AppHandle,
     app_state: tauri::State<'_, AppState>,
+    app_system_tray: tauri::State<'_, std::sync::Arc<crate::system_tray::AppSystemTray>>,
     server: StoredServer,
 ) -> Result<(), ErrorResponse> {
-    let mut stored_configs = app_state.stored_configs.write().await;
-    stored_configs.upsert_server(server).await?;
+    {
+        let mut stored_configs = app_state.stored_configs.write().await;
+        stored_configs.upsert_server(server).await?;
+    }
+    let _ = app_system_tray.recreate(&app_handle).await;
     Ok(())
 }
 
@@ -106,10 +111,15 @@ pub async fn set_default_server(
 
 #[tauri::command]
 pub async fn remove_server(
+    app_handle: tauri::AppHandle,
     app_state: tauri::State<'_, AppState>,
+    app_system_tray: tauri::State<'_, std::sync::Arc<crate::system_tray::AppSystemTray>>,
     server_name: String,
 ) -> Result<(), ErrorResponse> {
-    let mut stored_configs = app_state.stored_configs.write().await;
-    stored_configs.remove_server(&server_name).await?;
+    {
+        let mut stored_configs = app_state.stored_configs.write().await;
+        stored_configs.remove_server(&server_name).await?;
+    }
+    let _ = app_system_tray.recreate(&app_handle).await;
     Ok(())
 }

@@ -126,7 +126,7 @@ function App() {
             alt="bg"
             style={{ objectFit: "cover" }}
             className={`h-full w-full scale-[120%] transition-all duration-2000 brightness-60 contrast-70${
-              mounted ? " blur" : "blur-sm"
+              mounted ? " blur" : " blur-sm"
             }`}
           />
         </div>

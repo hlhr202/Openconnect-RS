@@ -38,35 +38,42 @@ impl StoredConfigsJson {
     }
 }
 
+fn parse_servers_map(
+    json: StoredConfigsJson,
+) -> Result<(Option<String>, HashMap<String, StoredServer>), StoredConfigError> {
+    let mut servers = HashMap::new();
+    for server in json.servers {
+        let name = match &server {
+            StoredServer::Oidc(OidcServer { name, .. }) => name,
+            StoredServer::Password(PasswordServer { name, .. }) => name,
+        };
+
+        if servers.contains_key(name) {
+            return Err(StoredConfigError::ParseError(format!(
+                "Duplicated server name: {}, check your config file",
+                name
+            )));
+        }
+
+        servers.insert(name.clone(), server);
+    }
+    Ok((json.default, servers))
+}
+
 impl TryFrom<(StoredConfigsJson, PathBuf)> for StoredConfigs {
     type Error = StoredConfigError;
 
     fn try_from(
         (json, config_file): (StoredConfigsJson, PathBuf),
     ) -> Result<StoredConfigs, StoredConfigError> {
-        let mut servers = HashMap::new();
-        for server in json.servers {
-            let name = match &server {
-                StoredServer::Oidc(OidcServer { name, .. }) => name,
-                StoredServer::Password(PasswordServer { name, .. }) => name,
-            };
-
-            if servers.contains_key(name) {
-                return Err(StoredConfigError::ParseError(format!(
-                    "Duplicated server name: {}, check your config file",
-                    name
-                )));
-            }
-
-            servers.insert(name.clone(), server);
-        }
-
+        let (default, servers) = parse_servers_map(json)?;
         let cipher = PassEncryptor::for_config_file(&config_file);
         Ok(StoredConfigs {
-            default: json.default,
+            default,
             servers,
             cipher,
             config_file,
+            has_custom_key: false,
         })
     }
 }
@@ -177,6 +184,7 @@ pub struct StoredConfigs {
     pub servers: HashMap<String, StoredServer>,
     pub cipher: PassEncryptor,
     pub config_file: PathBuf,
+    has_custom_key: bool,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -196,8 +204,33 @@ pub enum StoredConfigError {
 
 #[cfg(unix)]
 fn set_unix_mode(path: &Path, mode: u32) -> std::io::Result<()> {
+    use std::os::unix::ffi::OsStrExt;
     use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))
+
+    let meta = std::fs::symlink_metadata(path)?;
+    if meta.file_type().is_symlink() {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "Refusing to modify permissions on symlinked config path",
+        ));
+    }
+
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode))?;
+
+    // When invoked via `sudo` with preserved `HOME` (e.g., `openconnect-cli start`),
+    // ensure newly created `~/.oidcvpn` / `config.json` / `.key` remain owned by the invoking user.
+    // SAFETY: `geteuid` is always safe per POSIX.
+    let euid = unsafe { libc::geteuid() };
+    if euid == 0
+        && let (Ok(uid_s), Ok(gid_s)) = (std::env::var("SUDO_UID"), std::env::var("SUDO_GID"))
+        && let (Ok(uid), Ok(gid)) = (uid_s.parse::<u32>(), gid_s.parse::<u32>())
+        && let Ok(cpath) = std::ffi::CString::new(path.as_os_str().as_bytes())
+    {
+        // SAFETY: `cpath` is a valid NUL-terminated path; `lchown` never follows symlinks.
+        let _ = unsafe { libc::lchown(cpath.as_ptr(), uid, gid) };
+    }
+
+    Ok(())
 }
 
 #[cfg(not(unix))]
@@ -207,6 +240,7 @@ fn set_unix_mode(_path: &Path, _mode: u32) -> std::io::Result<()> {
 
 impl StoredConfigs {
     pub fn new(pass_key: Option<String>, config_file: PathBuf) -> Self {
+        let has_custom_key = pass_key.is_some();
         let cipher = match pass_key {
             Some(key) => PassEncryptor::new(Some(key)),
             None => PassEncryptor::for_config_file(&config_file),
@@ -216,6 +250,7 @@ impl StoredConfigs {
             servers: HashMap::new(),
             cipher,
             config_file,
+            has_custom_key,
         }
     }
 
@@ -269,10 +304,13 @@ impl StoredConfigs {
         let config_json: StoredConfigsJson = serde_json::from_slice(&content).map_err(|e| {
             StoredConfigError::ParseError(format!("Failed to parse config file: {}", e))
         })?;
-        let config = StoredConfigs::try_from((config_json, self.config_file.clone()))?;
+        let (default, servers) = parse_servers_map(config_json)?;
 
-        self.default = config.default;
-        self.servers = config.servers;
+        if !self.has_custom_key {
+            self.cipher = PassEncryptor::for_config_file(&self.config_file);
+        }
+        self.default = default;
+        self.servers = servers;
 
         Ok(self)
     }
@@ -602,5 +640,34 @@ mod tests {
         assert_eq!(parsed["authType"], "password");
         assert_eq!(parsed["name"], "password_server");
         assert_eq!(parsed["username"], "username");
+    }
+
+    #[tokio::test]
+    async fn test_custom_pass_key_does_not_create_dot_key_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let config_file = dir.path().join("config.json");
+
+        let server = StoredServer::Password(PasswordServer {
+            name: "corp".to_string(),
+            server: "https://vpn.example.com".to_string(),
+            username: "alice".to_string(),
+            password: Some("top-secret".to_string()),
+            allow_insecure: Some(false),
+            updated_at: None,
+        });
+
+        let mut writer = StoredConfigs::new(Some("custom-passphrase".into()), config_file.clone());
+        writer.upsert_server(server).await.unwrap();
+        assert!(!dir.path().join(".key").exists());
+
+        let mut reader = StoredConfigs::new(Some("custom-passphrase".into()), config_file);
+        reader.read_from_file().await.unwrap();
+        assert!(!dir.path().join(".key").exists());
+
+        let pw_srv = reader
+            .get_server_as_password_server("corp")
+            .unwrap()
+            .decrypted_by(&reader.cipher);
+        assert_eq!(pw_srv.password.as_deref(), Some("top-secret"));
     }
 }

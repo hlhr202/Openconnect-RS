@@ -15,6 +15,7 @@ fn main() {
     println!("cargo:rerun-if-changed=c-src/helper.c");
     println!("cargo:rerun-if-changed=c-src/mock_openconnect.h");
     println!("cargo:rerun-if-changed=c-src/mock_openconnect.c");
+    println!("cargo:rerun-if-changed=scripts/nix.sh");
     println!("cargo:rerun-if-env-changed=OPENCONNECT_USE_PREBUILT");
     println!("cargo:rerun-if-env-changed=OPENCONNECT_PREBUILT_SHA256");
 
@@ -116,7 +117,10 @@ fn build_native() {
 
     #[cfg(target_os = "linux")]
     {
-        try_pkg_config(&["openssl", "libxml-2.0", "zlib", "liblz4"], false);
+        try_pkg_config(
+            &["openssl", "libxml-2.0", "zlib", "liblz4", "liblzma"],
+            false,
+        );
         println!("cargo:rustc-link-lib=dylib=stdc++");
     }
 
@@ -124,19 +128,32 @@ fn build_native() {
     {
         println!("cargo:rustc-link-search=/usr/lib");
         println!("cargo:rustc-link-search=/usr/local/lib");
+        println!("cargo:rustc-link-search=/opt/homebrew/lib");
+        println!("cargo:rustc-link-search=/usr/local/opt/gettext/lib");
+        println!("cargo:rustc-link-search=/opt/homebrew/opt/gettext/lib");
 
         try_pkg_config(&["openssl", "libxml-2.0", "zlib", "liblz4"], true);
 
-        #[cfg(target_arch = "x86_64")]
+        let intl_candidates = [
+            "/usr/local/opt/gettext/lib/libintl.a",
+            "/opt/homebrew/opt/gettext/lib/libintl.a",
+            "/usr/local/lib/libintl.a",
+            "/opt/homebrew/lib/libintl.a",
+        ];
+        if intl_candidates
+            .iter()
+            .any(|p| std::path::Path::new(p).exists())
         {
             println!("cargo:rustc-link-lib=static=intl");
         }
+        println!("cargo:rustc-link-lib=dylib=iconv");
+        println!("cargo:rustc-link-lib=framework=CoreFoundation");
         println!("cargo:rustc-link-lib=dylib=c++");
         println!("cargo:rustc-link-lib=dylib=c++abi");
     }
 
     // Generate bindings into OUT_DIR (never mutate checked-in src/ files during cargo build).
-    let bindings = bindgen::Builder::default()
+    let builder = bindgen::Builder::default()
         .header("wrapper.h")
         .header("c-src/helper.h")
         .clang_arg(format!(
@@ -145,11 +162,21 @@ fn build_native() {
                 .to_str()
                 .expect("invalid openconnect src dir")
         ))
+        .wrap_unsafe_ops(true)
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)
-        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()))
-        .generate()
-        .expect("Unable to generate bindings");
+        .parse_callbacks(Box::new(bindgen::CargoCallbacks::new()));
+
+    #[cfg(all(target_os = "windows", target_env = "gnu"))]
+    let builder = {
+        let mingw_root = get_cygpath("/mingw64");
+        let mingw_include = get_cygpath("/mingw64/include");
+        builder
+            .clang_arg(format!("--sysroot={}", mingw_root))
+            .clang_arg(format!("-I{}", mingw_include))
+    };
+
+    let bindings = builder.generate().expect("Unable to generate bindings");
 
     bindings
         .write_to_file(out_path.join("bindings.rs"))

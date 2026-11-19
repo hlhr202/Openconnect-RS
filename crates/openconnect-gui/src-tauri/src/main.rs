@@ -67,7 +67,6 @@ fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_os::init())
         .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .register_uri_scheme_protocol("oidcvpn", |ctx, req| {
             let app = ctx.app_handle();
             let uri = req.uri().to_string();

@@ -36,5 +36,8 @@ colored = { workspace = true }
 comfy-table = { workspace = true }
 dialoguer = { workspace = true }
 
+[dev-dependencies]
+tempfile = { workspace = true }
+
 [lints]
 workspace = true

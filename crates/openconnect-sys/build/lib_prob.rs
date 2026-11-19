@@ -61,7 +61,17 @@ pub fn try_pkg_config(libs: &[&str], statik: bool) {
     unsafe {
         std::env::set_var(
             "PKG_CONFIG_PATH",
-            "/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/opt/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig",
+            concat!(
+                "/opt/homebrew/opt/openssl@3/lib/pkgconfig:",
+                "/opt/homebrew/opt/openssl/lib/pkgconfig:",
+                "/opt/homebrew/opt/libxml2/lib/pkgconfig:",
+                "/opt/homebrew/opt/zlib/lib/pkgconfig:",
+                "/usr/local/opt/openssl@3/lib/pkgconfig:",
+                "/usr/local/opt/openssl/lib/pkgconfig:",
+                "/usr/local/opt/libxml2/lib/pkgconfig:",
+                "/usr/local/opt/zlib/lib/pkgconfig:",
+                "/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/opt/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig"
+            ),
         );
     }
 

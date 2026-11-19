@@ -72,8 +72,7 @@ comfy-table = "8"
 dialoguer = "0.12"
 open = "5"
 tempfile = "3"
-tauri = { version = "2", features = ["tray-icon", "image-png", "macos-private-api"] }
-tauri-build = "2"
-tauri-plugin-os = "2"
-tauri-plugin-shell = "2"
-tauri-plugin-global-shortcut = "2"
+tauri = { version = "2.12", features = ["tray-icon", "image-png", "macos-private-api"] }
+tauri-build = "2.7"
+tauri-plugin-os = "2.4"
+tauri-plugin-shell = "2.6"

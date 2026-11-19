@@ -1,6 +1,7 @@
 #![allow(non_upper_case_globals)]
 #![allow(non_camel_case_types)]
 #![allow(non_snake_case)]
+#![allow(unsafe_op_in_unsafe_fn)]
 #![allow(clippy::undocumented_unsafe_blocks)]
 #![allow(clippy::multiple_unsafe_ops_per_block)]
 
@@ -31,14 +32,6 @@ include!("bindings_x86_64_macos.rs");
     target_env = "gnu"
 ))]
 include!("bindings_x86_64_linux_gnu.rs");
-
-#[cfg(all(
-    not(openconnect_generated_bindings),
-    target_os = "linux",
-    target_arch = "x86_64",
-    target_env = "musl"
-))]
-include!("bindings_x86_64_linux_musl.rs");
 
 #[cfg(all(
     not(openconnect_generated_bindings),

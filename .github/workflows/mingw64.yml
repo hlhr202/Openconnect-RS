@@ -98,11 +98,11 @@ jobs:
         run: |
           rustup override set stable-x86_64-pc-windows-gnu
           cd ./crates/openconnect-gui
-          pnpm install
+          pnpm install --frozen-lockfile
           pnpm tauri build
 
       - name: Upload
-        uses: actions/upload-artifact@v4.3.1
+        uses: actions/upload-artifact@v4
         with:
           name: openconnect-win
           path: ./target/release/bundle/

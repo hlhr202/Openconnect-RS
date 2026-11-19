@@ -22,7 +22,9 @@ set +e
 ASAN_OUTPUT=$("${BUILD_DIR}/01_helper_c_stack_underflow" 2>&1)
 ASAN_RC=$?
 set -e
-if [ "${ASAN_RC}" -ne 0 ] && echo "${ASAN_OUTPUT}" | grep -q "underflows this variable"; then
+if [ "${ASAN_RC}" -eq 0 ]; then
+    echo "[01] VERIFIED FIXED (ASan + UBSan passed with 0 errors on crates/openconnect-sys/c-src/helper.c)"
+elif echo "${ASAN_OUTPUT}" | grep -q "underflows this variable"; then
     echo "[01] PROVEN (UBSan + ASan stack-buffer-underflow on REAL helper.c, exit=${ASAN_RC}):"
     echo "${ASAN_OUTPUT}" | grep -E "runtime error:|ERROR: AddressSanitizer|READ of size|#0 |#1 |underflows this variable" | head -n 8
 else

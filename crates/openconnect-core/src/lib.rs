@@ -341,10 +341,11 @@ impl VpnClient {
         let cmd_fd: CmdPipeFd = raw_fd;
         #[cfg(target_os = "windows")]
         let cmd_fd: CmdPipeFd = {
-            if raw_fd == usize::MAX as _ {
+            let sock = raw_fd as usize;
+            if sock == windows_sys::Win32::Networking::WinSock::INVALID_SOCKET {
                 return Err(OpenconnectError::CmdPipeError(-1));
             }
-            raw_fd as usize
+            sock
         };
 
         {

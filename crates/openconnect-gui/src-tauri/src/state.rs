@@ -68,7 +68,6 @@ pub struct AppState {
     pub(crate) event_tx: Sender<VpnEvent>,
     pub(crate) client: RwLock<Option<Arc<VpnClient>>>,
     pub(crate) stored_configs: RwLock<StoredConfigs>,
-    #[allow(dead_code)]
     pub(crate) vpnc_script: String,
 }
 
@@ -133,12 +132,10 @@ impl AppState {
         let password_server = stored_server.get_server_as_password_server(server_name)?;
         let password_server = password_server.decrypted_by(&stored_server.cipher);
 
-        let mut config = ConfigBuilder::default();
-
-        #[cfg(not(target_os = "windows"))]
-        let config = config.vpncscript(&self.vpnc_script);
-
-        let config = config.loglevel(LogLevel::Info).build()?;
+        let config = ConfigBuilder::default()
+            .vpncscript(&self.vpnc_script)
+            .loglevel(LogLevel::Info)
+            .build()?;
 
         let entrypoint = EntrypointBuilder::new()
             .name(&password_server.name)
@@ -204,12 +201,10 @@ impl AppState {
                 ))
             })?;
 
-        let mut config = ConfigBuilder::default();
-
-        #[cfg(not(target_os = "windows"))]
-        let config = config.vpncscript(&self.vpnc_script);
-
-        let config = config.loglevel(LogLevel::Info).build()?;
+        let config = ConfigBuilder::default()
+            .vpncscript(&self.vpnc_script)
+            .loglevel(LogLevel::Info)
+            .build()?;
 
         let entrypoint = EntrypointBuilder::new()
             .name(&oidc_server.name)

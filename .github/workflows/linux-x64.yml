@@ -12,10 +12,29 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - name: Install Package
-        uses: ConorMacBride/install-package@v1.1.0
-        with:
-          apt: libxml2 zlib1g zlib1g-dev openssl libssl-dev liblz4-dev liblzma-dev pkg-config automake libtool gettext
+      - name: Install System Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            pkg-config \
+            automake \
+            autoconf \
+            libtool \
+            gettext \
+            autopoint \
+            libxml2-dev \
+            zlib1g-dev \
+            openssl \
+            libssl-dev \
+            liblz4-dev \
+            liblzma-dev \
+            libclang-dev \
+            libwebkit2gtk-4.1-dev \
+            libsoup-3.0-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -38,12 +57,20 @@ jobs:
           target: x86_64-unknown-linux-gnu
           cache: true
 
+      - name: Build GUI (.deb)
+        run: |
+          cd ./crates/openconnect-gui
+          pnpm install --frozen-lockfile
+          pnpm tauri build --bundles deb
+
       - name: Build CLI
         run: |
           cargo build --release -p openconnect-cli
 
       - name: Upload
-        uses: actions/upload-artifact@v4.3.1
+        uses: actions/upload-artifact@v4
         with:
           name: openconnect-linux-x64
-          path: ./target/release/openconnect-cli
+          path: |
+            ./target/release/bundle/
+            ./target/release/openconnect-cli

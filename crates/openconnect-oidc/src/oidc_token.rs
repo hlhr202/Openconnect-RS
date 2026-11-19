@@ -183,32 +183,76 @@ impl OpenIDTokenAuth {
     ) -> Result<(AuthorizationCode, CsrfToken), OpenIDTokenAuthError> {
         let listener =
             tokio::net::TcpListener::bind(format!("127.0.0.1:{}", OIDC_LOCAL_PORT)).await?;
+        Self::accept_callback_on_listener(&listener, DEFAULT_CALLBACK_TIMEOUT).await
+    }
 
-        let (mut stream, _) = tokio::time::timeout(DEFAULT_CALLBACK_TIMEOUT, listener.accept())
-            .await
-            .map_err(|_| {
-                std::io::Error::new(
-                    std::io::ErrorKind::TimedOut,
-                    "Timed out waiting for OIDC callback",
-                )
-            })??;
+    async fn accept_callback_on_listener(
+        listener: &tokio::net::TcpListener,
+        timeout_duration: Duration,
+    ) -> Result<(AuthorizationCode, CsrfToken), OpenIDTokenAuthError> {
+        let deadline = tokio::time::Instant::now() + timeout_duration;
 
-        let mut limited = (&mut stream).take(MAX_CALLBACK_REQUEST_LINE_BYTES);
-        let mut reader = tokio::io::BufReader::new(&mut limited);
-        let mut request_line = String::new();
-        reader.read_line(&mut request_line).await?;
+        loop {
+            let (mut stream, _) = tokio::time::timeout_at(deadline, listener.accept())
+                .await
+                .map_err(|_| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "Timed out waiting for OIDC callback",
+                    )
+                })??;
 
-        let (code, state) = Self::parse_callback_request_line(&request_line)?;
+            let per_conn_deadline = std::cmp::min(
+                deadline,
+                tokio::time::Instant::now() + Duration::from_secs(10),
+            );
+            let mut request_line = String::new();
+            let read_res = {
+                let mut limited = (&mut stream).take(MAX_CALLBACK_REQUEST_LINE_BYTES);
+                let mut reader = tokio::io::BufReader::new(&mut limited);
+                tokio::time::timeout_at(per_conn_deadline, reader.read_line(&mut request_line))
+                    .await
+            };
 
-        let message = "Authenticated, close this window and return to the application.";
-        let response = format!(
-            "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
-            message.len(),
-            message
-        );
-        stream.write_all(response.as_bytes()).await?;
+            match read_res {
+                Ok(Ok(0)) | Err(_) => {
+                    // Ignore idle browser TCP preconnects that send no request line before closing/timing out.
+                    if tokio::time::Instant::now() >= deadline {
+                        return Err(std::io::Error::new(
+                            std::io::ErrorKind::TimedOut,
+                            "Timed out waiting for OIDC callback",
+                        )
+                        .into());
+                    }
+                    continue;
+                }
+                Ok(Err(io_err)) => return Err(io_err.into()),
+                Ok(Ok(_)) => {}
+            }
 
-        Ok((code, state))
+            if let Some(target) = request_line.split_whitespace().nth(1)
+                && target.starts_with("/favicon.ico")
+            {
+                let _ = stream
+                    .write_all(
+                        b"HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n",
+                    )
+                    .await;
+                continue;
+            }
+
+            let (code, state) = Self::parse_callback_request_line(&request_line)?;
+
+            let message = "Authenticated, close this window and return to the application.";
+            let response = format!(
+                "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                message.len(),
+                message
+            );
+            stream.write_all(response.as_bytes()).await?;
+
+            return Ok((code, state));
+        }
     }
 }
 
@@ -227,5 +271,39 @@ mod tests {
             OpenIDTokenAuth::parse_callback_request_line("GET /callback HTTP/1.1\r\n").is_err()
         );
         assert!(OpenIDTokenAuth::parse_callback_request_line("").is_err());
+    }
+
+    #[tokio::test]
+    async fn test_accept_callback_tolerates_preconnect_and_favicon() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+
+        let client_task = tokio::spawn(async move {
+            // 1. Simulated browser TCP preconnect that closes without sending data.
+            let preconnect = tokio::net::TcpStream::connect(addr).await.unwrap();
+            drop(preconnect);
+
+            // 2. Simulated /favicon.ico request.
+            let mut fav = tokio::net::TcpStream::connect(addr).await.unwrap();
+            fav.write_all(b"GET /favicon.ico HTTP/1.1\r\nHost: localhost\r\n\r\n")
+                .await
+                .unwrap();
+
+            // 3. Actual OIDC redirect callback.
+            let mut cb = tokio::net::TcpStream::connect(addr).await.unwrap();
+            cb.write_all(
+                b"GET /callback?code=mycode&state=mystate HTTP/1.1\r\nHost: localhost\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        });
+
+        let (code, state) =
+            OpenIDTokenAuth::accept_callback_on_listener(&listener, Duration::from_secs(5))
+                .await
+                .unwrap();
+        client_task.await.unwrap();
+        assert_eq!(code.secret(), "mycode");
+        assert_eq!(state.secret(), "mystate");
     }
 }

@@ -307,12 +307,20 @@ const char *openconnect_get_cookie(struct openconnect_info *vpninfo)
     return vpninfo->cookie;
 }
 
+#ifdef _WIN32
+uintptr_t openconnect_setup_cmd_pipe(struct openconnect_info *vpninfo)
+{
+    if (!vpninfo) {
+        return (uintptr_t)(~(uintptr_t)0); /* INVALID_SOCKET */
+    }
+    return 0;
+}
+#else
 int openconnect_setup_cmd_pipe(struct openconnect_info *vpninfo)
 {
     if (!vpninfo) {
         return -22;
     }
-#ifndef _WIN32
     if (vpninfo->cmd_pipe_read_fd >= 0) {
         close(vpninfo->cmd_pipe_read_fd);
         vpninfo->cmd_pipe_read_fd = -1;
@@ -328,10 +336,8 @@ int openconnect_setup_cmd_pipe(struct openconnect_info *vpninfo)
     vpninfo->cmd_pipe_read_fd = fds[0];
     vpninfo->cmd_pipe_write_fd = fds[1];
     return fds[1];
-#else
-    return 0;
-#endif
 }
+#endif
 
 void openconnect_reset_ssl(struct openconnect_info *vpninfo)
 {

@@ -1860,10 +1860,15 @@ unsafe extern "C" {
     ) -> ::std::os::raw::c_int;
 }
 unsafe extern "C" {
-    pub fn openconnect_set_cancel_fd(vpninfo: *mut openconnect_info, fd: ::std::os::raw::c_int);
+    pub fn openconnect_set_cancel_fd(
+        vpninfo: *mut openconnect_info,
+        fd: ::std::os::raw::c_ulonglong,
+    );
 }
 unsafe extern "C" {
-    pub fn openconnect_setup_cmd_pipe(vpninfo: *mut openconnect_info) -> ::std::os::raw::c_int;
+    pub fn openconnect_setup_cmd_pipe(
+        vpninfo: *mut openconnect_info,
+    ) -> ::std::os::raw::c_ulonglong;
 }
 unsafe extern "C" {
     pub fn openconnect_get_version() -> *const ::std::os::raw::c_char;
