@@ -1,5 +1,5 @@
 use clap::{CommandFactory, Parser, Subcommand};
-use clap_complete::{generate, Shell};
+use clap_complete::{Shell, generate};
 
 #[derive(Parser, Debug)]
 #[clap(
@@ -69,6 +69,11 @@ pub enum Commands {
         #[arg(short = 'n', long, default_value = "openconnect")]
         binary_name: Option<String>,
     },
+
+    /// Internal hidden entrypoint used to run the detached background daemon process safely
+    /// without double-forking a multi-threaded process or closing stdin/stdout/stderr raw FDs.
+    #[command(hide = true, name = "__daemon")]
+    InternalDaemon,
 }
 
 #[derive(Subcommand, Debug)]
@@ -101,7 +106,7 @@ pub enum SeverConfigArgs {
     },
 
     #[command(
-        long_about = "Add a password authentication VPN server. For safty reason, the password input will be prompted in terminal later"
+        long_about = "Add a password authentication VPN server. For safety reason, the password input will be prompted in terminal later"
     )]
     Password {
         /// The unique name of the VPN server configuration
@@ -124,12 +129,6 @@ pub enum SeverConfigArgs {
 
 pub fn print_completions(generator: Shell, binary_name: Option<String>) {
     let mut cmd = Cli::command();
-    let cmd = &mut cmd;
-
-    generate(
-        generator,
-        cmd,
-        binary_name.unwrap_or(cmd.get_name().to_string()),
-        &mut std::io::stdout(),
-    );
+    let name = binary_name.unwrap_or_else(|| cmd.get_name().to_string());
+    generate(generator, &mut cmd, name, &mut std::io::stdout());
 }

@@ -244,15 +244,15 @@ pub fn request_export_server(server_name: &str) {
     });
 }
 
+pub fn decode_import_server(base64: &str) -> anyhow::Result<SharableServer> {
+    let decoded = base64::prelude::BASE64_STANDARD.decode(base64.as_bytes())?;
+    let string = String::from_utf8(decoded)?;
+    let server: SharableServer = serde_json::from_str(&string)?;
+    Ok(server)
+}
+
 pub fn request_import_server(base64: &str) {
-    let decoded = base64::prelude::BASE64_STANDARD
-        .decode(base64.as_bytes())
-        .expect("Failed to decode base64");
-
-    let string = String::from_utf8(decoded).expect("Failed to convert to string");
-
-    let server: SharableServer =
-        serde_json::from_str(&string).expect("Failed to parse your import string");
+    let server = decode_import_server(base64).expect("Failed to parse your import string");
 
     println!("==============================================");
     println!("Existing configs: {:#?}\n", server);
@@ -264,9 +264,10 @@ pub fn request_import_server(base64: &str) {
         } => {
             println!("We still need some extra information to complete the import");
             println!("==============================================\n");
-            // prompt for servername, username and password
 
-            println!("Enter an unique server name, this will be used as an identifier for the local config file");
+            println!(
+                "Enter an unique server name, this will be used as an identifier for the local config file"
+            );
             let name = dialoguer::Input::<String>::new()
                 .with_prompt("Server name")
                 .interact()
@@ -301,7 +302,9 @@ pub fn request_import_server(base64: &str) {
             println!("We still need some information to complete the import");
             println!("==============================================\n");
 
-            println!("Enter an unique server name, this will be used as an identifier for the local config file");
+            println!(
+                "Enter an unique server name, this will be used as an identifier for the local config file"
+            );
             let name = dialoguer::Input::<String>::new()
                 .with_prompt("Server name")
                 .interact()
@@ -322,17 +325,31 @@ pub fn request_import_server(base64: &str) {
     add_server_internal(new_server);
 }
 
-#[test]
-fn test_import_server() {
-    let partial_import_server = SharableServer::Oidc {
-        server: "https://example.com".to_string(),
-        allow_insecure: Some(true),
-        issuer: "https://example.com".to_string(),
-        client_id: "12345".to_string(),
-        client_secret: Some("123456".to_string()),
-    };
+#[cfg(test)]
+mod tests {
+    use super::*;
 
-    let json = serde_json::to_string(&partial_import_server).expect("Failed to serialize");
-    let base64 = base64::prelude::BASE64_STANDARD.encode(json.as_bytes());
-    request_import_server(&base64);
+    #[test]
+    fn test_decode_import_server_roundtrip() {
+        let partial_import_server = SharableServer::Oidc {
+            server: "https://example.com".to_string(),
+            allow_insecure: Some(true),
+            issuer: "https://example.com".to_string(),
+            client_id: "12345".to_string(),
+            client_secret: Some("123456".to_string()),
+        };
+
+        let json = serde_json::to_string(&partial_import_server).expect("Failed to serialize");
+        let encoded = base64::prelude::BASE64_STANDARD.encode(json.as_bytes());
+        let decoded = decode_import_server(&encoded).expect("Failed to decode");
+        match decoded {
+            SharableServer::Oidc {
+                server, client_id, ..
+            } => {
+                assert_eq!(server, "https://example.com");
+                assert_eq!(client_id, "12345");
+            }
+            _ => panic!("Expected OIDC server"),
+        }
+    }
 }
