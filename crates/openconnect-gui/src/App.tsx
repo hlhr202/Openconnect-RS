@@ -1,21 +1,21 @@
 import {
-  NextUIProvider,
+  HeroUIProvider,
   Button,
   Card,
   CardBody,
   CardFooter,
   CircularProgress,
   Link,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { TauriTitleBar } from "./Titlebar";
-import { invoke } from "@tauri-apps/api/tauri";
+import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import { atom, useAtom } from "jotai";
 import { ServerSelector } from "./ServerSelector";
 import bg from "./assets/bg.jpeg";
 import { useStoredConfigs } from "./state";
-import { toastError } from "./lib/toast";
+import { toastError, toastSuccess } from "./lib/toast";
 import { ToastContainer } from "react-toastify";
 import connected from "./assets/connected-animate.json";
 import Lottie from "lottie-react";
@@ -37,9 +37,12 @@ interface VpnStatus {
 
 const vpnStatusAtom = atom<VpnStatus>({ status: EStatus.Initialized });
 vpnStatusAtom.onMount = (set) => {
-  listen<VpnStatus>("vpnStatus", (event) => {
+  const unlistenPromise = listen<VpnStatus>("vpnStatus", (event) => {
     set(event.payload);
   });
+  return () => {
+    unlistenPromise.then((unlisten) => unlisten());
+  };
 };
 
 function App() {
@@ -47,19 +50,6 @@ function App() {
   const { selectedServer } = useStoredConfigs();
   const [isAboutOpened, setIsAboutOpened] = useState(false);
   const [mounted, setMounted] = useState(false);
-
-  useKey(
-    "Enter",
-    () => {
-      if (vpnStatus.status === EStatus.Connected) {
-        handleDisconnect();
-      } else if (selectedServer) {
-        handleConnect();
-      }
-    },
-    undefined,
-    [vpnStatus, selectedServer]
-  );
 
   const handleConnect = useCallback(async () => {
     if (selectedServer) {
@@ -82,13 +72,26 @@ function App() {
     }
   }, [selectedServer]);
 
-  const handleDisconnect = async () => {
+  const handleDisconnect = useCallback(async () => {
     try {
       await invoke("disconnect");
     } catch (e) {
       toastError(e);
     }
-  };
+  }, []);
+
+  useKey(
+    "Enter",
+    () => {
+      if (vpnStatus.status === EStatus.Connected) {
+        handleDisconnect();
+      } else if (selectedServer) {
+        handleConnect();
+      }
+    },
+    undefined,
+    [vpnStatus, selectedServer, handleConnect, handleDisconnect]
+  );
 
   useEffect(() => {
     if (vpnStatus.status === EStatus.Error) {
@@ -99,10 +102,17 @@ function App() {
   useEffect(() => {
     invoke("trigger_state_retrieve");
     setMounted(true);
+
+    const unlistenUri = listen<string>("oidcvpn-uri", (event) => {
+      toastSuccess(`Received callback URI: ${event.payload}`);
+    });
+    return () => {
+      unlistenUri.then((unlisten) => unlisten());
+    };
   }, []);
 
   return (
-    <NextUIProvider>
+    <HeroUIProvider>
       <ToastContainer
         className="min-w-[600px]"
         theme="dark"
@@ -176,7 +186,7 @@ function App() {
               <Button
                 color="primary"
                 className="m-3 w-[50%]"
-                onClick={handleDisconnect}
+                onPress={handleDisconnect}
               >
                 Disconnect [Enter]
               </Button>
@@ -187,7 +197,7 @@ function App() {
               <Button
                 color="success"
                 className="m-3 w-full"
-                onClick={handleConnect}
+                onPress={handleConnect}
               >
                 Connect [Enter]
               </Button>
@@ -203,7 +213,7 @@ function App() {
         <div className="font-thin mt-1 text-xs select-none cursor-pointer">
           <Link
             className="text-white underline text-xs"
-            onClick={() => setIsAboutOpened(true)}
+            onPress={() => setIsAboutOpened(true)}
           >
             About this App
           </Link>
@@ -214,7 +224,7 @@ function App() {
           onOpenChange={setIsAboutOpened}
         />
       </main>
-    </NextUIProvider>
+    </HeroUIProvider>
   );
 }
 

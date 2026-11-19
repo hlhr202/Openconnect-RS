@@ -1,5 +1,5 @@
-import { Button } from "@nextui-org/button";
 import {
+  Button,
   Modal,
   ModalContent,
   ModalHeader,
@@ -10,12 +10,12 @@ import {
   CardBody,
   ModalFooter,
   Divider,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { useAtom } from "jotai";
 import { useState } from "react";
 import { FormParams, ServerEditor } from "./ServerEditor";
 import { storedConfigsAtom } from "./state";
-import { enc } from "crypto-js";
+import { decodeUtf8Base64 } from "./lib/base64";
 import { toastError } from "./lib/toast";
 
 interface IModalProps {
@@ -38,10 +38,10 @@ export const ServerEditorModal = (props: IModalProps) => {
     setSelectedName(null);
     setFormParams(null);
     try {
-      const decoded = enc.Base64.parse(base64).toString(enc.Utf8);
+      const decoded = decodeUtf8Base64(base64);
       const server = JSON.parse(decoded);
       setFormParams({ mode: "add", addFromImport: server });
-    } catch (e) {
+    } catch {
       toastError({
         code: "PASTE_ERROR",
         message: "Cannot decode your input to a valid server",
@@ -71,7 +71,7 @@ export const ServerEditorModal = (props: IModalProps) => {
                     size="sm"
                     color="secondary"
                     className="flex-1"
-                    onClick={() => {
+                    onPress={() => {
                       navigator.clipboard
                         .readText()
                         .then(handlePaste)
@@ -84,7 +84,7 @@ export const ServerEditorModal = (props: IModalProps) => {
                     size="sm"
                     color="primary"
                     className="flex-1"
-                    onClick={() => {
+                    onPress={() => {
                       setSelectedName(null);
                       setFormParams({ mode: "add" });
                     }}
@@ -96,6 +96,7 @@ export const ServerEditorModal = (props: IModalProps) => {
                   <Card>
                     <CardBody className="min-w-[200px] overflow-auto">
                       <Listbox
+                        aria-label="Server List"
                         variant="shadow"
                         color="primary"
                         disallowEmptySelection
@@ -119,11 +120,9 @@ export const ServerEditorModal = (props: IModalProps) => {
                         }}
                       >
                         {serverList.map((server) => (
-                          <ListboxItem
-                            key={server.name}
-                            value={server.name}
-                            title={server.name}
-                          />
+                          <ListboxItem key={server.name}>
+                            {server.name}
+                          </ListboxItem>
                         ))}
                       </Listbox>
                     </CardBody>
@@ -136,7 +135,7 @@ export const ServerEditorModal = (props: IModalProps) => {
                 </div>
               </ModalBody>
               <ModalFooter>
-                <Button onClick={closeModal} size="sm" className="w-full">
+                <Button onPress={closeModal} size="sm" className="w-full">
                   Close
                 </Button>
               </ModalFooter>

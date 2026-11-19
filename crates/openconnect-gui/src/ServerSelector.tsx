@@ -4,7 +4,7 @@ import {
   Select,
   SelectItem,
   useDisclosure,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { FC, PropsWithChildren, useEffect } from "react";
 import { ServerEditorModal } from "./ServerEditorModal";
 import { useStoredConfigs } from "./state";
@@ -60,7 +60,7 @@ export const ServerSelector = () => {
         {!!serverList?.length && (
           <Select
             size="md"
-            // color="success"
+            aria-label="VPN Server"
             className="flex-1"
             selectionMode="single"
             selectedKeys={selectedName ? [selectedName] : []}
@@ -71,14 +71,14 @@ export const ServerSelector = () => {
               }
             }}
           >
-            {serverList?.map((server) => (
-              <SelectItem color="default" key={server.name} value={server.name}>
+            {serverList.map((server) => (
+              <SelectItem color="default" key={server.name}>
                 {server.name}
               </SelectItem>
             ))}
           </Select>
         )}
-        <Button size="md" color="primary" className="ml-2" onClick={onOpen}>
+        <Button size="md" color="primary" className="ml-2" onPress={onOpen}>
           Manage Server [M]
         </Button>
       </div>

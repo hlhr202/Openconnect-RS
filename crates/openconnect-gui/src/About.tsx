@@ -1,12 +1,12 @@
-import { Button } from "@nextui-org/button";
 import {
+  Button,
   Modal,
   ModalContent,
   ModalHeader,
   ModalBody,
   ModalFooter,
   Link,
-} from "@nextui-org/react";
+} from "@heroui/react";
 
 interface IModalProps {
   isOpen: boolean;
@@ -90,10 +90,10 @@ export const AboutModal = (props: IModalProps) => {
                     <li>
                       <Link
                         className="text-blue-400"
-                        href="https://nextui.org/"
+                        href="https://heroui.com/"
                         target="_blank"
                       >
-                        NextUI
+                        HeroUI
                       </Link>
                     </li>
                   </ul>
@@ -139,7 +139,7 @@ export const AboutModal = (props: IModalProps) => {
               </ModalBody>
               <ModalFooter>
                 <Button
-                  onClick={closeModal}
+                  onPress={closeModal}
                   size="sm"
                   className="w-full"
                   color="primary"

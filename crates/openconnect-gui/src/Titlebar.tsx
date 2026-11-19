@@ -1,7 +1,7 @@
 import { FC, PropsWithChildren } from "react";
-import { appWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { hide } from "@tauri-apps/api/app";
-import { type } from "@tauri-apps/api/os";
+import { type as getOsType } from "@tauri-apps/plugin-os";
 
 const TitleBarButton: FC<
   PropsWithChildren<{ id: string; className?: string; onClick?: () => void }>
@@ -10,7 +10,7 @@ const TitleBarButton: FC<
     <div
       onClick={onClick}
       id={id}
-      className={`${className} inline-flex justify-center items-center w-[45px] h-[38px] hover:bg-gray-400/20 transition-colors`}
+      className={`${className ?? ""} inline-flex justify-center items-center w-[45px] h-[38px] hover:bg-gray-400/20 transition-colors`}
     >
       {children}
     </div>
@@ -19,21 +19,24 @@ const TitleBarButton: FC<
 
 export const TauriTitleBar = () => {
   const minimize = () => {
-    appWindow.minimize();
+    getCurrentWindow().minimize();
   };
 
   const maximize = async () => {
-    if (await appWindow.isMaximized()) appWindow.unmaximize();
-    else appWindow.maximize();
+    const appWindow = getCurrentWindow();
+    if (await appWindow.isMaximized()) {
+      await appWindow.unmaximize();
+    } else {
+      await appWindow.maximize();
+    }
   };
 
   const handleHide = async () => {
-    const osType = await type();
-    if (osType === "Darwin") {
-      hide();
-    }
-    if (osType === "Windows_NT") {
-      appWindow.hide();
+    const osType = getOsType();
+    if (osType === "macos") {
+      await hide();
+    } else {
+      await getCurrentWindow().hide();
     }
   };
 

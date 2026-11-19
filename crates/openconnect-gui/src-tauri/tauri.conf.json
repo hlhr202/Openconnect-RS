@@ -1,83 +1,48 @@
 {
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "openconnect-gui",
+  "version": "0.2.0",
+  "identifier": "com.openconnect-gui.rs",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
-    "devPath": "http://localhost:1420",
-    "distDir": "../dist"
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
   },
-  "package": {
-    "productName": "openconnect-gui",
-    "version": "0.1.5"
-  },
-  "tauri": {
-    "systemTray": {
-      "iconPath": "icons/disconnected-w.png"
-    },
+  "app": {
     "macOSPrivateApi": true,
-    "allowlist": {
-      "globalShortcut": {
-        "all": true
-      },
-      "os": {
-        "all": true
-      },
-      "fs": {
-        "scope": ["$RESOURCE/*"]
-      },
-      "all": false,
-      "app": {
-        "all": true,
-        "show": true,
-        "hide": true
-      },
-      "shell": {
-        "all": false,
-        "open": true
-      },
-      "window": {
-        "all": true,
-        "close": true,
-        "hide": true,
-        "show": true,
-        "maximize": true,
-        "minimize": true,
-        "unmaximize": true,
-        "unminimize": true,
-        "startDragging": true,
-        "setClosable": true
-      }
-    },
     "windows": [
       {
+        "label": "main",
         "title": "openconnect-gui",
         "width": 900,
         "height": 800,
         "transparent": true,
-        "decorations": false
+        "decorations": false,
+        "shadow": true
       }
     ],
     "security": {
-      "csp": null
-    },
-    "bundle": {
-      "active": true,
-      "targets": ["nsis", "app", "deb"],
-      "identifier": "com.openconnect-gui.rs",
-      "icon": [
-        "icons/32x32.png",
-        "icons/128x128.png",
-        "icons/128x128@2x.png",
-        "icons/icon.icns",
-        "icons/icon.ico"
-      ],
-      "resources": [
-        "vpnc-script",
-        "vpnc-script-win.js",
-        "wintun.dll",
-        "WebView2Loader.dll",
-        "icons/connected-w.png",
-        "icons/disconnected-w.png"
-      ]
+      "csp": "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'"
     }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "app", "deb"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": [
+      "vpnc-script",
+      "vpnc-script-win.js",
+      "wintun.dll",
+      "WebView2Loader.dll",
+      "icons/connected-w.png",
+      "icons/disconnected-w.png"
+    ]
   }
 }
