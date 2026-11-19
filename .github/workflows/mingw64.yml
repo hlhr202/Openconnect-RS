@@ -10,6 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  OPENCONNECT_USE_PREBUILT: "false"
 
 jobs:
   build:
@@ -47,6 +48,7 @@ jobs:
             automake
             libtool
             gettext
+            gettext-devel
             autotools
             pkg-config
             openssl

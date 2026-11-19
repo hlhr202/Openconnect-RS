@@ -69,15 +69,35 @@ fn build_native() {
             download_prebuilt_from_sourceforge(&out_path);
         } else {
             let script = manifest_dir.join("scripts/nix.sh");
-            let output = std::process::Command::new("sh")
-                .args([
-                    script.to_str().expect("invalid script path"),
-                    openconnect_src_dir
-                        .to_str()
-                        .expect("invalid openconnect dir"),
-                ])
-                .output()
-                .expect("failed to execute scripts/nix.sh");
+            #[cfg(target_os = "windows")]
+            let sh_bin = {
+                let msys_sh = get_cygpath("/usr/bin/sh.exe");
+                if !msys_sh.is_empty() && std::path::Path::new(&msys_sh).exists() {
+                    msys_sh
+                } else {
+                    "sh".to_string()
+                }
+            };
+            #[cfg(not(target_os = "windows"))]
+            let sh_bin = "sh".to_string();
+
+            let script_arg = script
+                .to_str()
+                .expect("invalid script path")
+                .replace('\\', "/");
+            let dir_arg = openconnect_src_dir
+                .to_str()
+                .expect("invalid openconnect dir")
+                .replace('\\', "/");
+
+            let mut cmd = std::process::Command::new(&sh_bin);
+            cmd.args([&script_arg, &dir_arg]);
+            #[cfg(all(target_os = "windows", target_env = "gnu"))]
+            if env::var_os("MSYSTEM").is_none() {
+                cmd.env("MSYSTEM", "MINGW64");
+            }
+
+            let output = cmd.output().expect("failed to execute scripts/nix.sh");
             if !output.status.success() {
                 panic!(
                     "scripts/nix.sh failed with status {}:\nstdout:\n{}\nstderr:\n{}",
@@ -110,8 +130,13 @@ fn build_native() {
 
         try_pkg_config(&["libxml-2.0", "zlib", "liblz4", "iconv"], true);
         println!("cargo:rustc-link-lib=static=intl");
-        println!("cargo:rustc-link-lib=static=crypto");
         println!("cargo:rustc-link-lib=static=ssl");
+        println!("cargo:rustc-link-lib=static=crypto");
+        println!("cargo:rustc-link-lib=dylib=ws2_32");
+        println!("cargo:rustc-link-lib=dylib=crypt32");
+        println!("cargo:rustc-link-lib=dylib=secur32");
+        println!("cargo:rustc-link-lib=dylib=iphlpapi");
+        println!("cargo:rustc-link-lib=dylib=bcrypt");
         println!("cargo:rustc-link-lib=dylib=wintun");
     }
 

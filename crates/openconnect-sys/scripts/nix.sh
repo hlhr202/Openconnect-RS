@@ -4,6 +4,24 @@ set -eu
 DIR="$1"
 VPNC_SCRIPT="https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script"
 WITH_VPNC_SCRIPT="./vpnc-script"
+CONFIGURE_SHARED_FLAG="--enable-shared"
+
+IS_MSYS=0
+case "${MSYSTEM:-}${OSTYPE:-}" in
+    MINGW*|MSYS*|msys*)
+        IS_MSYS=1
+        if command -v cygpath >/dev/null 2>&1; then
+            DIR="$(cygpath -u "$DIR")"
+        fi
+        VPNC_SCRIPT="https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script-win.js"
+        WITH_VPNC_SCRIPT="./vpnc-script-win.js"
+        CONFIGURE_SHARED_FLAG="--disable-shared"
+        export PATH="/mingw64/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
+        export ACLOCAL_PATH="/mingw64/share/aclocal:/usr/share/aclocal${ACLOCAL_PATH:+:$ACLOCAL_PATH}"
+        export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:/mingw64/share/pkgconfig"
+        export CFLAGS="${CFLAGS:--O2} -std=gnu17 -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-deprecated-declarations"
+        ;;
+esac
 
 if [ -d "$DIR" ] && [ -f "$DIR/.libs/libopenconnect.a" ]; then
     echo "build openconnect-sys: openconnect static library already exists"
@@ -11,15 +29,6 @@ if [ -d "$DIR" ] && [ -f "$DIR/.libs/libopenconnect.a" ]; then
 fi
 
 rm -rf "$DIR"
-
-IS_MSYS=0
-case "${MSYSTEM:-}${OSTYPE:-}" in
-    MINGW*|MSYS*|msys*)
-        IS_MSYS=1
-        VPNC_SCRIPT="https://gitlab.com/openconnect/vpnc-scripts/raw/master/vpnc-script-win.js"
-        WITH_VPNC_SCRIPT="./vpnc-script-win.js"
-        ;;
-esac
 
 if [ "$(uname -s 2>/dev/null || true)" = "Darwin" ]; then
     export PATH="/opt/homebrew/opt/gettext/bin:/usr/local/opt/gettext/bin:/opt/homebrew/bin:/usr/local/bin:${PATH}"
@@ -39,7 +48,7 @@ echo "build openconnect-sys: generating configure"
 ./autogen.sh
 
 echo "build openconnect-sys: configuring"
-./configure --enable-shared --enable-static \
+./configure "$CONFIGURE_SHARED_FLAG" --enable-static \
     --disable-nls \
     --with-openssl \
     --without-gssapi \
@@ -52,8 +61,10 @@ echo "build openconnect-sys: configuring"
 
 echo "build openconnect-sys: making"
 make clean
+JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
 if [ "$IS_MSYS" -eq 1 ]; then
     echo "#define LIBXML_STATIC" >> config.h
+    make -j"$JOBS" libopenconnect.la
+else
+    make -j"$JOBS"
 fi
-JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
-make -j"$JOBS"
