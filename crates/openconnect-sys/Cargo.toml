@@ -18,7 +18,7 @@ native = ["dep:openssl-sys", "dep:bindgen", "dep:pkg-config", "dep:reqwest", "de
 mock-ffi = []
 
 [dependencies]
-openssl-sys = { version = "0.9", optional = true }
+openssl-sys = { version = "0.9.118", optional = true }
 
 [lib]
 crate-type = ["lib"]
