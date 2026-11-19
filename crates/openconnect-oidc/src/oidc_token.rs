@@ -1,17 +1,32 @@
+use crate::build_oidc_http_client;
 use openidconnect::{
+    AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken, EndpointMaybeSet,
+    EndpointNotSet, EndpointSet, IssuerUrl, Nonce, PkceCodeChallenge, PkceCodeVerifier,
+    RedirectUrl, TokenResponse,
     core::{CoreClient, CoreProviderMetadata, CoreResponseType},
-    reqwest::async_http_client,
-    AuthenticationFlow, AuthorizationCode, ClientId, ClientSecret, CsrfToken, IssuerUrl, Nonce,
-    PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, TokenResponse,
 };
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
+use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt};
 use url::Url;
 
 pub const OIDC_LOCAL_PORT: u16 = 17175;
 pub const OIDC_REDIRECT_URI: &str = "http://localhost:17175/callback";
 
+const MAX_CALLBACK_REQUEST_LINE_BYTES: u64 = 8 * 1024;
+const DEFAULT_CALLBACK_TIMEOUT: Duration = Duration::from_secs(300);
+
+type AuthCoreClient = CoreClient<
+    EndpointSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointMaybeSet,
+    EndpointMaybeSet,
+>;
+
 pub struct OpenIDTokenAuth {
-    client: CoreClient,
+    client: AuthCoreClient,
+    http_client: reqwest::Client,
     pkce_challenge: Option<PkceCodeChallenge>,
     pkce_verifier: Option<PkceCodeVerifier>,
 }
@@ -46,7 +61,10 @@ pub enum OpenIDTokenAuthError {
 impl OpenIDTokenAuth {
     pub async fn new(config: OpenIDTokenAuthConfig) -> Result<Self, OpenIDTokenAuthError> {
         let issuer_url = IssuerUrl::new(config.issuer_url)?;
-        let provider_metadata = CoreProviderMetadata::discover_async(issuer_url, async_http_client)
+        let http_client =
+            build_oidc_http_client().map_err(|e| OpenIDTokenAuthError::InitError(e.to_string()))?;
+
+        let provider_metadata = CoreProviderMetadata::discover_async(issuer_url, &http_client)
             .await
             .map_err(|e| OpenIDTokenAuthError::InitError(e.to_string()))?;
         let redirect_uri = RedirectUrl::new(config.redirect_uri)?;
@@ -68,12 +86,14 @@ impl OpenIDTokenAuth {
 
             Ok(OpenIDTokenAuth {
                 client,
+                http_client,
                 pkce_challenge: Some(pkce_challenge),
                 pkce_verifier: Some(pkce_verifier),
             })
         } else {
             Ok(OpenIDTokenAuth {
                 client,
+                http_client,
                 pkce_challenge: None,
                 pkce_verifier: None,
             })
@@ -94,7 +114,7 @@ impl OpenIDTokenAuth {
         auth_request.url()
     }
 
-    pub fn parse_code_and_state(&self, url: Url) -> Option<(AuthorizationCode, CsrfToken)> {
+    pub fn parse_code_and_state(url: &Url) -> Option<(AuthorizationCode, CsrfToken)> {
         let code = url
             .query_pairs()
             .find(|(key, _)| key == "code")
@@ -108,29 +128,51 @@ impl OpenIDTokenAuth {
         Some((code, state))
     }
 
+    pub fn parse_callback_request_line(
+        request_line: &str,
+    ) -> Result<(AuthorizationCode, CsrfToken), OpenIDTokenAuthError> {
+        let redirect_target = request_line.split_whitespace().nth(1).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Invalid HTTP request line",
+            )
+        })?;
+
+        let base = Url::parse(&format!("http://localhost:{}", OIDC_LOCAL_PORT))?;
+        let url = base.join(redirect_target)?;
+
+        Self::parse_code_and_state(&url).ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "Failed to parse code and state from callback URL",
+            )
+            .into()
+        })
+    }
+
     pub async fn exchange_token(
         &mut self,
         code: AuthorizationCode,
     ) -> Result<String, OpenIDTokenAuthError> {
-        let client = self.client.clone();
         let pkce_verifier = self.pkce_verifier.take();
 
-        let mut token_response = client.exchange_code(code);
+        let mut token_request = self
+            .client
+            .exchange_code(code)
+            .map_err(|e| OpenIDTokenAuthError::TokenExchangeError(e.to_string()))?;
 
         if let Some(pkce_verifier) = pkce_verifier {
-            token_response = token_response.set_pkce_verifier(pkce_verifier);
+            token_request = token_request.set_pkce_verifier(pkce_verifier);
         }
 
-        let token_response = token_response
-            .request_async(async_http_client)
+        let token_response = token_request
+            .request_async(&self.http_client)
             .await
             .map_err(|e| OpenIDTokenAuthError::TokenExchangeError(e.to_string()))?;
 
         let token = token_response
             .id_token()
-            .ok_or(OpenIDTokenAuthError::TokenExchangeError(
-                "No ID token".to_string(),
-            ))?
+            .ok_or_else(|| OpenIDTokenAuthError::TokenExchangeError("No ID token".to_string()))?
             .to_string();
 
         Ok(token)
@@ -141,32 +183,49 @@ impl OpenIDTokenAuth {
     ) -> Result<(AuthorizationCode, CsrfToken), OpenIDTokenAuthError> {
         let listener =
             tokio::net::TcpListener::bind(format!("127.0.0.1:{}", OIDC_LOCAL_PORT)).await?;
-        let (mut stream, _) = listener.accept().await?;
-        let mut reader = tokio::io::BufReader::new(&mut stream);
+
+        let (mut stream, _) = tokio::time::timeout(DEFAULT_CALLBACK_TIMEOUT, listener.accept())
+            .await
+            .map_err(|_| {
+                std::io::Error::new(
+                    std::io::ErrorKind::TimedOut,
+                    "Timed out waiting for OIDC callback",
+                )
+            })??;
+
+        let mut limited = (&mut stream).take(MAX_CALLBACK_REQUEST_LINE_BYTES);
+        let mut reader = tokio::io::BufReader::new(&mut limited);
         let mut request_line = String::new();
         reader.read_line(&mut request_line).await?;
-        let redirect_url = request_line
-            .split_whitespace()
-            .nth(1)
-            .ok_or(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Invalid request",
-            ))?;
-        let url = Url::parse(&format!("{},{}", OIDC_REDIRECT_URI, redirect_url))?;
 
-        let (code, state) = self.parse_code_and_state(url).ok_or(tokio::io::Error::new(
-            tokio::io::ErrorKind::InvalidInput,
-            "Failed to parse code and state",
-        ))?;
+        let (code, state) = Self::parse_callback_request_line(&request_line)?;
+
         let message = "Authenticated, close this window and return to the application.";
         let response = format!(
-            "HTTP/1.1 200 OK\r\ncontent-length: {}\r\n\r\n{}",
+            "HTTP/1.1 200 OK\r\ncontent-type: text/plain; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
             message.len(),
             message
         );
-
         stream.write_all(response.as_bytes()).await?;
 
         Ok((code, state))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_parse_callback_request_line() {
+        let line = "GET /callback?code=abc123&state=xyz789 HTTP/1.1\r\n";
+        let (code, state) = OpenIDTokenAuth::parse_callback_request_line(line).unwrap();
+        assert_eq!(code.secret(), "abc123");
+        assert_eq!(state.secret(), "xyz789");
+
+        assert!(
+            OpenIDTokenAuth::parse_callback_request_line("GET /callback HTTP/1.1\r\n").is_err()
+        );
+        assert!(OpenIDTokenAuth::parse_callback_request_line("").is_err());
     }
 }
