@@ -3,12 +3,26 @@ name: Windows x64 Build
 on:
   workflow_dispatch:
   workflow_call:
+  push:
+    branches: ["develop"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "develop"]
 
+# Release profile only for tags (incl. release.yml via workflow_call), `main`, and
+# PRs targeting `main`. Everything on `develop` uses a fast debug build instead.
 env:
+  BUILD_PROFILE: ${{ (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && 'release' || 'debug' }}
+  TAURI_PROFILE_FLAG: ${{ !(startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && '--debug' || '' }}
+  CARGO_PROFILE_FLAG: ${{ (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && '--release' || '' }}
+  # Skip debuginfo in debug builds: much faster linking and smaller artifacts.
+  CARGO_PROFILE_DEV_DEBUG: "0"
   CARGO_TERM_COLOR: always
   OPENCONNECT_USE_PREBUILT: "false"
+
+# Literal group prefix: under workflow_call `github.workflow` is the caller's name.
+concurrency:
+  group: windows-x64-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build:
@@ -99,10 +113,10 @@ jobs:
           rustup override set stable-x86_64-pc-windows-gnu
           cd ./crates/openconnect-gui
           pnpm install --frozen-lockfile
-          pnpm tauri build
+          pnpm tauri build $TAURI_PROFILE_FLAG
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: openconnect-win
-          path: ./target/release/bundle/
+          path: ./target/${{ env.BUILD_PROFILE }}/bundle/
