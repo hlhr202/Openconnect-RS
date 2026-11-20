@@ -1,4 +1,8 @@
-use crate::{JsonRequest, JsonResponse, sock};
+use crate::{
+    JsonRequest, JsonResponse,
+    client::cert_prompt::{UntrustedCert, ask_trust_cert},
+    sock,
+};
 use colored::Colorize;
 use comfy_table::Table;
 use futures::TryStreamExt;
@@ -14,7 +18,10 @@ use openconnect_oidc::{
     obtain_cookie_by_oidc_token,
     oidc_device::{OpenIDDeviceAuth, OpenIDDeviceAuthConfig, OpenIDDeviceAuthError},
 };
-use std::path::PathBuf;
+use std::{
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 #[allow(clippy::enum_variant_names)]
 #[derive(thiserror::Error, Debug)]
@@ -46,10 +53,13 @@ pub fn get_vpnc_script() -> Result<String, StateError> {
     Ok(vpncscript.to_string())
 }
 
+/// Obtain a cookie using username/password. If the server certificate cannot be verified,
+/// the user is asked on the terminal; the returned fingerprint (if any) was newly trusted by
+/// the user and should be persisted.
 pub async fn obtain_cookie_from_password_server(
     password_server: &PasswordServer,
     stored_configs: &StoredConfigs,
-) -> Result<Option<String>, StateError> {
+) -> Result<(Option<String>, Option<String>), StateError> {
     let password_server = password_server.decrypted_by(&stored_configs.cipher);
 
     let vpncscript = get_vpnc_script()?;
@@ -59,21 +69,50 @@ pub async fn obtain_cookie_from_password_server(
         .loglevel(LogLevel::Info)
         .build()?;
 
-    let entrypoint = EntrypointBuilder::new()
+    let mut entrypoint_builder = EntrypointBuilder::new();
+    entrypoint_builder
         .name(&password_server.name)
         .server(&password_server.server)
         .username(&password_server.username)
         .password(&password_server.password.clone().unwrap_or("".to_string()))
         .accept_insecure_cert(password_server.allow_insecure.unwrap_or(false))
-        .enable_udp(true)
-        .build()?;
+        .enable_udp(true);
+    if let Some(server_cert) = password_server.server_cert.as_deref() {
+        entrypoint_builder.server_cert(server_cert);
+    }
+    let entrypoint = entrypoint_builder.build()?;
 
-    let event_handler = EventHandlers::default();
+    let newly_trusted = Arc::new(Mutex::new(None::<String>));
+    let newly_trusted_cb = Arc::clone(&newly_trusted);
+    let event_handler = EventHandlers::default().with_handle_peer_cert_verify(move |prompt| {
+        let accepted = ask_trust_cert(&UntrustedCert::from(prompt));
+        if accepted && let Ok(mut slot) = newly_trusted_cb.lock() {
+            *slot = Some(prompt.fingerprint.clone());
+        }
+        accepted
+    });
 
     let client = VpnClient::new(config, event_handler)?;
     let client_clone = client.clone();
 
-    Ok(tokio::task::spawn_blocking(move || client_clone.connect_for_cookie(entrypoint)).await??)
+    let cookie =
+        tokio::task::spawn_blocking(move || client_clone.connect_for_cookie(entrypoint)).await??;
+    let newly_trusted = newly_trusted.lock().ok().and_then(|mut slot| slot.take());
+    Ok((cookie, newly_trusted))
+}
+
+/// Persist a user-approved server certificate fingerprint.
+async fn save_trusted_cert(stored_configs: &mut StoredConfigs, name: &str, fingerprint: &str) {
+    match stored_configs
+        .set_server_cert(name, Some(fingerprint))
+        .await
+    {
+        Ok(_) => println!("Saved trusted certificate fingerprint for server {name}"),
+        Err(e) => eprintln!(
+            "{}",
+            format!("Failed to save trusted certificate fingerprint: {e}").red()
+        ),
+    }
 }
 
 pub async fn obtain_cookie_from_oidc_server(
@@ -197,7 +236,8 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
         Logger::init().expect("Failed to initialize logger");
 
         match crate::client::config::read_server_config_from_fs(&name, config_file).await {
-            Ok((stored_server, stored_configs)) => {
+            Ok((stored_server, mut stored_configs)) => {
+                let mut server_cert = stored_server.server_cert().map(str::to_string);
                 let (cookie, name, server, allow_insecure) = match stored_server {
                     StoredServer::Password(password_server) => {
                         let cookie = crate::client::state::obtain_cookie_from_password_server(
@@ -207,7 +247,18 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                         .await;
 
                         let cookie = match cookie {
-                            Ok(cookie) => cookie,
+                            Ok((cookie, newly_trusted)) => {
+                                if let Some(fingerprint) = newly_trusted {
+                                    save_trusted_cert(
+                                        &mut stored_configs,
+                                        &password_server.name,
+                                        &fingerprint,
+                                    )
+                                    .await;
+                                    server_cert = Some(fingerprint);
+                                }
+                                cookie
+                            }
                             Err(e) => {
                                 tracing::error!("Failed to obtain cookie: {}", e);
                                 None
@@ -254,39 +305,62 @@ pub fn request_start_server(name: String, config_file: PathBuf) {
                 if let Some(cookie) = cookie {
                     println!("Obtained cookie from server");
 
-                    unix_client
-                        .send(JsonRequest::Start {
-                            name,
-                            server,
-                            allow_insecure: allow_insecure.unwrap_or(false),
-                            cookie,
-                        })
-                        .await
-                        .expect("Failed to send start command");
+                    loop {
+                        unix_client
+                            .send(JsonRequest::Start {
+                                name: name.clone(),
+                                server: server.clone(),
+                                allow_insecure: allow_insecure.unwrap_or(false),
+                                cookie: cookie.clone(),
+                                server_cert: server_cert.clone(),
+                            })
+                            .await
+                            .expect("Failed to send start command");
 
-                    if let Ok(Some(response)) = unix_client.framed_reader.try_next().await {
+                        let Ok(Some(response)) = unix_client.framed_reader.try_next().await else {
+                            break;
+                        };
                         match response {
                             JsonResponse::StartResult {
                                 name,
                                 success,
                                 err_message,
+                                untrusted_cert,
                             } => {
                                 if success {
                                     println!("\nStarted connection to server: {}", name);
-                                } else {
-                                    eprintln!(
-                                        "{}",
-                                        format!(
-                                            "\nFailed to start connection: {}",
-                                            err_message.unwrap_or("Unknown error".to_string())
-                                        )
-                                        .red()
-                                    );
-                                    std::process::exit(1);
+                                    break;
                                 }
+
+                                // The daemon could not verify the certificate (e.g. first OIDC
+                                // connection): ask the user, persist and retry.
+                                if let Some(cert) = untrusted_cert {
+                                    let fingerprint = cert.fingerprint.clone();
+                                    if tokio::task::spawn_blocking(move || ask_trust_cert(&cert))
+                                        .await
+                                        .unwrap_or(false)
+                                    {
+                                        save_trusted_cert(&mut stored_configs, &name, &fingerprint)
+                                            .await;
+                                        server_cert = Some(fingerprint);
+                                        continue;
+                                    }
+                                    let _ = unix_client.send(JsonRequest::Stop).await;
+                                }
+
+                                eprintln!(
+                                    "{}",
+                                    format!(
+                                        "\nFailed to start connection: {}",
+                                        err_message.unwrap_or("Unknown error".to_string())
+                                    )
+                                    .red()
+                                );
+                                std::process::exit(1);
                             }
                             _ => {
                                 eprintln!("{}", "\nReceived unexpected response".red());
+                                break;
                             }
                         }
                     }

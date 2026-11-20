@@ -63,6 +63,15 @@ pub async fn connect_with_oidc(
 }
 
 #[tauri::command]
+pub async fn respond_cert_prompt(
+    app_state: tauri::State<'_, AppState>,
+    id: u64,
+    accept: bool,
+) -> Result<(), ErrorResponse> {
+    Ok(app_state.respond_cert_prompt(id, accept).await?)
+}
+
+#[tauri::command]
 pub async fn disconnect(app_state: tauri::State<'_, AppState>) -> Result<(), ErrorResponse> {
     Ok(app_state.disconnect().await?)
 }

@@ -10,6 +10,8 @@ export interface OidcServer {
   clientId: string;
   clientSecret?: string;
   allowInsecure?: boolean;
+  /** Trusted server certificate fingerprint (`pin-sha256:...`), saved on first use. */
+  serverCert?: string | null;
   updatedAt?: string;
 }
 
@@ -20,6 +22,8 @@ export interface PasswordServer {
   username: string;
   password: string;
   allowInsecure?: boolean;
+  /** Trusted server certificate fingerprint (`pin-sha256:...`), saved on first use. */
+  serverCert?: string | null;
   updatedAt?: string;
 }
 

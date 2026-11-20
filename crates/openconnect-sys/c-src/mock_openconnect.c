@@ -181,7 +181,7 @@ struct openconnect_info *openconnect_vpninfo_new(
     v->port = 443;
     v->cmd_pipe_read_fd = -1;
     v->cmd_pipe_write_fd = -1;
-    v->peer_cert_hash = strdup("pin-sha256:MOCKCERTFINGERPRINT=");
+    v->peer_cert_hash = strdup("pin-sha256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=");
     v->dtls_cipher = strdup("TLS_AES_256_GCM_SHA384");
     v->ip_info.addr = "10.8.0.2";
     v->ip_info.netmask = "255.255.255.0";
@@ -371,6 +371,30 @@ int openconnect_check_peer_cert_hash(struct openconnect_info *vpninfo, const cha
         return -1;
     }
     return strcmp(vpninfo->peer_cert_hash, old_hash) == 0 ? 0 : 1;
+}
+
+char *openconnect_get_peer_cert_details(struct openconnect_info *vpninfo)
+{
+    if (!vpninfo || vpninfo->return_nulls) {
+        return NULL;
+    }
+    return strdup("Subject: CN=vpn.example.test\nIssuer: CN=vpn.example.test\n");
+}
+
+void openconnect_free_cert_info(struct openconnect_info *vpninfo, void *buf)
+{
+    (void)vpninfo;
+    free(buf);
+}
+
+int mock_oc_set_peer_cert_hash(struct openconnect_info *vpninfo, const char *hash)
+{
+    if (!vpninfo || !hash) {
+        return -22;
+    }
+    free(vpninfo->peer_cert_hash);
+    vpninfo->peer_cert_hash = strdup(hash);
+    return vpninfo->peer_cert_hash ? 0 : -12;
 }
 
 int openconnect_disable_dtls(struct openconnect_info *vpninfo)

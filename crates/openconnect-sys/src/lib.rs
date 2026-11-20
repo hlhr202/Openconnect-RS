@@ -53,6 +53,10 @@ pub mod mock {
         pub fn mock_oc_set_return_nulls(vpninfo: *mut openconnect_info, enabled: c_int) -> c_int;
         pub fn mock_oc_trigger_progress_empty(vpninfo: *mut openconnect_info);
         pub fn mock_oc_trigger_progress_unknown_level(vpninfo: *mut openconnect_info);
+        pub fn mock_oc_set_peer_cert_hash(
+            vpninfo: *mut openconnect_info,
+            hash: *const c_char,
+        ) -> c_int;
         pub fn mock_oc_trigger_validate_peer_cert(
             vpninfo: *mut openconnect_info,
             reason: *const c_char,

@@ -70,6 +70,7 @@ pub fn request_add_server(server_config: SeverConfigArgs) {
                 client_id,
                 client_secret,
                 allow_insecure,
+                server_cert: None,
                 updated_at: None,
             };
 
@@ -92,6 +93,7 @@ pub fn request_add_server(server_config: SeverConfigArgs) {
                 username,
                 password: Some(password),
                 allow_insecure,
+                server_cert: None,
                 updated_at: None,
             };
 
@@ -135,10 +137,12 @@ pub fn request_list_servers() {
             "Type".to_string(),
             "Server".to_string(),
             "Allow Insecure".to_string(),
+            "Trusted Cert".to_string(),
             "Updated At".to_string(),
         ]);
 
         for (name, server) in stored_configs.servers.iter() {
+            let trusted_cert = server.server_cert().unwrap_or("-").to_string();
             match server {
                 StoredServer::Oidc(OidcServer {
                     server,
@@ -151,6 +155,7 @@ pub fn request_list_servers() {
                         "OIDC Server".to_string(),
                         server.clone(),
                         allow_insecure.unwrap_or(false).to_string(),
+                        trusted_cert.clone(),
                         updated_at.as_ref().unwrap_or(&"".to_string()).to_owned(),
                     ]);
                 }
@@ -165,6 +170,7 @@ pub fn request_list_servers() {
                         "Password Server".to_string(),
                         server.clone(),
                         allow_insecure.unwrap_or(false).to_string(),
+                        trusted_cert.clone(),
                         updated_at.as_ref().unwrap_or(&"".to_string()).to_owned(),
                     ]);
                 }
@@ -289,6 +295,7 @@ pub fn request_import_server(base64: &str) {
                 username,
                 password: Some(password),
                 allow_insecure,
+                server_cert: None,
                 updated_at: None,
             })
         }
@@ -317,6 +324,7 @@ pub fn request_import_server(base64: &str) {
                 client_id,
                 client_secret,
                 allow_insecure,
+                server_cert: None,
                 updated_at: None,
             })
         }

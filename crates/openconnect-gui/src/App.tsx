@@ -20,6 +20,7 @@ import { ToastContainer } from "react-toastify";
 import connected from "./assets/connected-animate.json";
 import Lottie from "lottie-react";
 import { AboutModal } from "./About";
+import { CertPromptModal } from "./CertPromptModal";
 import { useKey } from "react-use";
 
 enum EStatus {
@@ -218,6 +219,7 @@ function App() {
             About this App
           </Link>
         </div>
+        <CertPromptModal />
         <AboutModal
           isOpen={isAboutOpened}
           onOpen={() => setIsAboutOpened(true)}
