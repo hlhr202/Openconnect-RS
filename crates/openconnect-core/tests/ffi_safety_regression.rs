@@ -5,6 +5,7 @@
 
 use openconnect_core::{
     Connectable, Status, VpnClient,
+    cert::{PeerCertPrompt, PeerCertTrust},
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
     protocols::{get_anyconnect_protocol, get_supported_protocols},
@@ -74,7 +75,7 @@ fn regression_03_event_handlers_sync_and_concurrent_state_updates() {
         .with_handle_connection_state_change(move |_status| {
             seen_cb.fetch_add(1, Ordering::SeqCst);
         })
-        .with_handle_peer_cert_invalid(|_fp| {
+        .with_handle_peer_cert_verify(|_prompt| {
             // Even a panicking user callback must be caught at the FFI boundary (fail-closed)!
             panic!("simulated user callback panic");
         });
@@ -283,4 +284,113 @@ fn regression_08_end_to_end_run_loop_concurrent_queries_and_graceful_disconnect(
     client.disconnect();
     worker.join().expect("worker join").expect("run_loop ok");
     assert_eq!(client.get_status(), Status::Disconnected);
+}
+
+const MOCK_PIN: &str = "pin-sha256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=";
+const OTHER_PIN: &str = "pin-sha256:qUiQTy8PR5uPgZdpSzAYSw0u0cHNKh7A+4XSmaGSpEc=";
+
+/// Client whose peer-cert handler records prompts and answers with `accept`.
+fn tofu_client(
+    accept: bool,
+    server_cert: Option<&str>,
+) -> (Arc<VpnClient>, Arc<Mutex<Vec<PeerCertPrompt>>>) {
+    let prompts = Arc::new(Mutex::new(Vec::new()));
+    let prompts_cb = Arc::clone(&prompts);
+    let handlers = EventHandlers::new().with_handle_peer_cert_verify(move |prompt| {
+        prompts_cb.lock().unwrap().push(prompt.clone());
+        accept
+    });
+    let client = default_client(handlers);
+    let mut builder = EntrypointBuilder::new();
+    builder
+        .name("tofu")
+        .server("https://vpn.example.test")
+        .cookie("mock-cookie=abc");
+    if let Some(pin) = server_cert {
+        builder.server_cert(pin);
+    }
+    client
+        .connect_for_cookie(builder.build().expect("entrypoint"))
+        .expect("connect_for_cookie");
+    (client, prompts)
+}
+
+fn trigger_validate(client: &VpnClient) -> i32 {
+    client.with_mock_vpninfo(|vpninfo| {
+        // SAFETY: `vpninfo` is valid inside `with_mock_vpninfo`.
+        unsafe { mock::mock_oc_trigger_validate_peer_cert(vpninfo, c"signer not found".as_ptr()) }
+    })
+}
+
+#[test]
+fn regression_09_peer_cert_trust_on_first_use() {
+    let _guard = COUNTER_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    // Unknown server, user rejects -> fail-closed with full prompt context.
+    let (client, prompts) = tofu_client(false, None);
+    assert_eq!(trigger_validate(&client), 1);
+    {
+        let prompts = prompts.lock().unwrap();
+        assert_eq!(prompts.len(), 1);
+        assert_eq!(prompts[0].trust, PeerCertTrust::Unknown);
+        assert_eq!(prompts[0].fingerprint, MOCK_PIN);
+        assert_eq!(prompts[0].reason, "signer not found");
+        assert!(prompts[0].details.as_deref().unwrap_or("").contains("CN="));
+    }
+    drop(client);
+
+    // Stored pin matches -> accepted silently.
+    let (client, prompts) = tofu_client(false, Some(MOCK_PIN));
+    assert_eq!(trigger_validate(&client), 0);
+    assert!(prompts.lock().unwrap().is_empty());
+    drop(client);
+
+    // Stored pin mismatches -> user is warned; acceptance is cached for the session.
+    let (client, prompts) = tofu_client(true, Some(OTHER_PIN));
+    assert_eq!(trigger_validate(&client), 0);
+    assert_eq!(trigger_validate(&client), 0);
+    {
+        let prompts = prompts.lock().unwrap();
+        assert_eq!(prompts.len(), 1, "second handshake uses session cache");
+        assert_eq!(
+            prompts[0].trust,
+            PeerCertTrust::Mismatch {
+                stored: OTHER_PIN.to_string()
+            }
+        );
+    }
+    drop(client);
+
+    // Truncated pins (accepted by libopenconnect's prefix matching) are never trusted.
+    let (client, prompts) = tofu_client(false, Some(&MOCK_PIN[..20]));
+    assert_eq!(trigger_validate(&client), 1);
+    assert!(matches!(
+        prompts.lock().unwrap()[0].trust,
+        PeerCertTrust::Mismatch { .. }
+    ));
+    drop(client);
+
+    // Server rotates its key mid-session -> cached acceptance no longer applies.
+    let (client, prompts) = tofu_client(true, None);
+    assert_eq!(trigger_validate(&client), 0);
+    client.with_mock_vpninfo(|vpninfo| {
+        let pin = std::ffi::CString::new(OTHER_PIN).unwrap();
+        // SAFETY: `vpninfo` is valid inside `with_mock_vpninfo`; `pin` outlives the call.
+        unsafe { mock::mock_oc_set_peer_cert_hash(vpninfo, pin.as_ptr()) }
+    });
+    assert_eq!(trigger_validate(&client), 0);
+    assert_eq!(prompts.lock().unwrap().len(), 2);
+    drop(client);
+
+    // No handler registered -> unknown certificate rejected.
+    let client = default_client(EventHandlers::default());
+    let entrypoint = EntrypointBuilder::new()
+        .server("https://vpn.example.test")
+        .cookie("mock-cookie=abc")
+        .build()
+        .expect("entrypoint");
+    client
+        .connect_for_cookie(entrypoint)
+        .expect("connect_for_cookie");
+    assert_eq!(trigger_validate(&client), 1);
 }

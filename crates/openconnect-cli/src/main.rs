@@ -16,6 +16,9 @@ pub enum JsonRequest {
         server: String,
         allow_insecure: bool,
         cookie: String,
+        /// Trusted server certificate fingerprint (`pin-sha256:<base64>`).
+        #[serde(default)]
+        server_cert: Option<String>,
     },
     Stop,
     Info,
@@ -27,6 +30,10 @@ pub enum JsonResponse {
         name: String,
         success: bool,
         err_message: Option<String>,
+        /// Set when the connection failed because the server certificate is not trusted yet.
+        /// The client may ask the user and retry `Start` with `server_cert`.
+        #[serde(default)]
+        untrusted_cert: Option<client::cert_prompt::UntrustedCert>,
     },
     StopResult {
         name: String,

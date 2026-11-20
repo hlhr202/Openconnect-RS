@@ -96,6 +96,9 @@ pub struct OidcServer {
     pub client_id: String,
     pub client_secret: Option<String>,
     pub allow_insecure: Option<bool>,
+    /// Trusted server certificate fingerprint (`pin-sha256:<base64>`), saved on first use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_cert: Option<String>,
     pub updated_at: Option<String>,
 }
 
@@ -107,6 +110,9 @@ pub struct PasswordServer {
     pub username: String,
     pub password: Option<String>,
     pub allow_insecure: Option<bool>,
+    /// Trusted server certificate fingerprint (`pin-sha256:<base64>`), saved on first use.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub server_cert: Option<String>,
     pub updated_at: Option<String>,
 }
 
@@ -122,6 +128,7 @@ impl PasswordServer {
             username: self.username.clone(),
             password,
             allow_insecure: self.allow_insecure,
+            server_cert: self.server_cert.clone(),
             updated_at: self.updated_at.clone(),
         }
     }
@@ -137,6 +144,7 @@ impl PasswordServer {
             username: self.username.clone(),
             password,
             allow_insecure: self.allow_insecure,
+            server_cert: self.server_cert.clone(),
             updated_at: self.updated_at.clone(),
         }
     }
@@ -150,6 +158,43 @@ pub enum StoredServer {
 
     #[serde(rename_all = "camelCase")]
     Password(PasswordServer),
+}
+
+impl StoredServer {
+    pub fn name(&self) -> &str {
+        match self {
+            StoredServer::Oidc(server) => &server.name,
+            StoredServer::Password(server) => &server.name,
+        }
+    }
+
+    /// Trusted server certificate fingerprint, if one has been saved.
+    pub fn server_cert(&self) -> Option<&str> {
+        match self {
+            StoredServer::Oidc(server) => server.server_cert.as_deref(),
+            StoredServer::Password(server) => server.server_cert.as_deref(),
+        }
+        .filter(|pin| !pin.trim().is_empty())
+    }
+
+    fn server_cert_mut(&mut self) -> &mut Option<String> {
+        match self {
+            StoredServer::Oidc(server) => &mut server.server_cert,
+            StoredServer::Password(server) => &mut server.server_cert,
+        }
+    }
+
+    /// Canonicalize `server_cert`: empty becomes `None`, otherwise it must be a full pin.
+    fn normalize_server_cert(&mut self) -> Result<(), StoredConfigError> {
+        let slot = self.server_cert_mut();
+        *slot = match slot.as_deref().map(str::trim) {
+            None | Some("") => None,
+            Some(pin) => {
+                Some(crate::cert::normalize_server_cert(pin).map_err(StoredConfigError::BadInput)?)
+            }
+        };
+        Ok(())
+    }
 }
 
 impl TryFrom<&StoredServer> for OidcServer {
@@ -344,6 +389,7 @@ impl StoredConfigs {
     ) -> Result<&mut Self, StoredConfigError> {
         let update_at = chrono::Utc::now().to_rfc3339();
         let mut server = server;
+        server.normalize_server_cert()?;
         let name = match &mut server {
             StoredServer::Oidc(oidc_server) => {
                 oidc_server.updated_at = Some(update_at);
@@ -374,6 +420,7 @@ impl StoredConfigs {
     ) -> Result<&mut Self, StoredConfigError> {
         let updated_at = chrono::Utc::now().to_rfc3339();
         let mut server = server;
+        server.normalize_server_cert()?;
         let name = match &mut server {
             StoredServer::Oidc(oidc_server) => {
                 oidc_server.updated_at = Some(updated_at);
@@ -387,6 +434,26 @@ impl StoredConfigs {
         };
 
         self.servers.insert(name, server);
+        self.save_to_file().await?;
+        Ok(self)
+    }
+
+    /// Persist (or clear with `None`) the trusted certificate fingerprint of a server
+    /// without touching any other field.
+    pub async fn set_server_cert(
+        &mut self,
+        name: &str,
+        server_cert: Option<&str>,
+    ) -> Result<&mut Self, StoredConfigError> {
+        let server_cert = server_cert
+            .map(crate::cert::normalize_server_cert)
+            .transpose()
+            .map_err(StoredConfigError::BadInput)?;
+        let server = self
+            .servers
+            .get_mut(name)
+            .ok_or_else(|| StoredConfigError::BadInput(format!("Server {} not found", name)))?;
+        *server.server_cert_mut() = server_cert;
         self.save_to_file().await?;
         Ok(self)
     }
@@ -586,6 +653,7 @@ mod tests {
             client_id: "client_id".to_string(),
             client_secret: Some("client_secret".to_string()),
             allow_insecure: Some(true),
+            server_cert: None,
             updated_at: None,
         });
 
@@ -617,6 +685,7 @@ mod tests {
             client_id: "client_id".to_string(),
             client_secret: None,
             allow_insecure: Some(true),
+            server_cert: None,
             updated_at: None,
         });
 
@@ -632,6 +701,7 @@ mod tests {
             username: "username".to_string(),
             password: Some("password".to_string()),
             allow_insecure: Some(true),
+            server_cert: None,
             updated_at: None,
         });
 
@@ -640,6 +710,53 @@ mod tests {
         assert_eq!(parsed["authType"], "password");
         assert_eq!(parsed["name"], "password_server");
         assert_eq!(parsed["username"], "username");
+    }
+
+    #[tokio::test]
+    async fn test_server_cert_roundtrip_and_validation() {
+        const PIN: &str = "pin-sha256:47DEQpj8HBSa+/TImW+5JCeuQeRkm5NMpJWZG3hSuFU=";
+        let dir = tempfile::tempdir().unwrap();
+        let config_file = dir.path().join("config.json");
+
+        let server = StoredServer::Password(PasswordServer {
+            name: "corp".to_string(),
+            server: "https://vpn.example.com".to_string(),
+            username: "alice".to_string(),
+            password: Some("pw".to_string()),
+            allow_insecure: None,
+            server_cert: Some(String::new()),
+            updated_at: None,
+        });
+
+        let mut configs = StoredConfigs::new(Some("k".into()), config_file.clone());
+        configs.upsert_server(server.clone()).await.unwrap();
+        assert_eq!(configs.servers["corp"].server_cert(), None);
+
+        // Truncated pins are rejected everywhere.
+        assert!(
+            configs
+                .set_server_cert("corp", Some("pin-sha256:47DE"))
+                .await
+                .is_err()
+        );
+        let mut bad = server.clone();
+        *bad.server_cert_mut() = Some("pin-sha256:47DE".into());
+        assert!(configs.upsert_server(bad).await.is_err());
+        assert!(configs.set_server_cert("missing", Some(PIN)).await.is_err());
+
+        configs.set_server_cert("corp", Some(PIN)).await.unwrap();
+        let mut reloaded = StoredConfigs::new(Some("k".into()), config_file.clone());
+        reloaded.read_from_file().await.unwrap();
+        assert_eq!(reloaded.servers["corp"].server_cert(), Some(PIN));
+        let pw = reloaded
+            .get_server_as_password_server("corp")
+            .unwrap()
+            .decrypted_by(&reloaded.cipher);
+        assert_eq!(pw.password.as_deref(), Some("pw"), "password untouched");
+
+        reloaded.set_server_cert("corp", None).await.unwrap();
+        let raw = std::fs::read_to_string(&config_file).unwrap();
+        assert!(!raw.contains("serverCert"), "cleared pin is not serialized");
     }
 
     #[tokio::test]
@@ -653,6 +770,7 @@ mod tests {
             username: "alice".to_string(),
             password: Some("top-secret".to_string()),
             allow_insecure: Some(false),
+            server_cert: None,
             updated_at: None,
         });
 

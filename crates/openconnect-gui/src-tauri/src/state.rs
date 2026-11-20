@@ -1,4 +1,7 @@
-use crate::system_tray::AppSystemTray;
+use crate::{
+    cert_prompt::{CertPromptBroker, CertPromptPayload},
+    system_tray::AppSystemTray,
+};
 use openconnect_core::{
     Connectable, Status, VpnClient,
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
@@ -41,6 +44,7 @@ pub enum StateError {
 #[derive(Debug, Clone)]
 pub enum VpnEvent {
     Status { status: StatusPayload },
+    CertPrompt { prompt: CertPromptPayload },
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -69,6 +73,7 @@ pub struct AppState {
     pub(crate) client: RwLock<Option<Arc<VpnClient>>>,
     pub(crate) stored_configs: RwLock<StoredConfigs>,
     pub(crate) vpnc_script: String,
+    pub(crate) cert_prompts: Arc<CertPromptBroker>,
 }
 
 impl AppState {
@@ -94,6 +99,17 @@ impl AppState {
                         }
                         if let Err(e) = app_system_tray.recreate(&handle).await {
                             eprintln!("Error while updating tray: {:?}", e);
+                        }
+                    }
+                    VpnEvent::CertPrompt { prompt } => {
+                        // The connection may have been started from the tray while hidden.
+                        if let Some(window) = handle.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.unminimize();
+                            let _ = window.set_focus();
+                        }
+                        if let Err(e) = handle.emit("vpnCertPrompt", Some(prompt)) {
+                            eprintln!("Error while emitting event: {:?}", e);
                         }
                     }
                 }
@@ -137,26 +153,27 @@ impl AppState {
             .loglevel(LogLevel::Info)
             .build()?;
 
-        let entrypoint = EntrypointBuilder::new()
+        let mut entrypoint_builder = EntrypointBuilder::new();
+        entrypoint_builder
             .name(&password_server.name)
             .server(&password_server.server)
             .username(&password_server.username)
             .password(password_server.password.as_deref().unwrap_or(""))
             .accept_insecure_cert(password_server.allow_insecure.unwrap_or(false))
-            .enable_udp(true)
-            .build()?;
+            .enable_udp(true);
+        if let Some(server_cert) = password_server.server_cert.as_deref() {
+            entrypoint_builder.server_cert(server_cert);
+        }
+        let entrypoint = entrypoint_builder.build()?;
+        drop(stored_server);
 
-        let event_handlers = self.create_event_handler();
+        let event_handlers = self.create_event_handler(&password_server.name);
 
         let client = VpnClient::new(config, event_handlers)?;
         {
             self.client.write().await.replace(client.clone());
         }
-        client.init_connection(entrypoint)?;
-
-        tauri::async_runtime::spawn_blocking(move || {
-            let _ = client.run_loop();
-        });
+        Self::spawn_connection(client, entrypoint);
 
         Ok(())
     }
@@ -206,26 +223,63 @@ impl AppState {
             .loglevel(LogLevel::Info)
             .build()?;
 
-        let entrypoint = EntrypointBuilder::new()
+        let mut entrypoint_builder = EntrypointBuilder::new();
+        entrypoint_builder
             .name(&oidc_server.name)
             .server(&oidc_server.server)
             .cookie(&cookie)
-            .accept_insecure_cert(allow_insecure)
-            .build()?;
+            .accept_insecure_cert(allow_insecure);
+        if let Some(server_cert) = oidc_server.server_cert.as_deref() {
+            entrypoint_builder.server_cert(server_cert);
+        }
+        let entrypoint = entrypoint_builder.build()?;
 
-        let event_handlers = self.create_event_handler();
+        let event_handlers = self.create_event_handler(&oidc_server.name);
 
         let client = VpnClient::new(config, event_handlers)?;
         {
             self.client.write().await.replace(client.clone());
         }
+        Self::spawn_connection(client, entrypoint);
 
-        client.init_connection(entrypoint)?;
+        Ok(())
+    }
 
+    /// Run the (blocking) connection on a worker thread. The peer-certificate handler may block
+    /// there waiting for the user's decision; failures are reported through status events.
+    fn spawn_connection(client: Arc<VpnClient>, entrypoint: openconnect_core::config::Entrypoint) {
         tauri::async_runtime::spawn_blocking(move || {
-            let _ = client.run_loop();
+            if client.init_connection(entrypoint).is_ok() {
+                let _ = client.run_loop();
+            }
         });
+    }
 
+    /// Apply the user's answer to a certificate prompt, persisting the fingerprint on acceptance.
+    pub async fn respond_cert_prompt(&self, id: u64, accept: bool) -> Result<(), StateError> {
+        let Some(resolved) = self.cert_prompts.resolve(id) else {
+            return Err(StoredConfigError::BadInput(
+                "Certificate prompt expired or already answered".to_string(),
+            )
+            .into());
+        };
+
+        if accept {
+            let saved = self
+                .stored_configs
+                .write()
+                .await
+                .set_server_cert(&resolved.server_name, Some(&resolved.fingerprint))
+                .await
+                .map(|_| ());
+            if let Err(e) = saved {
+                // Still honour the decision for this session, but surface the failure.
+                resolved.respond(true);
+                return Err(e.into());
+            }
+        }
+
+        resolved.respond(accept);
         Ok(())
     }
 
@@ -241,9 +295,14 @@ impl AppState {
         Ok(())
     }
 
-    pub fn create_event_handler(&self) -> openconnect_core::events::EventHandlers {
+    pub fn create_event_handler(
+        &self,
+        server_name: &str,
+    ) -> openconnect_core::events::EventHandlers {
         let event_tx_for_state = self.event_tx.clone();
         let event_tx_for_cert = self.event_tx.clone();
+        let cert_prompts = Arc::clone(&self.cert_prompts);
+        let server_name = server_name.to_string();
 
         EventHandlers::default()
             .with_handle_connection_state_change(move |state| {
@@ -256,23 +315,16 @@ impl AppState {
                         .await;
                 });
             })
-            .with_handle_peer_cert_invalid(move |reason| {
-                let event_tx = event_tx_for_cert.clone();
-                let reason = reason.to_string();
-                tauri::async_runtime::spawn(async move {
-                    let _ = event_tx
-                        .send(VpnEvent::Status {
-                            status: StatusPayload {
-                                status: "ERROR".to_string(),
-                                message: Some(format!(
-                                    "Peer certificate invalid, if you want to connect this insecure server, please tick 'Allow insecure' in the config. Server fingerprint: {}",
-                                    reason
-                                )),
-                            },
-                        })
-                        .await;
-                });
-                false
+            .with_handle_peer_cert_verify(move |prompt| {
+                // Runs on the blocking connection thread (see `spawn_connection`).
+                cert_prompts.ask_blocking(&server_name, prompt, |payload| {
+                    let event_tx = event_tx_for_cert.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let _ = event_tx
+                            .send(VpnEvent::CertPrompt { prompt: payload })
+                            .await;
+                    });
+                })
             })
     }
 
@@ -288,6 +340,7 @@ impl AppState {
             client: RwLock::new(None),
             stored_configs: RwLock::new(stored_configs),
             vpnc_script: vpnc_script.to_string(),
+            cert_prompts: Arc::new(CertPromptBroker::default()),
         })
     }
 }

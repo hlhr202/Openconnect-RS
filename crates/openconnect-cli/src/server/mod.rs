@@ -1,6 +1,9 @@
 use crate::{
     JsonRequest, JsonResponse,
-    client::state::{StateError, get_vpnc_script},
+    client::{
+        cert_prompt::UntrustedCert,
+        state::{StateError, get_vpnc_script},
+    },
     sock::{self, UnixDomainServer},
 };
 use futures::{SinkExt, TryStreamExt};
@@ -9,7 +12,7 @@ use openconnect_core::{
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
 };
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::{
     select,
     signal::unix::{SignalKind, signal},
@@ -37,31 +40,54 @@ trait Acceptable {
     async fn try_accept(self);
 }
 
+/// Connect the daemon's VPN client. On failure, also returns the untrusted server certificate
+/// (if that was the cause) so the interactive client can ask the user and retry.
 async fn connect_to_vpn_server(
     name: &str,
     server: &str,
     allow_insecure: bool,
     cookie: &str,
-) -> Result<Arc<VpnClient>, StateError> {
-    let vpncscript = get_vpnc_script()?;
+    server_cert: Option<&str>,
+) -> Result<Arc<VpnClient>, (StateError, Option<Box<UntrustedCert>>)> {
+    let vpncscript = get_vpnc_script().map_err(|e| (e, None))?;
 
     let config = ConfigBuilder::default()
         .vpncscript(&vpncscript)
         .loglevel(LogLevel::Info)
-        .build()?;
+        .build()
+        .map_err(|e| (e.into(), None))?;
 
-    let entrypoint = EntrypointBuilder::new()
+    let mut entrypoint_builder = EntrypointBuilder::new();
+    entrypoint_builder
         .name(name)
         .server(server)
         .accept_insecure_cert(allow_insecure)
         .cookie(cookie)
-        .enable_udp(true)
-        .build()?;
+        .enable_udp(true);
+    if let Some(server_cert) = server_cert {
+        entrypoint_builder.server_cert(server_cert);
+    }
+    let entrypoint = entrypoint_builder.build().map_err(|e| (e.into(), None))?;
 
-    let event_handler = EventHandlers::default();
+    // The daemon has no terminal: record the untrusted certificate and reject (fail-closed).
+    let untrusted = Arc::new(Mutex::new(None::<UntrustedCert>));
+    let untrusted_cb = Arc::clone(&untrusted);
+    let event_handler = EventHandlers::default().with_handle_peer_cert_verify(move |prompt| {
+        if let Ok(mut slot) = untrusted_cb.lock() {
+            *slot = Some(UntrustedCert::from(prompt));
+        }
+        false
+    });
 
-    let client = VpnClient::new(config, event_handler)?;
-    client.init_connection(entrypoint)?;
+    let client = VpnClient::new(config, event_handler).map_err(|e| (e.into(), None))?;
+    if let Err(e) = client.init_connection(entrypoint) {
+        let cert = untrusted
+            .lock()
+            .ok()
+            .and_then(|mut slot| slot.take())
+            .map(Box::new);
+        return Err((e.into(), cert));
+    }
 
     let client_cloned = client.clone();
     tokio::task::spawn_blocking(move || {
@@ -100,6 +126,9 @@ impl Acceptable for Arc<State> {
             let mut framed_writer = sock::get_framed_writer::<JsonResponse>(write);
 
             tokio::spawn(async move {
+                // Set while the daemon waits for the client to retry `Start` after an
+                // untrusted-certificate failure.
+                let mut awaiting_retry = false;
                 while let Ok(Some(command)) = framed_reader.try_next().await {
                     match command {
                         JsonRequest::Start {
@@ -107,14 +136,21 @@ impl Acceptable for Arc<State> {
                             server,
                             allow_insecure,
                             cookie,
+                            server_cert,
                         } => {
                             tracing::debug!("Received start command, name: {}", name);
-                            let connection_result =
-                                connect_to_vpn_server(&name, &server, allow_insecure, &cookie)
-                                    .await;
+                            let connection_result = connect_to_vpn_server(
+                                &name,
+                                &server,
+                                allow_insecure,
+                                &cookie,
+                                server_cert.as_deref(),
+                            )
+                            .await;
 
                             match connection_result {
                                 Ok(client) => {
+                                    awaiting_retry = false;
                                     {
                                         let mut client_to_write = self.client.write().await;
                                         *client_to_write = Some(client);
@@ -124,20 +160,28 @@ impl Acceptable for Arc<State> {
                                             name,
                                             success: true,
                                             err_message: None,
+                                            untrusted_cert: None,
                                         })
                                         .await;
                                 }
-                                Err(e) => {
+                                Err((e, untrusted_cert)) => {
+                                    let can_retry = untrusted_cert.is_some();
                                     let _ = framed_writer
                                         .send(JsonResponse::StartResult {
                                             name,
                                             success: false,
                                             err_message: Some(e.to_string()),
+                                            untrusted_cert: untrusted_cert.map(|cert| *cert),
                                         })
                                         .await;
 
-                                    self.shutdown.cancel();
-                                    break;
+                                    // Keep the daemon alive so the client can retry `Start` with a
+                                    // user-approved fingerprint (or send `Stop`).
+                                    if !can_retry {
+                                        self.shutdown.cancel();
+                                        break;
+                                    }
+                                    awaiting_retry = true;
                                 }
                             }
                         }
@@ -195,6 +239,11 @@ impl Acceptable for Arc<State> {
                             }
                         }
                     }
+                }
+
+                // The client went away without retrying or stopping: don't linger idle.
+                if awaiting_retry && self.client.read().await.is_none() {
+                    self.shutdown.cancel();
                 }
             });
         }

@@ -80,6 +80,12 @@ pub struct Entrypoint {
     pub cookie: Option<String>,
     pub enable_udp: bool,
     pub accept_insecure_cert: bool,
+    /// Previously trusted server certificate fingerprint (`pin-sha256:<base64>`).
+    ///
+    /// Used only when the certificate fails regular CA/hostname verification: a matching
+    /// certificate is accepted, a mismatching one is reported to the peer-cert handler as
+    /// [`crate::cert::PeerCertTrust::Mismatch`].
+    pub server_cert: Option<String>,
 }
 
 pub struct EntrypointBuilder {
@@ -91,6 +97,7 @@ pub struct EntrypointBuilder {
     cookie: Option<String>,
     enable_udp: bool,
     accept_insecure_cert: Option<bool>,
+    server_cert: Option<String>,
 }
 
 impl EntrypointBuilder {
@@ -104,6 +111,7 @@ impl EntrypointBuilder {
             cookie: None,
             enable_udp: true,
             accept_insecure_cert: None,
+            server_cert: None,
         }
     }
 
@@ -147,6 +155,12 @@ impl EntrypointBuilder {
         self
     }
 
+    /// Set the previously trusted server certificate fingerprint (`pin-sha256:<base64>`).
+    pub fn server_cert(&mut self, server_cert: &str) -> &mut Self {
+        self.server_cert = Some(server_cert.to_string());
+        self
+    }
+
     pub fn build(&self) -> OpenconnectResult<Entrypoint> {
         let server = self
             .server
@@ -167,6 +181,7 @@ impl EntrypointBuilder {
             cookie: self.cookie.clone(),
             enable_udp: self.enable_udp,
             accept_insecure_cert: self.accept_insecure_cert.unwrap_or(false),
+            server_cert: self.server_cert.clone(),
         })
     }
 }

@@ -53,6 +53,7 @@ export const ServerEditor = (props: FormParams) => {
           clientId: data.clientId,
           clientSecret: data.clientSecret,
           allowInsecure: data.allowInsecure,
+          serverCert: data.serverCert,
         };
         break;
       case "password":
@@ -63,6 +64,7 @@ export const ServerEditor = (props: FormParams) => {
           username: data.username,
           password: data.password,
           allowInsecure: data.allowInsecure,
+          serverCert: data.serverCert,
         };
         break;
     }
@@ -102,12 +104,13 @@ export const ServerEditor = (props: FormParams) => {
     let toShare: Partial<OidcServer | PasswordServer> = {};
     switch (initialData.authType) {
       case "oidc": {
-        const { updatedAt, name, ...rest } = initialData;
+        const { updatedAt, name, serverCert, ...rest } = initialData;
         toShare = rest;
         break;
       }
       case "password": {
-        const { password, username, updatedAt, name, ...rest } = initialData;
+        const { password, username, updatedAt, name, serverCert, ...rest } =
+          initialData;
         toShare = rest;
         break;
       }
@@ -313,11 +316,39 @@ export const ServerEditor = (props: FormParams) => {
               <div className="flex flex-col gap-1">
                 <p className="text-medium">Allow Insecure SSL Certificate</p>
                 <p className="text-tiny text-default-400">
-                  In case of getting an insecure SSL certificate error but you
-                  still want to connect to the server.
+                  Advanced and unsafe: accept ANY server certificate without
+                  asking. Prefer trusting the fingerprint when prompted on
+                  connect.
                 </p>
               </div>
             </Switch>
+          )}
+        />
+        <Controller
+          name="serverCert"
+          control={control}
+          render={({ field }) => (
+            <div className="flex w-full items-center gap-2 rounded-lg bg-content2 p-2">
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <p className="text-medium">Trusted Server Certificate</p>
+                <p className="text-tiny text-default-400 break-all font-mono">
+                  {field.value
+                    ? field.value
+                    : "None. You will be asked to verify the fingerprint if the certificate cannot be validated by a trusted authority."}
+                </p>
+              </div>
+              {field.value && (
+                <Button
+                  type="button"
+                  size="sm"
+                  color="danger"
+                  variant="flat"
+                  onPress={() => field.onChange("")}
+                >
+                  Forget
+                </Button>
+              )}
+            </div>
           )}
         />
       </div>

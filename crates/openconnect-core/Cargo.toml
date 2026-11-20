@@ -24,6 +24,7 @@ signal-hook = { workspace = true }
 libc = { workspace = true }
 openconnect-sys = { path = "../openconnect-sys", version = "0.2.1", default-features = false }
 thiserror = { workspace = true }
+base64 = { workspace = true }
 tokio = { workspace = true, features = ["fs", "rt", "macros"] }
 home = { workspace = true }
 serde = { workspace = true }

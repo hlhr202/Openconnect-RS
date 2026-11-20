@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod cert_prompt;
 mod command;
 mod state;
 mod system_tray;
@@ -147,6 +148,7 @@ fn main() {
             remove_server,
             connect_with_password,
             connect_with_oidc,
+            respond_cert_prompt,
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
