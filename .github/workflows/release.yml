@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  linux-x64:
+    uses: ./.github/workflows/linux-x64.yml
+
+  mac-aarch64:
+    uses: ./.github/workflows/mac-aarch64.yml
+
+  mac-x64:
+    uses: ./.github/workflows/mac-x64.yml
+
+  windows-x64:
+    uses: ./.github/workflows/mingw64.yml
+
+  publish:
+    name: Publish GitHub Release
+    needs: [linux-x64, mac-aarch64, mac-x64, windows-x64]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: ./artifacts
+
+      - name: Prepare release assets
+        run: |
+          set -euo pipefail
+          mkdir -p ./release-assets
+
+          # Linux x64 CLI + GUI (.deb)
+          LINUX_CLI=$(find ./artifacts/openconnect-linux-x64 -type f -name 'openconnect-cli' | head -n 1)
+          test -n "$LINUX_CLI"
+          cp "$LINUX_CLI" ./release-assets/openconnect-cli_linux-x86_64
+          chmod +x ./release-assets/openconnect-cli_linux-x86_64
+          LINUX_DEB=$(find ./artifacts/openconnect-linux-x64 -type f -name '*.deb' | head -n 1)
+          test -n "$LINUX_DEB"
+          cp "$LINUX_DEB" ./release-assets/openconnect-gui_linux-x86_64.deb
+
+          # macOS ARM64 CLI + GUI (.dmg)
+          MAC_ARM_CLI=$(find ./artifacts/openconnect-mac-aarch64 -type f -name 'openconnect-cli' | head -n 1)
+          test -n "$MAC_ARM_CLI"
+          cp "$MAC_ARM_CLI" ./release-assets/openconnect-cli_osx-aarch64
+          chmod +x ./release-assets/openconnect-cli_osx-aarch64
+          MAC_ARM_DMG=$(find ./artifacts/openconnect-mac-aarch64 -type f -name '*.dmg' | head -n 1)
+          test -n "$MAC_ARM_DMG"
+          cp "$MAC_ARM_DMG" ./release-assets/openconnect-gui_osx-aarch64.dmg
+
+          # macOS x64 CLI + GUI (.dmg)
+          MAC_X64_CLI=$(find ./artifacts/openconnect-mac-x64 -type f -name 'openconnect-cli' | head -n 1)
+          test -n "$MAC_X64_CLI"
+          cp "$MAC_X64_CLI" ./release-assets/openconnect-cli_osx-x86_64
+          chmod +x ./release-assets/openconnect-cli_osx-x86_64
+          MAC_X64_DMG=$(find ./artifacts/openconnect-mac-x64 -type f -name '*.dmg' | head -n 1)
+          test -n "$MAC_X64_DMG"
+          cp "$MAC_X64_DMG" ./release-assets/openconnect-gui_osx-x86_64.dmg
+
+          # Windows x64 GUI (.exe)
+          WIN_EXE=$(find ./artifacts/openconnect-win -type f -name '*.exe' | head -n 1)
+          test -n "$WIN_EXE"
+          cp "$WIN_EXE" ./release-assets/openconnect-gui_win-x86_64.exe
+
+          # Generate SHA256 checksums
+          (cd ./release-assets && sha256sum * > SHA256SUMS.txt)
+          ls -lh ./release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: ./release-assets/*

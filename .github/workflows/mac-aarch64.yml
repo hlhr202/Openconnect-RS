@@ -2,9 +2,7 @@ name: Mac ARM64 Build
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - v*
+  workflow_call:
   pull_request:
     branches: ["main"]
 
@@ -49,6 +47,17 @@ jobs:
       - name: Build CLI
         run: |
           cargo build --release -p openconnect-cli
+
+      - name: Package DMG
+        run: |
+          STAGE_DIR=$(mktemp -d)
+          cp -R ./target/release/bundle/macos/openconnect-gui.app "$STAGE_DIR/"
+          ln -s /Applications "$STAGE_DIR/Applications"
+          hdiutil create -volname "Openconnect GUI" \
+            -srcfolder "$STAGE_DIR" \
+            -ov -format UDZO \
+            ./target/release/bundle/openconnect-gui_osx-aarch64.dmg
+          rm -rf "$STAGE_DIR"
 
       - name: Upload
         uses: actions/upload-artifact@v4
