@@ -87,3 +87,5 @@ if [ "$IS_MSYS" -eq 1 ]; then
 else
     make -j"$JOBS"
 fi
+
+rm -rf .git

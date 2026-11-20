@@ -18,6 +18,7 @@ fn main() {
     println!("cargo:rerun-if-changed=scripts/nix.sh");
     println!("cargo:rerun-if-env-changed=OPENCONNECT_USE_PREBUILT");
     println!("cargo:rerun-if-env-changed=OPENCONNECT_PREBUILT_SHA256");
+    println!("cargo:rerun-if-env-changed=OPENCONNECT_PREBUILT_DIR");
 
     // Compile helper.c unconditionally (except docs.rs) so both native and mock-ffi link it.
     if env::var("DOCS_RS").is_ok() {
@@ -59,7 +60,17 @@ fn build_native() {
 
     let out_path = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let openconnect_src_dir = out_path.join("openconnect");
+    let openconnect_src_dir = match env::var("OPENCONNECT_PREBUILT_DIR") {
+        Ok(dir) if !dir.trim().is_empty() => {
+            let path = PathBuf::from(dir);
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .expect("failed to create parent directory for OPENCONNECT_PREBUILT_DIR");
+            }
+            path
+        }
+        _ => out_path.join("openconnect"),
+    };
 
     let openconnect_lib = openconnect_src_dir.join(".libs");
     let static_lib = openconnect_lib.join("libopenconnect.a");
