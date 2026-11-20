@@ -17,8 +17,10 @@ case "${MSYSTEM:-}${OSTYPE:-}" in
         WITH_VPNC_SCRIPT="./vpnc-script-win.js"
         CONFIGURE_SHARED_FLAG="--disable-shared"
         export PATH="/mingw64/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
-        export ACLOCAL_PATH="/mingw64/share/aclocal:/usr/share/aclocal${ACLOCAL_PATH:+:$ACLOCAL_PATH}"
+        export ACLOCAL_PATH="/mingw64/share/aclocal:/usr/share/aclocal"
         export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:/mingw64/share/pkgconfig"
+        export PKG_CONFIG_SYSTEM_INCLUDE_PATH="/mingw64/include"
+        export PKG_CONFIG_SYSTEM_LIBRARY_PATH="/mingw64/lib"
         export CFLAGS="${CFLAGS:--O2} -std=gnu17 -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-deprecated-declarations"
         ;;
 esac

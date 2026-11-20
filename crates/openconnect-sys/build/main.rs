@@ -91,11 +91,15 @@ fn build_native() {
                 .replace('\\', "/");
 
             let mut cmd = std::process::Command::new(&sh_bin);
-            cmd.args([&script_arg, &dir_arg]);
             #[cfg(all(target_os = "windows", target_env = "gnu"))]
-            if env::var_os("MSYSTEM").is_none() {
-                cmd.env("MSYSTEM", "MINGW64");
+            {
+                cmd.arg("-l");
+                cmd.env("CHERE_INVOKING", "1");
+                if env::var_os("MSYSTEM").is_none() {
+                    cmd.env("MSYSTEM", "MINGW64");
+                }
             }
+            cmd.args([&script_arg, &dir_arg]);
 
             let output = cmd.output().expect("failed to execute scripts/nix.sh");
             if !output.status.success() {
