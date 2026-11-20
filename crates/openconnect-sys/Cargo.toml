@@ -28,7 +28,7 @@ cc = "1.2"
 bindgen = { version = "0.71", optional = true }
 pkg-config = { version = "0.3.32", optional = true }
 reqwest = { workspace = true, optional = true }
-zip = { version = "2.6", default-features = false, features = ["deflate"], optional = true }
+zip = { version = "9", default-features = false, features = ["deflate"], optional = true }
 sha2 = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
 

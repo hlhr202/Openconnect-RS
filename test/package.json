@@ -10,15 +10,18 @@
   "keywords": [],
   "author": "hlhr202@163.com",
   "license": "ISC",
+  "engines": {
+    "node": ">=26"
+  },
   "devDependencies": {
     "@types/body-parser": "^1.19.5",
     "@types/body-parser-xml": "^2.0.5",
     "@types/express": "^4.17.21",
-    "axios": "^1.6.8",
-    "body-parser": "^1.20.2",
+    "axios": "^1.21.1",
+    "body-parser": "^1.20.9",
     "body-parser-xml": "^2.0.5",
-    "express": "^4.19.2",
-    "tsx": "^4.7.2",
+    "express": "^4.22.3",
+    "tsx": "^4.23.15",
     "typescript": "^5.4.5"
   }
 }
