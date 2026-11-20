@@ -1,0 +1,23 @@
+# cargo-audit configuration (https://github.com/rustsec/rustsec/tree/main/cargo-audit)
+#
+# Every ignored advisory MUST carry a justification and a removal condition.
+
+[advisories]
+ignore = [
+    # RUSTSEC-2024-0429 — glib 0.18.5 `VariantStrIter` unsoundness.
+    #
+    # Why it cannot be upgraded: glib 0.18 is pulled in transitively by the GTK3
+    # bindings (gtk/gdk/webkit2gtk 0.18) used by the Linux backend of Tauri v2.
+    # Even the latest tauri 2.12.7 / wry 0.57.3 / tao 0.37.3 / tray-icon 0.26.1
+    # require `gtk ^0.18` (wry pins `webkit2gtk =2.0.2`), so glib >= 0.20 is not
+    # reachable without forking the Tauri stack.
+    #
+    # Why it is not exploitable here: the bug lives only in
+    # `VariantStrIter::impl_get`, reachable solely via `glib::Variant::array_iter_str()`.
+    # Neither this workspace nor any crate in the dependency tree calls it
+    # (verified by grepping the full vendored registry sources).
+    #
+    # Remove once Tauri/wry/tao move to gtk-rs >= 0.20 and Cargo.lock no longer
+    # contains glib < 0.20.
+    "RUSTSEC-2024-0429",
+]
