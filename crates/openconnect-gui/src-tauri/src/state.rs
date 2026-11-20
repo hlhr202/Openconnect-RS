@@ -44,7 +44,8 @@ pub enum StateError {
 #[derive(Debug, Clone)]
 pub enum VpnEvent {
     Status { status: StatusPayload },
-    CertPrompt { prompt: CertPromptPayload },
+    // Boxed so `SendError<VpnEvent>` (inside `StateError`) stays small.
+    CertPrompt { prompt: Box<CertPromptPayload> },
 }
 
 #[derive(serde::Serialize, Debug, Clone)]
@@ -321,7 +322,9 @@ impl AppState {
                     let event_tx = event_tx_for_cert.clone();
                     tauri::async_runtime::spawn(async move {
                         let _ = event_tx
-                            .send(VpnEvent::CertPrompt { prompt: payload })
+                            .send(VpnEvent::CertPrompt {
+                                prompt: Box::new(payload),
+                            })
                             .await;
                     });
                 })
