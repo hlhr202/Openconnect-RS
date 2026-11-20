@@ -11,7 +11,7 @@ COLOR_SUCCESS="\033[0;32m"
 COLOR_FAILURE="\033[0;31m"
 COLOR_RESET="\033[0m"
 
-TAG="v0.2.0"
+TAG="v0.2.1"
 
 echo ""
 echo "=================================="
