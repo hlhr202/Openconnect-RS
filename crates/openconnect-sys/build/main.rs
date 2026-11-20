@@ -207,7 +207,9 @@ fn build_native() {
         println!("cargo:rustc-link-search=/usr/local/opt/gettext/lib");
         println!("cargo:rustc-link-search=/opt/homebrew/opt/gettext/lib");
 
-        try_pkg_config(&["openssl", "libxml-2.0", "zlib", "liblz4"], true);
+        // OpenSSL is already linked by `openssl-sys` (`extern crate openssl_sys` in lib.rs);
+        // linking it a second time statically here causes duplicate symbol warnings in Apple ld.
+        try_pkg_config(&["libxml-2.0", "zlib", "liblz4"], true);
 
         let intl_candidates = [
             "/usr/local/opt/gettext/lib/libintl.a",
