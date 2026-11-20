@@ -62,7 +62,7 @@ fn build_native() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
     let openconnect_src_dir = match env::var("OPENCONNECT_PREBUILT_DIR") {
         Ok(dir) if !dir.trim().is_empty() => {
-            let path = PathBuf::from(dir);
+            let path = PathBuf::from(dir.trim());
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)
                     .expect("failed to create parent directory for OPENCONNECT_PREBUILT_DIR");
@@ -74,8 +74,9 @@ fn build_native() {
 
     let openconnect_lib = openconnect_src_dir.join(".libs");
     let static_lib = openconnect_lib.join("libopenconnect.a");
+    let config_header = openconnect_src_dir.join("config.h");
 
-    if !static_lib.exists() {
+    if !static_lib.exists() || !config_header.exists() {
         if use_prebuilt {
             download_prebuilt_from_sourceforge(&out_path);
         } else {
@@ -119,6 +120,40 @@ fn build_native() {
                     output.status,
                     String::from_utf8_lossy(&output.stdout),
                     String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            if !static_lib.exists() || !config_header.exists() {
+                let entries: Vec<String> = std::fs::read_dir(&openconnect_src_dir)
+                    .map(|rd| {
+                        rd.filter_map(|e| e.ok())
+                            .map(|e| e.file_name().to_string_lossy().into_owned())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                panic!(
+                    "scripts/nix.sh exited 0 but expected files are missing in {} (static_lib={}, config.h={}); entries={:?}\nstdout tail:\n{}\nstderr tail:\n{}",
+                    openconnect_src_dir.display(),
+                    static_lib.exists(),
+                    config_header.exists(),
+                    entries,
+                    String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .rev()
+                        .take(30)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    String::from_utf8_lossy(&output.stderr)
+                        .lines()
+                        .rev()
+                        .take(30)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join("\n"),
                 );
             }
         }
