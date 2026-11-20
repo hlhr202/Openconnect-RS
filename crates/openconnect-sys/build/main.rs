@@ -228,15 +228,31 @@ fn build_native() {
     }
 
     // Generate bindings into OUT_DIR (never mutate checked-in src/ files during cargo build).
+    let openconnect_src_str = openconnect_src_dir
+        .to_str()
+        .expect("invalid openconnect src dir");
+    let openconnect_header = openconnect_src_dir.join("openconnect.h");
+    assert!(
+        openconnect_header.exists(),
+        "openconnect.h missing in {}",
+        openconnect_src_dir.display()
+    );
+    let config_header_str = config_header
+        .to_str()
+        .expect("invalid config.h path")
+        .replace('\\', "/");
+    let openconnect_header_str = openconnect_header
+        .to_str()
+        .expect("invalid openconnect.h path")
+        .replace('\\', "/");
+    let wrapper_contents = format!(
+        "#ifdef _WIN32\n#include <stdint.h>\ntypedef uintptr_t SOCKET;\n#endif\n#include \"{config_header_str}\"\n#include \"{openconnect_header_str}\"\n"
+    );
+
     let builder = bindgen::Builder::default()
-        .header("wrapper.h")
+        .header_contents("openconnect_wrapper.h", &wrapper_contents)
         .header("c-src/helper.h")
-        .clang_arg(format!(
-            "-I{}",
-            openconnect_src_dir
-                .to_str()
-                .expect("invalid openconnect src dir")
-        ))
+        .clang_args(["-I", openconnect_src_str])
         .wrap_unsafe_ops(true)
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)
