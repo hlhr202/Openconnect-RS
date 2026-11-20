@@ -1,11 +1,23 @@
+const path = require("path");
 const { heroui } = require("@heroui/react");
+
+const herouiThemeDist = (() => {
+  try {
+    return path.join(
+      path.dirname(require.resolve("@heroui/theme/package.json")),
+      "dist/**/*.{js,ts,jsx,tsx}"
+    );
+  } catch {
+    return "./node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}";
+  }
+})();
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
     "./index.html",
     "./src/**/*.{js,ts,jsx,tsx,html}",
-    "./node_modules/@heroui/theme/dist/**/*.{js,ts,jsx,tsx}",
+    herouiThemeDist,
   ],
   theme: {
     extend: {},
