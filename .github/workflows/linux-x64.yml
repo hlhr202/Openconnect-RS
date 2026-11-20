@@ -41,6 +41,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Cache Prebuilt OpenConnect
+        id: openconnect-cache
         uses: actions/cache@v4
         with:
           path: .openconnect-cache
@@ -70,6 +71,13 @@ jobs:
             librsvg2-dev \
             patchelf \
             mold
+
+      - name: Build Prebuilt OpenConnect
+        if: steps.openconnect-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$(dirname "$OPENCONNECT_PREBUILT_DIR")"
+          sh crates/openconnect-sys/scripts/nix.sh "$OPENCONNECT_PREBUILT_DIR"
+          ls -la "$OPENCONNECT_PREBUILT_DIR/config.h" "$OPENCONNECT_PREBUILT_DIR/openconnect.h" "$OPENCONNECT_PREBUILT_DIR/.libs/libopenconnect.a"
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v6

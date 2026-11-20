@@ -83,9 +83,7 @@ make clean
 JOBS="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
 if [ "$IS_MSYS" -eq 1 ]; then
     echo "#define LIBXML_STATIC" >> config.h
-    make -j"$JOBS" libopenconnect.la
-else
-    make -j"$JOBS"
 fi
+make -j"$JOBS" libopenconnect.la
 
 rm -rf .git
