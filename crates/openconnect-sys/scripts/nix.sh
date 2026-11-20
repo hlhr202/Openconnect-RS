@@ -21,7 +21,7 @@ case "${MSYSTEM:-}${OSTYPE:-}" in
         export PKG_CONFIG_PATH="/mingw64/lib/pkgconfig:/mingw64/share/pkgconfig"
         export PKG_CONFIG_SYSTEM_INCLUDE_PATH="/mingw64/include"
         export PKG_CONFIG_SYSTEM_LIBRARY_PATH="/mingw64/lib"
-        export CFLAGS="${CFLAGS:--O2} -std=gnu17 -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-deprecated-declarations"
+        export CFLAGS="${CFLAGS:--O2} -std=gnu17 -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-deprecated-declarations -Wno-discarded-qualifiers"
         ;;
 esac
 
@@ -42,6 +42,23 @@ echo "build openconnect-sys: cloning openconnect v9.12"
 git clone --depth 1 --branch v9.12 https://gitlab.com/openconnect/openconnect.git "$DIR"
 
 cd "$DIR"
+
+# mingw-w64 14+ merged <sec_api/stdlib_s.h> into <stdlib.h> and removed the old header.
+if [ "$IS_MSYS" -eq 1 ] && [ ! -f /mingw64/include/sec_api/stdlib_s.h ]; then
+    for f in configure.ac compat.c; do
+        if [ -f "$f" ]; then
+            sed 's|<sec_api/stdlib_s.h>|<stdlib.h>|g' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+        fi
+    done
+fi
+
+# OpenSSL 4.0+ made ASN1_STRING opaque; use accessor functions (available since OpenSSL 1.1.0).
+if [ -f openssl.c ]; then
+    sed \
+        -e 's/this->d\.ip->length/ASN1_STRING_length(this->d.ip)/g' \
+        -e 's/this->d\.ip->data/ASN1_STRING_get0_data(this->d.ip)/g' \
+        openssl.c > openssl.c.tmp && mv openssl.c.tmp openssl.c
+fi
 
 echo "build openconnect-sys: downloading vpnc-script"
 curl -fsSLO "$VPNC_SCRIPT"
