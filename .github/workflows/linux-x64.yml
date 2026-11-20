@@ -3,17 +3,54 @@ name: Linux x64 Build
 on:
   workflow_dispatch:
   workflow_call:
+  push:
+    branches: ["main", "develop"]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE*"
   pull_request:
-    branches: ["main"]
+    branches: ["main", "develop"]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE*"
+
+# Release profile only for tags (incl. release.yml via workflow_call), `main`, and
+# PRs targeting `main`. Everything on `develop` uses a fast debug build instead.
+env:
+  BUILD_PROFILE: ${{ (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && 'release' || 'debug' }}
+  TAURI_PROFILE_FLAG: ${{ !(startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && '--debug' || '' }}
+  CARGO_PROFILE_FLAG: ${{ (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && '--release' || '' }}
+  # Skip debuginfo in debug builds: much faster linking and smaller artifacts.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  OPENCONNECT_PREBUILT_DIR: ${{ github.workspace }}/.openconnect-cache/openconnect
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: sccache
+
+# Literal group prefix: under workflow_call `github.workflow` is the caller's name.
+concurrency:
+  group: linux-x64-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Prebuilt OpenConnect
+        id: openconnect-cache
+        uses: actions/cache@v4
+        with:
+          path: .openconnect-cache
+          key: openconnect-v9.12-linux-x64-${{ hashFiles('crates/openconnect-sys/scripts/nix.sh') }}
+
       - name: Install System Dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y \
+          sudo apt-get install -y --no-install-recommends \
             build-essential \
             pkg-config \
             automake \
@@ -32,21 +69,31 @@ jobs:
             libsoup-3.0-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            mold
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "26"
-
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Build Prebuilt OpenConnect
+        if: steps.openconnect-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$(dirname "$OPENCONNECT_PREBUILT_DIR")"
+          sh crates/openconnect-sys/scripts/nix.sh "$OPENCONNECT_PREBUILT_DIR"
+          ls -la "$OPENCONNECT_PREBUILT_DIR/config.h" "$OPENCONNECT_PREBUILT_DIR/openconnect.h" "$OPENCONNECT_PREBUILT_DIR/.libs/libopenconnect.a"
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v6
         with:
           run_install: false
           version: 12
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: pnpm
+          cache-dependency-path: crates/openconnect-gui/pnpm-lock.yaml
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -55,20 +102,30 @@ jobs:
           target: x86_64-unknown-linux-gnu
           cache: true
 
-      - name: Build GUI (.deb)
-        run: |
-          cd ./crates/openconnect-gui
-          pnpm install --frozen-lockfile
-          pnpm tauri build --bundles deb
+      - name: Enable mold linker
+        run: echo "RUSTFLAGS=${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
 
-      - name: Build CLI
+      - name: Build Frontend
+        working-directory: crates/openconnect-gui
         run: |
-          cargo build --release -p openconnect-cli
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Build GUI & CLI
+        run: cargo build $CARGO_PROFILE_FLAG -p openconnect-gui -p openconnect-cli --features openconnect-gui/custom-protocol
+
+      - name: Bundle GUI (.deb)
+        working-directory: crates/openconnect-gui
+        run: pnpm tauri bundle --bundles deb $TAURI_PROFILE_FLAG --features custom-protocol
+
+      - name: Show sccache stats
+        if: always()
+        run: sccache --show-stats
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: openconnect-linux-x64
           path: |
-            ./target/release/bundle/
-            ./target/release/openconnect-cli
+            ./target/${{ env.BUILD_PROFILE }}/bundle/
+            ./target/${{ env.BUILD_PROFILE }}/openconnect-cli

@@ -8,7 +8,7 @@
 #![doc = include_str!("../examples/password_server.rs")]
 //! ```
 
-mod cert;
+pub mod cert;
 pub mod command;
 pub mod config;
 pub mod elevator;
@@ -106,7 +106,16 @@ impl SharedState {
         tracing::debug!("VPN stats: dtls={:?}, stats={:?}", dtls, stats);
     }
 
-    pub(crate) fn handle_accept_insecure_cert(&self, fingerprint: &str) -> bool {
+    /// Fingerprint the user previously trusted for the current server, if any.
+    pub(crate) fn stored_server_cert(&self) -> Option<String> {
+        self.entrypoint
+            .read()
+            .ok()
+            .and_then(|ep| ep.as_ref().and_then(|e| e.server_cert.clone()))
+            .filter(|pin| !pin.trim().is_empty())
+    }
+
+    pub(crate) fn handle_unverified_cert(&self, prompt: &cert::PeerCertPrompt) -> bool {
         let accept_in_entrypoint_config = self
             .entrypoint
             .read()
@@ -115,11 +124,15 @@ impl SharedState {
             .unwrap_or(false);
 
         if accept_in_entrypoint_config {
+            tracing::warn!(
+                "Insecurely accepting unverified certificate {} because accept_insecure_cert is enabled",
+                prompt.fingerprint
+            );
             return true;
         }
 
-        if let Some(ref handler) = self.callbacks.handle_peer_cert_invalid {
-            handler(fingerprint)
+        if let Some(ref handler) = self.callbacks.handle_peer_cert_verify {
+            handler(prompt)
         } else {
             false
         }

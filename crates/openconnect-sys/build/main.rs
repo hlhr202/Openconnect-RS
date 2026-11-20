@@ -18,6 +18,7 @@ fn main() {
     println!("cargo:rerun-if-changed=scripts/nix.sh");
     println!("cargo:rerun-if-env-changed=OPENCONNECT_USE_PREBUILT");
     println!("cargo:rerun-if-env-changed=OPENCONNECT_PREBUILT_SHA256");
+    println!("cargo:rerun-if-env-changed=OPENCONNECT_PREBUILT_DIR");
 
     // Compile helper.c unconditionally (except docs.rs) so both native and mock-ffi link it.
     if env::var("DOCS_RS").is_ok() {
@@ -59,12 +60,23 @@ fn build_native() {
 
     let out_path = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR not set"));
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    let openconnect_src_dir = out_path.join("openconnect");
+    let openconnect_src_dir = match env::var("OPENCONNECT_PREBUILT_DIR") {
+        Ok(dir) if !dir.trim().is_empty() => {
+            let path = PathBuf::from(dir.trim());
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)
+                    .expect("failed to create parent directory for OPENCONNECT_PREBUILT_DIR");
+            }
+            path
+        }
+        _ => out_path.join("openconnect"),
+    };
 
     let openconnect_lib = openconnect_src_dir.join(".libs");
     let static_lib = openconnect_lib.join("libopenconnect.a");
+    let config_header = openconnect_src_dir.join("config.h");
 
-    if !static_lib.exists() {
+    if !static_lib.exists() || !config_header.exists() {
         if use_prebuilt {
             download_prebuilt_from_sourceforge(&out_path);
         } else {
@@ -108,6 +120,40 @@ fn build_native() {
                     output.status,
                     String::from_utf8_lossy(&output.stdout),
                     String::from_utf8_lossy(&output.stderr)
+                );
+            }
+            if !static_lib.exists() || !config_header.exists() {
+                let entries: Vec<String> = std::fs::read_dir(&openconnect_src_dir)
+                    .map(|rd| {
+                        rd.filter_map(|e| e.ok())
+                            .map(|e| e.file_name().to_string_lossy().into_owned())
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                panic!(
+                    "scripts/nix.sh exited 0 but expected files are missing in {} (static_lib={}, config.h={}); entries={:?}\nstdout tail:\n{}\nstderr tail:\n{}",
+                    openconnect_src_dir.display(),
+                    static_lib.exists(),
+                    config_header.exists(),
+                    entries,
+                    String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .rev()
+                        .take(30)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                    String::from_utf8_lossy(&output.stderr)
+                        .lines()
+                        .rev()
+                        .take(30)
+                        .collect::<Vec<_>>()
+                        .into_iter()
+                        .rev()
+                        .collect::<Vec<_>>()
+                        .join("\n"),
                 );
             }
         }
@@ -161,7 +207,9 @@ fn build_native() {
         println!("cargo:rustc-link-search=/usr/local/opt/gettext/lib");
         println!("cargo:rustc-link-search=/opt/homebrew/opt/gettext/lib");
 
-        try_pkg_config(&["openssl", "libxml-2.0", "zlib", "liblz4"], true);
+        // OpenSSL is already linked by `openssl-sys` (`extern crate openssl_sys` in lib.rs);
+        // linking it a second time statically here causes duplicate symbol warnings in Apple ld.
+        try_pkg_config(&["libxml-2.0", "zlib", "liblz4"], true);
 
         let intl_candidates = [
             "/usr/local/opt/gettext/lib/libintl.a",
@@ -182,15 +230,31 @@ fn build_native() {
     }
 
     // Generate bindings into OUT_DIR (never mutate checked-in src/ files during cargo build).
+    let openconnect_src_str = openconnect_src_dir
+        .to_str()
+        .expect("invalid openconnect src dir");
+    let openconnect_header = openconnect_src_dir.join("openconnect.h");
+    assert!(
+        openconnect_header.exists(),
+        "openconnect.h missing in {}",
+        openconnect_src_dir.display()
+    );
+    let config_header_str = config_header
+        .to_str()
+        .expect("invalid config.h path")
+        .replace('\\', "/");
+    let openconnect_header_str = openconnect_header
+        .to_str()
+        .expect("invalid openconnect.h path")
+        .replace('\\', "/");
+    let wrapper_contents = format!(
+        "#ifdef _WIN32\n#include <stdint.h>\ntypedef uintptr_t SOCKET;\n#endif\n#include \"{config_header_str}\"\n#include \"{openconnect_header_str}\"\n"
+    );
+
     let builder = bindgen::Builder::default()
-        .header("wrapper.h")
+        .header_contents("openconnect_wrapper.h", &wrapper_contents)
         .header("c-src/helper.h")
-        .clang_arg(format!(
-            "-I{}",
-            openconnect_src_dir
-                .to_str()
-                .expect("invalid openconnect src dir")
-        ))
+        .clang_args(["-I", openconnect_src_str])
         .wrap_unsafe_ops(true)
         .enable_function_attribute_detection()
         .trust_clang_mangling(true)

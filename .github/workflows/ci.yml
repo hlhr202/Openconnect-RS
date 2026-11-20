@@ -2,10 +2,18 @@ name: CI Safety & Quality Gates
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "develop"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "develop"]
   workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+env:
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: sccache
 
 jobs:
   rust-safety-gates:
@@ -13,30 +21,37 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Install Valgrind & mold
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends valgrind mold
+
+      - uses: mozilla-actions/sccache-action@v0.0.11
+
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
           toolchain: stable
           components: rustfmt, clippy
           cache: true
 
-      - name: Install Valgrind
-        run: sudo apt-get update && sudo apt-get install -y valgrind
+      - name: Enable mold linker
+        run: echo "RUSTFLAGS=${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
 
       - name: Format check
         run: cargo fmt --all -- --check
 
       - name: Run mock-FFI unit & safety regression tests
         run: |
-          cargo test -p openconnect-sys --no-default-features --features mock-ffi
-          cargo test -p openconnect-core --no-default-features --features mock-ffi
-          cargo test -p openconnect-oidc
-          cargo test -p openconnect-cli --no-default-features --features mock-ffi
+          cargo test --no-default-features \
+            -p openconnect-sys -p openconnect-core -p openconnect-cli -p openconnect-oidc \
+            --features openconnect-sys/mock-ffi,openconnect-core/mock-ffi,openconnect-cli/mock-ffi
 
       - name: Strict Clippy (unsafe docs + warnings denied)
         run: |
-          cargo clippy -p openconnect-core --no-default-features --features mock-ffi --all-targets -- -D warnings
-          cargo clippy -p openconnect-oidc --all-targets -- -D warnings
-          cargo clippy -p openconnect-cli --no-default-features --features mock-ffi --all-targets -- -D warnings
+          cargo clippy --no-default-features --all-targets \
+            -p openconnect-core -p openconnect-cli -p openconnect-oidc \
+            --features openconnect-core/mock-ffi,openconnect-cli/mock-ffi \
+            -- -D warnings
 
       - name: ASan + UBSan check on C helper.c
         run: |
@@ -49,22 +64,31 @@ jobs:
 
       - name: Valgrind leak & memory error check on FFI regression binary
         run: |
-          TEST_BIN=$(cargo test -p openconnect-core --no-default-features --features mock-ffi --test ffi_safety_regression --no-run --message-format=json \
+          TEST_BIN=$(cargo test --no-default-features \
+            -p openconnect-sys -p openconnect-core -p openconnect-cli -p openconnect-oidc \
+            --features openconnect-sys/mock-ffi,openconnect-core/mock-ffi,openconnect-cli/mock-ffi \
+            --test ffi_safety_regression --no-run --message-format=json \
             | python3 -c "import sys,json; print([json.loads(l)['executable'] for l in sys.stdin if '\"executable\":' in l and 'ffi_safety_regression' in l][-1])")
           valgrind --leak-check=full --show-leak-kinds=definite --errors-for-leak-kinds=definite --error-exitcode=1 "$TEST_BIN" --test-threads=1
+
+      - name: Show sccache stats
+        if: always()
+        run: sccache --show-stats
 
   gui-frontend:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v7
-        with:
-          node-version: "26"
-
       - uses: pnpm/action-setup@v6
         with:
           version: 12
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: pnpm
+          cache-dependency-path: crates/openconnect-gui/pnpm-lock.yaml
 
       - name: Install & Build GUI frontend
         working-directory: crates/openconnect-gui
@@ -102,7 +126,10 @@ jobs:
       - name: Install Tauri v2 Linux system libraries
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev mold
+
+      - uses: mozilla-actions/sccache-action@v0.0.11
 
       - uses: actions-rust-lang/setup-rust-toolchain@v1
         with:
@@ -110,5 +137,12 @@ jobs:
           components: clippy
           cache: true
 
+      - name: Enable mold linker
+        run: echo "RUSTFLAGS=${RUSTFLAGS:-} -C link-arg=-fuse-ld=mold" >> "$GITHUB_ENV"
+
       - name: Check & Clippy openconnect-gui (Tauri v2 + mock-ffi)
         run: cargo clippy -p openconnect-gui --no-default-features --features mock-ffi --all-targets -- -D warnings
+
+      - name: Show sccache stats
+        if: always()
+        run: sccache --show-stats

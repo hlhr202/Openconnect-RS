@@ -3,13 +3,51 @@ name: Mac x64 Build
 on:
   workflow_dispatch:
   workflow_call:
+  push:
+    branches: ["main", "develop"]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE*"
   pull_request:
-    branches: ["main"]
+    branches: ["main", "develop"]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+      - "LICENSE*"
+
+# Release profile only for tags (incl. release.yml via workflow_call), `main`, and
+# PRs targeting `main`. Everything on `develop` uses a fast debug build instead.
+env:
+  BUILD_PROFILE: ${{ (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && 'release' || 'debug' }}
+  TAURI_PROFILE_FLAG: ${{ !(startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && '--debug' || '' }}
+  CARGO_PROFILE_FLAG: ${{ (startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main' || github.base_ref == 'main') && '--release' || '' }}
+  # Skip debuginfo in debug builds: much faster linking and smaller artifacts.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  OPENCONNECT_PREBUILT_DIR: ${{ github.workspace }}/.openconnect-cache/openconnect
+  OPENSSL_STATIC: "1"
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: sccache
+
+# Literal group prefix: under workflow_call `github.workflow` is the caller's name.
+concurrency:
+  group: mac-x64-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/') }}
 
 jobs:
   build:
     runs-on: macos-15-intel
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Cache Prebuilt OpenConnect
+        id: openconnect-cache
+        uses: actions/cache@v4
+        with:
+          path: .openconnect-cache
+          key: openconnect-v9.12-macos-x64-${{ hashFiles('crates/openconnect-sys/scripts/nix.sh') }}
+
       - name: Install Dependencies
         env:
           HOMEBREW_NO_AUTO_UPDATE: "1"
@@ -17,19 +55,28 @@ jobs:
           brew install libxml2 zlib openssl@3 lz4 xz pkg-config automake autoconf libtool gettext
           echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: "26"
-
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Build Prebuilt OpenConnect
+        if: steps.openconnect-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p "$(dirname "$OPENCONNECT_PREBUILT_DIR")"
+          sh crates/openconnect-sys/scripts/nix.sh "$OPENCONNECT_PREBUILT_DIR"
+          ls -la "$OPENCONNECT_PREBUILT_DIR/config.h" "$OPENCONNECT_PREBUILT_DIR/openconnect.h" "$OPENCONNECT_PREBUILT_DIR/.libs/libopenconnect.a"
 
       - name: Setup PNPM
         uses: pnpm/action-setup@v6
         with:
           run_install: false
           version: 12
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+          cache: pnpm
+          cache-dependency-path: crates/openconnect-gui/pnpm-lock.yaml
+
+      - name: Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.11
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -38,31 +85,38 @@ jobs:
           target: x86_64-apple-darwin
           cache: true
 
-      - name: Build GUI
+      - name: Build Frontend
+        working-directory: crates/openconnect-gui
         run: |
-          cd ./crates/openconnect-gui
           pnpm install --frozen-lockfile
-          pnpm tauri build
+          pnpm build
 
-      - name: Build CLI
-        run: |
-          cargo build --release -p openconnect-cli
+      - name: Build GUI & CLI
+        run: cargo build $CARGO_PROFILE_FLAG -p openconnect-gui -p openconnect-cli --features openconnect-gui/custom-protocol
+
+      - name: Bundle GUI (.app)
+        working-directory: crates/openconnect-gui
+        run: pnpm tauri bundle $TAURI_PROFILE_FLAG --features custom-protocol
 
       - name: Package DMG
         run: |
           STAGE_DIR=$(mktemp -d)
-          cp -R ./target/release/bundle/macos/openconnect-gui.app "$STAGE_DIR/"
+          cp -R ./target/${{ env.BUILD_PROFILE }}/bundle/macos/openconnect-gui.app "$STAGE_DIR/"
           ln -s /Applications "$STAGE_DIR/Applications"
           hdiutil create -volname "Openconnect GUI" \
             -srcfolder "$STAGE_DIR" \
             -ov -format UDZO \
-            ./target/release/bundle/openconnect-gui_osx-x86_64.dmg
+            ./target/${{ env.BUILD_PROFILE }}/bundle/openconnect-gui_osx-x86_64.dmg
           rm -rf "$STAGE_DIR"
+
+      - name: Show sccache stats
+        if: always()
+        run: sccache --show-stats
 
       - name: Upload
         uses: actions/upload-artifact@v4
         with:
           name: openconnect-mac-x64
           path: |
-            ./target/release/bundle/
-            ./target/release/openconnect-cli
+            ./target/${{ env.BUILD_PROFILE }}/bundle/
+            ./target/${{ env.BUILD_PROFILE }}/openconnect-cli
