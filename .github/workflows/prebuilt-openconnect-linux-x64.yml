@@ -8,12 +8,12 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
-      - name: Install Package
-        uses: ConorMacBride/install-package@v1.1.0
-        with:
-          apt: libxml2 zlib1g zlib1g-dev openssl libssl-dev pkg-config automake libtool gettext zip
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libxml2-dev zlib1g-dev openssl libssl-dev pkg-config automake autoconf libtool gettext autopoint zip
 
       - name: "🚧 Build TOOL"
         run: |

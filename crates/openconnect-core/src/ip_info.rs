@@ -1,13 +1,7 @@
+use crate::ffi::c_str_to_option_string;
 use openconnect_sys::oc_ip_info;
-use std::ffi::CStr;
 
-// TODO: Implement SplitInclude
-// pub struct SplitInclude {
-//     pub route: String,
-//     pub next: Arc<SplitInclude>,
-// }
-
-#[derive(serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct IpInfo {
     pub addr: Option<String>,
     pub netmask: Option<String>,
@@ -18,44 +12,46 @@ pub struct IpInfo {
     pub domain: Option<String>,
     pub proxy_pac: Option<String>,
     pub mtu: i32,
-    // pub split_dns: SplitInclude,
-    // pub split_includes: SplitInclude,
-    // pub split_excludes: SplitInclude,
     pub gateway_addr: Option<String>,
 }
 
-unsafe fn raw_to_string(raw: *const i8) -> Option<String> {
-    if raw.is_null() {
-        None
-    } else {
-        Some(CStr::from_ptr(raw).to_string_lossy().to_string())
-    }
-}
-
-impl From<&oc_ip_info> for IpInfo {
-    fn from(value: &oc_ip_info) -> Self {
-        unsafe {
-            // let value = value.as_ref();
-            Self {
-                addr: raw_to_string(value.addr),
-                netmask: raw_to_string(value.netmask),
-                addr6: raw_to_string(value.addr6),
-                netmask6: raw_to_string(value.netmask6),
-                dns: [
-                    raw_to_string(value.dns[0]),
-                    raw_to_string(value.dns[1]),
-                    raw_to_string(value.dns[2]),
-                ],
-                nbns: [
-                    raw_to_string(value.nbns[0]),
-                    raw_to_string(value.nbns[1]),
-                    raw_to_string(value.nbns[2]),
-                ],
-                domain: raw_to_string(value.domain),
-                proxy_pac: raw_to_string(value.proxy_pac),
-                mtu: value.mtu,
-                gateway_addr: raw_to_string(value.gateway_addr),
-            }
+impl IpInfo {
+    /// Convert a raw `oc_ip_info` pointer returned by `openconnect_get_ip_info` into [`IpInfo`].
+    ///
+    /// # Safety
+    /// If `ptr` is non-null, it must point to a valid, initialized `oc_ip_info` struct whose
+    /// non-null string fields point to valid NUL-terminated C strings for the duration of this call.
+    pub(crate) unsafe fn from_raw(ptr: *const oc_ip_info) -> Option<Self> {
+        if ptr.is_null() {
+            return None;
         }
+        // SAFETY: Caller guarantees `ptr` is non-null, properly aligned, and points to a valid `oc_ip_info`.
+        let value = unsafe { &*ptr };
+
+        let read_str = |p| {
+            // SAFETY: Caller guarantees every non-null field pointer in `oc_ip_info` is a valid C string.
+            unsafe { c_str_to_option_string(p) }
+        };
+
+        Some(Self {
+            addr: read_str(value.addr),
+            netmask: read_str(value.netmask),
+            addr6: read_str(value.addr6),
+            netmask6: read_str(value.netmask6),
+            dns: [
+                read_str(value.dns[0]),
+                read_str(value.dns[1]),
+                read_str(value.dns[2]),
+            ],
+            nbns: [
+                read_str(value.nbns[0]),
+                read_str(value.nbns[1]),
+                read_str(value.nbns[2]),
+            ],
+            domain: read_str(value.domain),
+            proxy_pac: read_str(value.proxy_pac),
+            mtu: value.mtu,
+            gateway_addr: read_str(value.gateway_addr),
+        })
     }
 }

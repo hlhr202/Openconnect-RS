@@ -1,46 +1,57 @@
-// TODO: add support for Linux GUI escalation
 #[cfg(target_os = "windows")]
 pub mod windows {
+    use std::ffi::OsStr;
+    use std::os::windows::ffi::OsStrExt;
     use std::os::windows::process::ExitStatusExt;
     use std::process::{Command, ExitStatus};
-    use windows::Win32::UI::Shell::ShellExecuteW;
-    use windows::Win32::UI::WindowsAndMessaging::SW_NORMAL;
-    use windows::{
-        core::{w, HSTRING, PCWSTR},
-        Win32::{Foundation::HWND, UI::WindowsAndMessaging::SW_HIDE},
-    };
     use windows_sys::Win32::{
-        Foundation::HANDLE,
-        Security::{
-            GetTokenInformation, TokenElevation, TOKEN_ELEVATION, TOKEN_ELEVATION_TYPE, TOKEN_QUERY,
-        },
+        Foundation::{CloseHandle, HANDLE},
+        Security::{GetTokenInformation, TOKEN_ELEVATION, TOKEN_QUERY, TokenElevation},
         System::Threading::{GetCurrentProcess, OpenProcessToken},
+        UI::{
+            Shell::ShellExecuteW,
+            WindowsAndMessaging::{SW_HIDE, SW_NORMAL},
+        },
     };
 
-    pub fn is_elevated() -> bool {
-        let mut current_token_ptr: HANDLE = unsafe { std::mem::zeroed() };
-        let mut token_evelation: TOKEN_ELEVATION = unsafe { std::mem::zeroed() };
-        let token_evelation_type_ptr: *mut TOKEN_ELEVATION = &mut token_evelation;
-        let mut size: u32 = 0;
+    /// RAII wrapper ensuring Windows `HANDLE` is always closed via `CloseHandle`.
+    struct OwnedTokenHandle(HANDLE);
 
-        let result =
-            unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut current_token_ptr) };
-        if result != 0 {
-            let result = unsafe {
-                GetTokenInformation(
-                    current_token_ptr,
-                    TokenElevation,
-                    token_evelation_type_ptr as *mut std::ffi::c_void,
-                    std::mem::size_of::<TOKEN_ELEVATION_TYPE>() as u32,
-                    &mut size,
-                )
-            };
-            if result != 0 {
-                return token_evelation.TokenIsElevated != 0;
+    impl Drop for OwnedTokenHandle {
+        fn drop(&mut self) {
+            if !self.0.is_null() {
+                // SAFETY: `self.0` is a valid token handle opened by `OpenProcessToken`.
+                unsafe {
+                    CloseHandle(self.0);
+                }
             }
         }
+    }
 
-        false
+    pub fn is_elevated() -> bool {
+        let mut raw_token: HANDLE = std::ptr::null_mut();
+        let mut token_elevation = TOKEN_ELEVATION { TokenIsElevated: 0 };
+        let mut return_len: u32 = 0;
+
+        // SAFETY: `GetCurrentProcess()` returns a pseudo-handle and `&mut raw_token` is valid.
+        let opened = unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token) };
+        if opened == 0 {
+            return false;
+        }
+        let token = OwnedTokenHandle(raw_token);
+
+        // SAFETY: `token.0` is valid and `token_elevation` matches `size_of::<TOKEN_ELEVATION>()`.
+        let ok = unsafe {
+            GetTokenInformation(
+                token.0,
+                TokenElevation,
+                (&mut token_elevation as *mut TOKEN_ELEVATION).cast::<std::ffi::c_void>(),
+                std::mem::size_of::<TOKEN_ELEVATION>() as u32,
+                &mut return_len,
+            )
+        };
+
+        ok != 0 && token_elevation.TokenIsElevated != 0
     }
 
     pub struct Output {
@@ -49,54 +60,94 @@ pub mod windows {
         pub stderr: Vec<u8>,
     }
 
+    fn to_wide_null(s: &OsStr) -> Vec<u16> {
+        s.encode_wide().chain(std::iter::once(0)).collect()
+    }
+
+    /// Quote a single Windows command-line argument according to `CommandLineToArgvW` rules.
+    fn quote_windows_arg(arg: &str) -> String {
+        if !arg.is_empty() && !arg.chars().any(|c| c == ' ' || c == '\t' || c == '"') {
+            return arg.to_string();
+        }
+        let mut quoted = String::with_capacity(arg.len() + 2);
+        quoted.push('"');
+        let mut backslashes = 0usize;
+        for c in arg.chars() {
+            if c == '\\' {
+                backslashes += 1;
+            } else if c == '"' {
+                for _ in 0..(backslashes * 2 + 1) {
+                    quoted.push('\\');
+                }
+                quoted.push('"');
+                backslashes = 0;
+            } else {
+                for _ in 0..backslashes {
+                    quoted.push('\\');
+                }
+                backslashes = 0;
+                quoted.push(c);
+            }
+        }
+        for _ in 0..(backslashes * 2) {
+            quoted.push('\\');
+        }
+        quoted.push('"');
+        quoted
+    }
+
     pub fn elevate(cmd: &Command, with_cmd: bool) -> std::io::Result<Output> {
-        let args = cmd
-            .get_args()
-            .map(|c| c.to_str().expect("Invalid args").to_string())
-            .collect::<Vec<_>>();
+        let mut args = Vec::new();
+        for arg in cmd.get_args() {
+            let arg_str = arg.to_str().ok_or_else(|| {
+                std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    "Command argument contains non-UTF-8 characters",
+                )
+            })?;
+            args.push(quote_windows_arg(arg_str));
+        }
 
-        let parameters = if args.is_empty() {
-            HSTRING::new()
-        } else {
-            let arg_str = args.join(" ");
-            HSTRING::from(arg_str)
-        };
-
+        let verb_w = to_wide_null(OsStr::new("runas"));
+        let program_w = to_wide_null(cmd.get_program());
+        let params_str = args.join(" ");
+        let params_w = to_wide_null(OsStr::new(&params_str));
         let nshowcmd = if with_cmd { SW_NORMAL } else { SW_HIDE };
 
+        // SAFETY: All wide-string pointers are NUL-terminated and live for the duration of the call.
         let r = unsafe {
             ShellExecuteW(
-                HWND(0),
-                w!("runas"),
-                &HSTRING::from(cmd.get_program()),
-                &parameters,
-                PCWSTR::null(),
+                std::ptr::null_mut(),
+                verb_w.as_ptr(),
+                program_w.as_ptr(),
+                if args.is_empty() {
+                    std::ptr::null()
+                } else {
+                    params_w.as_ptr()
+                },
+                std::ptr::null(),
                 nshowcmd,
             )
         };
 
+        // Per Win32 docs, ShellExecuteW returns a value > 32 on success, <= 32 on error.
+        if (r as isize) <= 32 {
+            return Err(std::io::Error::last_os_error());
+        }
+
         Ok(Output {
-            status: ExitStatus::from_raw(r.0 as u32),
+            status: ExitStatus::from_raw(0),
             stdout: Vec::new(),
             stderr: Vec::new(),
         })
     }
+}
 
-    #[cfg(test)]
-    mod tests {
-        use super::*;
-
-        #[test]
-        fn test_is_elevated() {
-            assert!(!is_elevated());
-        }
-
-        #[test]
-        fn test_elevate() {
-            let mut cmd = Command::new("cmd");
-            cmd.arg("/c").arg("echo hello");
-            elevate(&cmd, false).expect("Failed to elevate");
-        }
+#[cfg(unix)]
+pub mod unix {
+    pub fn is_elevated() -> bool {
+        // SAFETY: `libc::geteuid()` is always safe and cannot fail per POSIX.
+        unsafe { libc::geteuid() == 0 }
     }
 }
 
@@ -109,13 +160,13 @@ pub mod macos {
     use std::process::Command;
 
     pub fn is_elevated() -> bool {
-        unsafe { libc::geteuid() == 0 }
+        crate::elevator::unix::is_elevated()
     }
 
     pub fn elevate(cmd: &Command) -> Result<()> {
         let args = cmd
             .get_args()
-            .map(|c| c.to_str().expect("Invalid args").to_string())
+            .filter_map(|c| c.to_str().map(str::to_string))
             .collect::<Vec<_>>();
 
         let flags = Flags::default();

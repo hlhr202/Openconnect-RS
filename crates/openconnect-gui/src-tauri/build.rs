@@ -3,9 +3,7 @@ fn main() {
 
     match profile.as_str() {
         "release" => {
-            let mut windows = tauri_build::WindowsAttributes::new();
-
-            windows = windows.app_manifest(
+            let windows = tauri_build::WindowsAttributes::new().app_manifest(
                 r#"<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
   <dependency>
     <dependentAssembly>
@@ -31,9 +29,8 @@ fn main() {
             tauri_build::try_build(tauri_build::Attributes::new().windows_attributes(windows))
                 .expect("failed to run build script");
         }
-        "debug" => {
+        _ => {
             tauri_build::build();
         }
-        _ => {}
     }
 }

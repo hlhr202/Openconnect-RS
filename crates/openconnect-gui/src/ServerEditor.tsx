@@ -5,13 +5,13 @@ import {
   SelectItem,
   Switch,
   cn,
-} from "@nextui-org/react";
+} from "@heroui/react";
 import { useForm, SubmitHandler, useWatch, Controller } from "react-hook-form";
 import { useCallback, useEffect, useMemo } from "react";
-import { invoke } from "@tauri-apps/api";
+import { invoke } from "@tauri-apps/api/core";
 import { OidcServer, PasswordServer, useStoredConfigs } from "./state";
 import { toastError, toastSuccess } from "./lib/toast";
-import { enc } from "crypto-js";
+import { encodeUtf8Base64 } from "./lib/base64";
 
 export interface FormParams {
   mode: "add" | "edit";
@@ -112,9 +112,7 @@ export const ServerEditor = (props: FormParams) => {
         break;
       }
     }
-    const jsonString = JSON.stringify(toShare);
-    const words = enc.Utf8.parse(jsonString);
-    const base64 = enc.Base64.stringify(words);
+    const base64 = encodeUtf8Base64(JSON.stringify(toShare));
     navigator.clipboard.writeText(base64);
     toastSuccess("Copied to clipboard successfully");
   }, [initialData]);
@@ -139,7 +137,7 @@ export const ServerEditor = (props: FormParams) => {
       keepDirtyValues: false,
       keepTouched: false,
     });
-  }, [initialData, unregister]);
+  }, [initialData, unregister, reset]);
 
   return (
     <form
@@ -174,19 +172,19 @@ export const ServerEditor = (props: FormParams) => {
               labelPlacement="inside"
               placeholder="Select an authentication type"
               selectionMode="single"
-              unselectable="off"
               disallowEmptySelection
               size="sm"
               errorMessage={fieldState.error?.message}
-              selectedKeys={[field.value]}
-              {...field}
+              selectedKeys={field.value ? [field.value] : []}
+              onSelectionChange={(keys) => {
+                const value = Array.from(keys as Set<string>)[0];
+                if (value) {
+                  field.onChange(value);
+                }
+              }}
             >
-              <SelectItem key="oidc" value="oidc">
-                OIDC Server
-              </SelectItem>
-              <SelectItem key="password" value="password">
-                Password Server
-              </SelectItem>
+              <SelectItem key="oidc">OIDC Server</SelectItem>
+              <SelectItem key="password">Password Server</SelectItem>
             </Select>
           )}
         />
@@ -297,16 +295,12 @@ export const ServerEditor = (props: FormParams) => {
               classNames={{
                 base: cn(
                   "inline-flex flex-row-reverse w-full bg-content2 hover:bg-content3 items-center",
-                  "justify-between cursor-pointer rounded-lg gap-2 p-2 border-2 border-transparent",
-                  // "data-[selected=true]:border-primary"
+                  "justify-between cursor-pointer rounded-lg gap-2 p-2 border-2 border-transparent"
                 ),
                 wrapper: "p-0 h-4 overflow-visible",
                 thumb: cn(
                   "w-6 h-6 border-2 shadow-lg",
-                  // "group-data-[hover=true]:border-primary",
-                  //selected
                   "group-data-[selected=true]:ml-6",
-                  // pressed
                   "group-data-[pressed=true]:w-7",
                   "group-data-[selected]:group-data-[pressed]:ml-4"
                 ),
@@ -335,7 +329,7 @@ export const ServerEditor = (props: FormParams) => {
               color="warning"
               size="sm"
               className="flex-1"
-              onClick={handleShare}
+              onPress={handleShare}
             >
               Share
             </Button>
@@ -344,9 +338,8 @@ export const ServerEditor = (props: FormParams) => {
               color="danger"
               size="sm"
               className="flex-1"
-              disabled={defaultName === initialData.name}
               isDisabled={defaultName === initialData.name}
-              onClick={removeServer}
+              onPress={removeServer}
             >
               Delete
             </Button>
@@ -355,9 +348,8 @@ export const ServerEditor = (props: FormParams) => {
               color="primary"
               size="sm"
               className="flex-1"
-              disabled={defaultName === initialData.name}
               isDisabled={defaultName === initialData.name}
-              onClick={setDefaultServer}
+              onPress={setDefaultServer}
             >
               Set Default
             </Button>

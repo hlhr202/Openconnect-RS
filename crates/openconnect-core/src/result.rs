@@ -1,8 +1,20 @@
-use crate::{events::Events, VpnClient};
+use crate::{VpnClient, events::Events};
 use thiserror::Error;
 
 #[derive(Error, Debug, Clone, PartialEq, Eq)]
 pub enum OpenconnectError {
+    #[error("Failed to initialize OpenConnect SSL subsystem. Error code: {0}")]
+    InitSslError(i32),
+
+    #[error("Failed to allocate OpenConnect vpninfo handle")]
+    CreateVpnInfoError,
+
+    #[error("Failed to query supported protocols. Error code: {0}")]
+    GetProtocolsError(i32),
+
+    #[error("Failed to acquire internal lock: {0}")]
+    LockError(String),
+
     #[error("Failed to create new VPN entry point: {0}")]
     EntrypointConfigError(String),
 
@@ -37,7 +49,7 @@ pub enum OpenconnectError {
     ParseUrlError(i32),
 
     #[error("Failed to setup tun device. Error code: {0}")]
-    SetupTunDeviceEror(i32),
+    SetupTunDeviceError(i32),
 
     #[error("Failed to set client certificate. Error code: {0}")]
     SetClientCertError(i32),

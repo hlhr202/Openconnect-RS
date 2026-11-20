@@ -1,31 +1,30 @@
 [package]
 name = "openconnect-core"
-version = "0.1.5"
-edition = "2021"
-description = "A library for interacting with OpenConnect VPN"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+description = "A safe Rust library for interacting with OpenConnect VPN"
 license = "LGPL-2.1"
 repository = "https://github.com/hlhr202/Openconnect-RS/tree/main/crates/openconnect-core"
-homepage = "https://github.com/hlhr202/Openconnect-RS"
-authors = ["hlhr202"]
 keywords = ["openconnect", "vpn", "networking", "security"]
 documentation = "https://docs.rs/openconnect-core"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = ["native"]
+native = ["openconnect-sys/native"]
+mock-ffi = ["openconnect-sys/mock-ffi"]
 
 [lib]
 crate-type = ["lib"]
 
 [dependencies]
-anyhow = { workspace = true }
-ctrlc = "3.4.4"
-signal-hook = "0.3.17"
-dotenvy = { workspace = true }
+signal-hook = { workspace = true }
 libc = { workspace = true }
-openconnect-sys = { path = "../openconnect-sys", version = "0.1.5"}
-reqwest = { workspace = true }
+openconnect-sys = { path = "../openconnect-sys", version = "0.2.0", default-features = false }
 thiserror = { workspace = true }
-lazy_static = { workspace = true }
-tokio = { workspace = true }
+tokio = { workspace = true, features = ["fs", "rt", "macros"] }
 home = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -41,10 +40,14 @@ tracing-appender = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { workspace = true }
-windows = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 security-framework = { workspace = true }
+
+[dev-dependencies]
+dotenvy = { workspace = true }
+tempfile = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros", "time"] }
 
 [[example]]
 name = "password_server"
@@ -52,3 +55,6 @@ name = "password_server"
 [package.metadata.docs.rs]
 default-target = "x86_64-unknown-linux-gnu"
 targets = ["x86_64-apple-darwin", "aarch64-apple-darwin", "x86_64-pc-windows-gnu"]
+
+[lints]
+workspace = true

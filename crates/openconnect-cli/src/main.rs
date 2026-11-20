@@ -79,14 +79,18 @@ fn main() {
             let files = std::fs::read_dir(log_path)
                 .expect("Failed to read log directory")
                 .flatten()
-                .filter(|f| f.metadata().unwrap().is_file())
-                .max_by_key(|f| f.metadata().unwrap().modified().unwrap());
+                .filter(|f| f.metadata().map(|m| m.is_file()).unwrap_or(false))
+                .max_by_key(|f| {
+                    f.metadata()
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                });
 
             if let Some(file) = files {
                 let file = std::fs::File::open(file.path()).expect("Failed to open log file");
                 let reader = std::io::BufReader::new(file);
-                for line in reader.lines() {
-                    println!("{}", line.unwrap());
+                for line in reader.lines().map_while(Result::ok) {
+                    println!("{}", line);
                 }
             } else {
                 println!("No log files found");
@@ -97,6 +101,17 @@ fn main() {
             crate::client::state::request_stop_server();
         }
 
+        Commands::InternalDaemon => {
+            daemon::prepare_daemon_process();
+            let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
+            runtime.block_on(async {
+                Logger::init().expect("Failed to initialize logger");
+                if let Err(e) = crate::server::start_daemon().await {
+                    tracing::error!("Failed to start daemon: {}", e);
+                }
+            });
+        }
+
         Commands::Start { name, config_file } => {
             sock::exit_when_socket_exists();
 
@@ -104,40 +119,26 @@ fn main() {
             sudo::escalate_if_needed().expect("Failed to escalate permissions");
 
             #[cfg(target_os = "linux")]
-            sudo::with_env(&["HOME"]).expect("Failed to escalate permissions"); // keep HOME env so that we can find the config file and vpnc script
+            sudo::with_env(&["HOME"]).expect("Failed to escalate permissions");
 
-            let config_file = config_file.map(PathBuf::from).unwrap_or(
-                StoredConfigs::getorinit_config_file().expect("Failed to get config file"),
-            );
+            let config_file = config_file.map(PathBuf::from).unwrap_or_else(|| {
+                StoredConfigs::getorinit_config_file().expect("Failed to get config file")
+            });
 
-            match daemon::daemonize() {
-                daemon::ForkResult::Parent => {
-                    println!();
-                    println!("===============================\n");
-                    println!("OpenConnect VPN CLI Client\n");
-                    println!("===============================\n");
-                    println!("Using Config file: {:?}", config_file);
-                    crate::client::state::request_start_server(name, config_file);
-                    println!("The process will be running in the background, you should use cli to interact with it.");
-                    std::process::exit(0);
-                }
-                daemon::ForkResult::Child => {
-                    std::process::exit(0);
-                }
-                daemon::ForkResult::Grandchild => {
-                    // Daemon process
-                }
+            if let Err(err) = daemon::spawn_detached_daemon() {
+                eprintln!("Failed to start background daemon: {}", err);
+                std::process::exit(1);
             }
 
-            let runtime = tokio::runtime::Runtime::new().expect("Failed to create runtime");
-
-            runtime.block_on(async {
-                Logger::init().expect("Failed to initialize logger");
-                let start_result = crate::server::start_daemon().await;
-                if let Err(e) = start_result {
-                    tracing::error!("Failed to start daemon: {}", e);
-                }
-            });
+            println!();
+            println!("===============================\n");
+            println!("OpenConnect VPN CLI Client\n");
+            println!("===============================\n");
+            println!("Using Config file: {:?}", config_file);
+            crate::client::state::request_start_server(name, config_file);
+            println!(
+                "The process will be running in the background, you should use cli to interact with it."
+            );
         }
     }
 }

@@ -9,14 +9,14 @@ use command::*;
 use openconnect_core::storage::StoredConfigs;
 use state::AppState;
 use system_tray::AppSystemTray;
-use tauri::Manager;
+use tauri::{Emitter, Manager, path::BaseDirectory};
 
 fn main() {
     let config_file = StoredConfigs::getorinit_config_file().expect("failed to get config file");
 
     #[cfg(target_os = "linux")]
     {
-        // TODO: add support for GUI escalation
+        // TODO: add support for Polkit/pkexec GUI escalation
         sudo::escalate_if_needed().unwrap();
     }
 
@@ -42,7 +42,6 @@ fn main() {
     #[cfg(target_os = "windows")]
     {
         use openconnect_core::elevator::windows::{elevate, is_elevated};
-        // get command of current execution
         let exe_path = std::env::current_exe().expect("failed to get current executable path");
         let exe_path = exe_path
             .to_str()
@@ -65,38 +64,34 @@ fn main() {
 
     let app_system_tray = AppSystemTray::new();
 
-    let app_system_tray_clone = app_system_tray.clone();
     let app = tauri::Builder::default()
-        .system_tray(app_system_tray.create_empty())
-        .on_system_tray_event(move |app, event| app_system_tray_clone.handle(app, event))
-        .register_uri_scheme_protocol("oidcvpn", |app, _req| {
-            println!("URI: {:?}", _req.uri());
-            let _app_state: tauri::State<'_, AppState> = app.state();
+        .plugin(tauri_plugin_os::init())
+        .plugin(tauri_plugin_shell::init())
+        .register_uri_scheme_protocol("oidcvpn", |ctx, req| {
+            let app = ctx.app_handle();
+            let uri = req.uri().to_string();
 
-            let window = app.get_window("main");
-            if let Some(window) = window {
-                let uri = _req.uri().to_string();
-                let _ = window.eval(format!("window.alert('URI: {}')", uri).as_str());
+            // Emit a structured JSON event instead of `window.eval(...)` to prevent JS injection.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.emit("oidcvpn-uri", uri);
             }
 
-            tauri::http::ResponseBuilder::new()
-                .header("Content-Type", "text/html")
+            tauri::http::Response::builder()
+                .header("Content-Type", "text/plain; charset=utf-8")
                 .status(200)
                 .body(b"Authenticated, close this window and return to the application.".to_vec())
+                .expect("valid static HTTP response")
         })
         .setup(move |app| {
             openconnect_core::log::Logger::init().expect("failed to init logger");
-            // This is to fully remove dock icon, temp disable
-            // #[cfg(target_os = "macos")]
-            // app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let vpnc_script = {
                 #[cfg(target_os = "windows")]
                 {
                     let resource_path = app
-                        .path_resolver()
-                        .resolve_resource("vpnc-script-win.js")
-                        .expect("failed to resolve resource");
+                        .path()
+                        .resolve("vpnc-script-win.js", BaseDirectory::Resource)
+                        .expect("failed to resolve vpnc-script-win.js resource");
 
                     dunce::canonicalize(resource_path)
                         .expect("failed to canonicalize path")
@@ -108,44 +103,40 @@ fn main() {
                 {
                     use std::os::unix::fs::PermissionsExt;
                     let resource_path = app
-                        .path_resolver()
-                        .resolve_resource("vpnc-script")
-                        .expect("failed to resolve resource");
+                        .path()
+                        .resolve("vpnc-script", BaseDirectory::Resource)
+                        .expect("failed to resolve vpnc-script resource");
 
                     let file = std::fs::OpenOptions::new()
                         .write(false)
                         .create(false)
                         .append(false)
                         .read(true)
-                        .open(resource_path.clone())
-                        .expect("failed to open file");
+                        .open(&resource_path)
+                        .expect("failed to open vpnc-script");
 
-                    let permissions = file.metadata().unwrap().permissions();
-                    let is_executable = permissions.mode() & 0o111 != 0;
-                    if !is_executable {
+                    let permissions = file.metadata()?.permissions();
+                    if permissions.mode() & 0o111 == 0 {
                         let mut permissions = permissions;
                         permissions.set_mode(0o755);
-                        file.set_permissions(permissions).unwrap();
+                        file.set_permissions(permissions)?;
                     }
 
                     resource_path.to_string_lossy().to_string()
                 }
             };
 
-            #[cfg(any(windows, target_os = "macos"))]
-            {
-                let window = app.get_window("main").expect("no main window");
-                window_shadows::set_shadow(&window, true).unwrap();
-            }
-            let app_handle = app.app_handle();
+            let app_handle = app.handle().clone();
+            app_system_tray.init_tray(&app_handle)?;
 
-            Ok(tauri::async_runtime::block_on(async {
+            tauri::async_runtime::block_on(async {
                 app_handle.manage(app_system_tray.clone());
-                AppState::handle_with_vpnc_script(app, &vpnc_script, config_file)
-                    .await
-                    .unwrap();
-                app_system_tray.recreate(&app_handle).await
-            })?)
+                AppState::handle_with_vpnc_script(app, &vpnc_script, config_file).await?;
+                app_system_tray.recreate(&app_handle).await?;
+                Ok::<(), Box<dyn std::error::Error>>(())
+            })?;
+
+            Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             disconnect,
@@ -158,7 +149,7 @@ fn main() {
             connect_with_oidc,
         ])
         .build(tauri::generate_context!())
-        .unwrap();
+        .expect("error while building tauri application");
 
     app.run(|app, event| {
         if let tauri::RunEvent::WindowEvent {
@@ -166,9 +157,9 @@ fn main() {
             event: tauri::WindowEvent::CloseRequested { api, .. },
             ..
         } = event
+            && let Some(win) = app.get_webview_window(label.as_str())
         {
-            let win = app.get_window(label.as_str()).unwrap();
-            win.hide().unwrap();
+            let _ = win.hide();
             api.prevent_close();
         }
     });

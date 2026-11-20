@@ -1,26 +1,22 @@
-use crate::{result::OpenconnectError, Status};
+use crate::{Status, result::OpenconnectError};
 use std::sync::Arc;
 
-/// Event handlers for the VPN client.
+/// Thread-safe event handlers for [`crate::VpnClient`].
 #[allow(clippy::type_complexity)]
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct EventHandlers {
-    pub(crate) handle_connection_state_change: Option<Arc<dyn Fn(Status)>>,
-    pub(crate) handle_peer_cert_invalid: Option<Arc<dyn Fn(&str) -> bool>>,
+    pub(crate) handle_connection_state_change: Option<Arc<dyn Fn(Status) + Send + Sync + 'static>>,
+    pub(crate) handle_peer_cert_invalid: Option<Arc<dyn Fn(&str) -> bool + Send + Sync + 'static>>,
 }
 
 impl EventHandlers {
     pub fn new() -> Self {
-        Self {
-            handle_connection_state_change: None,
-            handle_peer_cert_invalid: None,
-        }
+        Self::default()
     }
 
     pub fn with_handle_connection_state_change<F>(mut self, handler: F) -> Self
     where
-        F: Fn(Status),
-        F: Send + 'static,
+        F: Fn(Status) + Send + Sync + 'static,
     {
         self.handle_connection_state_change = Some(Arc::new(handler));
         self
@@ -28,17 +24,10 @@ impl EventHandlers {
 
     pub fn with_handle_peer_cert_invalid<F>(mut self, handler: F) -> Self
     where
-        F: Fn(&str) -> bool,
-        F: Send + 'static,
+        F: Fn(&str) -> bool + Send + Sync + 'static,
     {
         self.handle_peer_cert_invalid = Some(Arc::new(handler));
         self
-    }
-}
-
-impl Default for EventHandlers {
-    fn default() -> Self {
-        Self::new()
     }
 }
 

@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api";
+import { invoke } from "@tauri-apps/api/core";
 import { atom, useAtom } from "jotai";
 import { useCallback, useMemo } from "react";
 
@@ -9,7 +9,7 @@ export interface OidcServer {
   issuer: string;
   clientId: string;
   clientSecret?: string;
-  allowInsecure?: boolean,
+  allowInsecure?: boolean;
   updatedAt?: string;
 }
 
@@ -19,7 +19,7 @@ export interface PasswordServer {
   server: string;
   username: string;
   password: string;
-  allowInsecure?: boolean,
+  allowInsecure?: boolean;
   updatedAt?: string;
 }
 
@@ -43,9 +43,9 @@ export const useStoredConfigs = () => {
       (a, b) => b.updatedAt?.localeCompare(a.updatedAt ?? "") ?? 0
     );
     setServerList(configs.servers);
-    setSelectedName(configs.default ?? configs.servers[0].name);
+    setSelectedName(configs.default ?? configs.servers[0]?.name ?? null);
     setDefaultName(configs.default ?? null);
-  }, [setServerList, setSelectedName]);
+  }, [setServerList, setSelectedName, setDefaultName]);
 
   const selectedServer = useMemo(() => {
     return serverList?.find((server) => server.name === selectedName);

@@ -3,9 +3,24 @@ use std::str::FromStr;
 pub mod oidc_device;
 pub mod oidc_token;
 
-pub async fn obtain_cookie_by_oidc_token(server_url: &str, token: &str) -> Option<String> {
+/// Build an HTTP client suitable for OIDC discovery/token requests (disabling redirects
+/// per `openidconnect` 4.x SSRF guidance).
+pub(crate) fn build_oidc_http_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::ClientBuilder::new()
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+}
+
+/// Exchange an OIDC ID token for an OpenConnect session cookie.
+///
+/// TLS certificate verification is strictly enforced unless `allow_insecure` is explicitly `true`.
+pub async fn obtain_cookie_by_oidc_token(
+    server_url: &str,
+    token: &str,
+    allow_insecure: bool,
+) -> Option<String> {
     let client = reqwest::ClientBuilder::new()
-        .danger_accept_invalid_certs(true)
+        .danger_accept_invalid_certs(allow_insecure)
         .default_headers(reqwest::header::HeaderMap::new())
         .http1_allow_obsolete_multiline_headers_in_responses(true)
         .http1_allow_spaces_after_header_name_in_responses(true)
@@ -19,17 +34,18 @@ pub async fn obtain_cookie_by_oidc_token(server_url: &str, token: &str) -> Optio
         .ok()?;
 
     let mut url = reqwest::Url::from_str(server_url).ok()?;
-    if url.path().is_empty() {
-        url.set_path("auth")
+    if url.path().is_empty() || url.path() == "/" {
+        url.set_path("auth");
     }
-    let req_builder = client
+
+    let req = client
         .post(url)
         .header("Accept", "*/*")
         .header("User-Agent", "AnyConnect Compatible Client")
         .header("Content-Type", "application/x-www-form-urlencoded")
-        .bearer_auth(token);
-
-    let req = req_builder.build().ok()?;
+        .bearer_auth(token)
+        .build()
+        .ok()?;
 
     let res = client.execute(req).await.ok()?;
     if !res.status().is_success() {
@@ -46,5 +62,9 @@ pub async fn obtain_cookie_by_oidc_token(server_url: &str, token: &str) -> Optio
         .collect::<Vec<_>>()
         .join("; ");
 
-    Some(combined_cookie)
+    if combined_cookie.is_empty() {
+        None
+    } else {
+        Some(combined_cookie)
+    }
 }

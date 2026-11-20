@@ -10,27 +10,28 @@ on:
 
 jobs:
   build:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     steps:
-      - name: Install Package
-        uses: ConorMacBride/install-package@v1.1.0
-        with:
-          brew: libxml2 zlib openssl pkg-config automake libtool gettext zip
+      - name: Install Dependencies
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: "1"
+        run: |
+          brew install libxml2 zlib openssl@3 lz4 xz pkg-config automake autoconf libtool gettext
+          echo "OPENSSL_DIR=$(brew --prefix openssl@3)" >> "$GITHUB_ENV"
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4.0.2
+        uses: actions/setup-node@v4
         with:
-          node-version: ">=20"
+          node-version: "22"
 
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup PNPM
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@v4
         with:
           run_install: false
-          package_json_file: ./crates/openconnect-gui/package.json
-          version: 8
+          version: 12
 
       - name: Setup Rust
         uses: actions-rust-lang/setup-rust-toolchain@v1
@@ -42,7 +43,7 @@ jobs:
       - name: Build GUI
         run: |
           cd ./crates/openconnect-gui
-          pnpm install
+          pnpm install --frozen-lockfile
           pnpm tauri build
 
       - name: Build CLI
@@ -50,7 +51,7 @@ jobs:
           cargo build --release -p openconnect-cli
 
       - name: Upload
-        uses: actions/upload-artifact@v4.3.1
+        uses: actions/upload-artifact@v4
         with:
           name: openconnect-mac-x64
           path: |

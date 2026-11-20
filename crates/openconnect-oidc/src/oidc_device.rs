@@ -1,18 +1,28 @@
+use crate::build_oidc_http_client;
 use openidconnect::{
+    AdditionalProviderMetadata, AuthType, ClientId, ClientSecret, DeviceAuthorizationUrl,
+    EndpointMaybeSet, EndpointNotSet, EndpointSet, IssuerUrl, ProviderMetadata, TokenResponse,
     core::{
         CoreAuthDisplay, CoreClaimName, CoreClaimType, CoreClient, CoreClientAuthMethod,
-        CoreDeviceAuthorizationResponse, CoreGrantType, CoreJsonWebKey, CoreJsonWebKeyType,
-        CoreJsonWebKeyUse, CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm,
-        CoreJwsSigningAlgorithm, CoreResponseMode, CoreResponseType, CoreSubjectIdentifierType,
+        CoreDeviceAuthorizationResponse, CoreGrantType, CoreJsonWebKey,
+        CoreJweContentEncryptionAlgorithm, CoreJweKeyManagementAlgorithm, CoreResponseMode,
+        CoreResponseType, CoreSubjectIdentifierType,
     },
-    reqwest::async_http_client,
-    AdditionalProviderMetadata, AuthType, ClientId, ClientSecret, DeviceAuthorizationUrl,
-    IssuerUrl, ProviderMetadata, TokenResponse,
 };
 use std::{future::Future, time::Duration};
 
+type DeviceCoreClient = CoreClient<
+    EndpointSet,
+    EndpointSet,
+    EndpointNotSet,
+    EndpointNotSet,
+    EndpointMaybeSet,
+    EndpointMaybeSet,
+>;
+
 pub struct OpenIDDeviceAuth {
-    client: CoreClient,
+    client: DeviceCoreClient,
+    http_client: reqwest::Client,
 }
 
 #[derive(Clone, Debug, serde::Deserialize, serde::Serialize)]
@@ -31,9 +41,6 @@ type DeviceProviderMetadata = ProviderMetadata<
     CoreGrantType,
     CoreJweContentEncryptionAlgorithm,
     CoreJweKeyManagementAlgorithm,
-    CoreJwsSigningAlgorithm,
-    CoreJsonWebKeyType,
-    CoreJsonWebKeyUse,
     CoreJsonWebKey,
     CoreResponseMode,
     CoreResponseType,
@@ -65,11 +72,12 @@ pub enum OpenIDDeviceAuthError {
 impl OpenIDDeviceAuth {
     pub async fn new(config: OpenIDDeviceAuthConfig) -> Result<Self, OpenIDDeviceAuthError> {
         let issuer_url = IssuerUrl::new(config.issuer_url)?;
+        let http_client = build_oidc_http_client()
+            .map_err(|e| OpenIDDeviceAuthError::InitError(e.to_string()))?;
 
-        let provider_metadata =
-            DeviceProviderMetadata::discover_async(issuer_url, async_http_client)
-                .await
-                .map_err(|e| OpenIDDeviceAuthError::InitError(e.to_string()))?;
+        let provider_metadata = DeviceProviderMetadata::discover_async(issuer_url, &http_client)
+            .await
+            .map_err(|e| OpenIDDeviceAuthError::InitError(e.to_string()))?;
 
         let device_authorization_endpoint = provider_metadata
             .additional_metadata()
@@ -81,35 +89,22 @@ impl OpenIDDeviceAuth {
 
         let client =
             CoreClient::from_provider_metadata(provider_metadata, client_id, client_secret)
-                .set_device_authorization_uri(device_authorization_endpoint)
+                .set_device_authorization_url(device_authorization_endpoint)
                 .set_auth_type(AuthType::RequestBody);
 
-        Ok(OpenIDDeviceAuth { client })
+        Ok(OpenIDDeviceAuth {
+            client,
+            http_client,
+        })
     }
 
-    /// Exchange device token
-    ///
-    /// Example:
-    /// ```rust
-    /// let device_auth_response = openid_device_auth.exchange_device_token().await.unwrap();
-    /// let verification_url = device_auth_response.verification_uri();
-    /// let user_code = device_auth_response.user_code();
-    /// println!(
-    /// "Please visit {} and enter code {}",
-    ///   **verification_url,
-    /// . user_code.secret()
-    /// );
-    /// ```
     pub async fn exchange_device_token(
         &self,
     ) -> Result<CoreDeviceAuthorizationResponse, OpenIDDeviceAuthError> {
-        let device_auth_request = self
-            .client
-            .exchange_device_code()
-            .map_err(|e| OpenIDDeviceAuthError::ExchangeDeviceTokenError(e.to_string()))?;
+        let device_auth_request = self.client.exchange_device_code();
 
         let device_auth_response: CoreDeviceAuthorizationResponse = device_auth_request
-            .request_async(async_http_client)
+            .request_async(&self.http_client)
             .await
             .map_err(|e| OpenIDDeviceAuthError::ExchangeDeviceTokenError(e.to_string()))?;
 
@@ -120,24 +115,25 @@ impl OpenIDDeviceAuth {
         &mut self,
         device_auth_response: &CoreDeviceAuthorizationResponse,
         sleep_fn: S,
-        timout: Option<Duration>,
+        timeout: Option<Duration>,
     ) -> Result<String, OpenIDDeviceAuthError>
     where
         SF: Future<Output = ()>,
         S: Fn(Duration) -> SF,
     {
-        let token_response = self
+        let token_request = self
             .client
             .exchange_device_access_token(device_auth_response)
-            .request_async(async_http_client, sleep_fn, timout)
+            .map_err(|e| OpenIDDeviceAuthError::TokenExchangeError(e.to_string()))?;
+
+        let token_response = token_request
+            .request_async(&self.http_client, sleep_fn, timeout)
             .await
             .map_err(|e| OpenIDDeviceAuthError::TokenExchangeError(e.to_string()))?;
 
         let token = token_response
             .id_token()
-            .ok_or(OpenIDDeviceAuthError::TokenExchangeError(
-                "No ID token".to_string(),
-            ))?
+            .ok_or_else(|| OpenIDDeviceAuthError::TokenExchangeError("No ID token".to_string()))?
             .to_string();
 
         Ok(token)

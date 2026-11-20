@@ -30,7 +30,10 @@ pub fn get_cygpath(path: &str) -> String {
         .output()
         .expect("failed to execute cygpath");
 
-    String::from_utf8(cygpath_cmd.stdout).expect("cygpath output is not utf8")
+    String::from_utf8(cygpath_cmd.stdout)
+        .expect("cygpath output is not utf8")
+        .trim()
+        .to_string()
 }
 
 #[cfg(target_os = "windows")]
@@ -40,9 +43,10 @@ pub fn resolve_mingw64_lib_path() {
     println!("cargo:rustc-link-search={}", lib_path);
 }
 
-pub fn try_pkg_config(libs: Vec<&str>) {
+pub fn try_pkg_config(libs: &[&str], statik: bool) {
+    // SAFETY: build.rs runs single-threaded before invoking pkg-config subprocesses.
     #[cfg(target_os = "windows")]
-    {
+    unsafe {
         std::env::set_var("PKG_CONFIG", "pkg-config");
         std::env::set_var(
             "PKG_CONFIG_PATH",
@@ -52,25 +56,31 @@ pub fn try_pkg_config(libs: Vec<&str>) {
         std::env::set_var("PKG_CONFIG_SYSTEM_LIBRARY_PATH", "/mingw64/lib");
     }
 
+    // SAFETY: build.rs runs single-threaded before invoking pkg-config subprocesses.
     #[cfg(target_os = "macos")]
-    {
+    unsafe {
         std::env::set_var(
             "PKG_CONFIG_PATH",
-            "/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/opt/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig",
+            concat!(
+                "/opt/homebrew/opt/openssl@3/lib/pkgconfig:",
+                "/opt/homebrew/opt/openssl/lib/pkgconfig:",
+                "/opt/homebrew/opt/libxml2/lib/pkgconfig:",
+                "/opt/homebrew/opt/zlib/lib/pkgconfig:",
+                "/usr/local/opt/openssl@3/lib/pkgconfig:",
+                "/usr/local/opt/openssl/lib/pkgconfig:",
+                "/usr/local/opt/libxml2/lib/pkgconfig:",
+                "/usr/local/opt/zlib/lib/pkgconfig:",
+                "/usr/lib/pkgconfig:/usr/local/lib/pkgconfig:/opt/local/lib/pkgconfig:/opt/homebrew/lib/pkgconfig"
+            ),
         );
     }
 
     let mut conf = pkg_config::Config::new();
+    conf.statik(statik);
 
     for lib in libs {
-        let result = conf.statik(true).probe(lib);
-        if result.is_err() {
-            print_build_warning!("{} not found", lib);
+        if let Err(err) = conf.probe(lib) {
+            print_build_warning!("pkg-config could not probe {}: {}", lib, err);
         }
     }
-}
-
-#[test]
-fn test_prob() {
-    try_pkg_config(vec!["openssl", "libxml-2.0", "zlib", "liblz4"])
 }

@@ -1,42 +1,39 @@
 [package]
 name = "openconnect-gui"
-version = "0.1.5"
-description = "A Tauri App"
-authors = ["you"]
-edition = "2021"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
-[build-dependencies]
-tauri-build = { version = "1.5.1", features = [] }
-
-[dependencies]
-anyhow = { workspace = true }
-tauri = { version = "1.6.2", features = [ "os-all", "global-shortcut-all", "app-all", "window-all", "system-tray",
-    "macos-private-api",
-    "shell-open",
-    "icon-png"
-] }
-dotenvy = { workspace = true }
-lazy_static = { workspace = true }
-open = "5.1.2"
-openconnect-core = { path = "../../openconnect-core", version = "0.1.5" }
-openconnect-oidc = { path = "../../openconnect-oidc", version = "0.1.5" }
-openidconnect = { workspace = true }
-reqwest = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-sudo = { workspace = true }
-thiserror = { workspace = true }
-tokio = { workspace = true }
-libc = { workspace = true }
-url = { workspace = true }
-window-shadows = "0.2.2"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+homepage.workspace = true
+description = "Cross-platform OpenConnect VPN GUI client"
+license = "LGPL-2.1"
 
 [features]
-# This feature is used for production builds or when a dev server is not specified, DO NOT REMOVE!!
+default = ["native"]
+native = ["openconnect-core/native"]
+mock-ffi = ["openconnect-core/mock-ffi"]
 custom-protocol = ["tauri/custom-protocol"]
 
+[build-dependencies]
+tauri-build = { workspace = true }
+
+[dependencies]
+tauri = { workspace = true }
+tauri-plugin-os = { workspace = true }
+tauri-plugin-shell = { workspace = true }
+open = { workspace = true }
+openconnect-core = { path = "../../openconnect-core", version = "0.2.0", default-features = false }
+openconnect-oidc = { path = "../../openconnect-oidc", version = "0.2.0" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "sync", "time"] }
+
+[target.'cfg(unix)'.dependencies]
+sudo = { workspace = true }
+
 [target.'cfg(windows)'.dependencies]
-windows-sys = { workspace = true }
 dunce = { workspace = true }
+
+[lints]
+workspace = true

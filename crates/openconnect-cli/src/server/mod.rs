@@ -1,24 +1,26 @@
 use crate::{
-    client::state::{get_vpnc_script, StateError},
-    sock::{self, UnixDomainServer},
     JsonRequest, JsonResponse,
+    client::state::{StateError, get_vpnc_script},
+    sock::{self, UnixDomainServer},
 };
 use futures::{SinkExt, TryStreamExt};
 use openconnect_core::{
+    Connectable, Status, VpnClient,
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
-    Connectable, Status, VpnClient,
 };
 use std::sync::Arc;
 use tokio::{
     select,
-    signal::unix::{signal, SignalKind},
+    signal::unix::{SignalKind, signal},
     sync::RwLock,
 };
+use tokio_util::sync::CancellationToken;
 
 struct State {
     client: RwLock<Option<Arc<VpnClient>>>,
     server: UnixDomainServer,
+    shutdown: CancellationToken,
 }
 
 impl State {
@@ -26,6 +28,7 @@ impl State {
         Arc::new(State {
             client: RwLock::new(None),
             server,
+            shutdown: CancellationToken::new(),
         })
     }
 }
@@ -71,6 +74,27 @@ async fn connect_to_vpn_server(
 impl Acceptable for Arc<State> {
     async fn try_accept(self) {
         if let Ok((stream, _)) = self.server.listener.accept().await {
+            // Enforce peer credential authorization: only root (uid 0) or the invoking user may control the daemon.
+            match stream.peer_cred() {
+                Ok(cred) => {
+                    let peer_uid = cred.uid();
+                    if peer_uid != 0 && peer_uid != self.server.allowed_uid {
+                        tracing::warn!(
+                            "Rejected unauthorized Unix socket connection from uid {}",
+                            peer_uid
+                        );
+                        return;
+                    }
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        "Failed to read peer credentials; rejecting connection: {}",
+                        err
+                    );
+                    return;
+                }
+            }
+
             let (read, write) = stream.into_split();
             let mut framed_reader = sock::get_framed_reader::<JsonRequest>(read);
             let mut framed_writer = sock::get_framed_writer::<JsonResponse>(write);
@@ -112,9 +136,8 @@ impl Acceptable for Arc<State> {
                                         })
                                         .await;
 
-                                    unsafe {
-                                        libc::raise(libc::SIGTERM);
-                                    }
+                                    self.shutdown.cancel();
+                                    break;
                                 }
                             }
                         }
@@ -124,11 +147,9 @@ impl Acceptable for Arc<State> {
                             {
                                 let client = self.client.read().await;
                                 if let Some(ref client) = *client {
-                                    let server_name =
-                                        client.get_server_name().unwrap_or("".to_string());
+                                    let server_name = client.get_server_name().unwrap_or_default();
                                     client.disconnect();
 
-                                    // ignore send error
                                     let _ = framed_writer
                                         .send(JsonResponse::StopResult { name: server_name })
                                         .await;
@@ -137,9 +158,8 @@ impl Acceptable for Arc<State> {
                             {
                                 self.client.write().await.take();
                             }
-                            unsafe {
-                                libc::raise(libc::SIGTERM);
-                            }
+                            self.shutdown.cancel();
+                            break;
                         }
 
                         JsonRequest::Info => {
@@ -147,11 +167,9 @@ impl Acceptable for Arc<State> {
                             {
                                 let client = self.client.read().await;
                                 if let Some(client) = (*client).clone() {
-                                    let server_name =
-                                        client.get_server_name().unwrap_or("".to_string());
-                                    let server_url =
-                                        client.get_server_url().unwrap_or("".to_string());
-                                    let hostname = client.get_hostname().unwrap_or("".to_string());
+                                    let server_name = client.get_server_name().unwrap_or_default();
+                                    let server_url = client.get_server_url().unwrap_or_default();
+                                    let hostname = client.get_hostname().unwrap_or_default();
                                     let status = client.get_status();
                                     let info = client.get_info().ok().flatten().map(Box::new);
                                     let status = match status {
@@ -164,7 +182,6 @@ impl Acceptable for Arc<State> {
                                     }
                                     .to_string();
 
-                                    // ignore send error
                                     let _ = framed_writer
                                         .send(JsonResponse::InfoResult {
                                             server_name,
@@ -192,8 +209,11 @@ pub async fn start_daemon() -> anyhow::Result<()> {
     let state = State::new(server);
 
     loop {
-        let state = state.clone();
+        let state_cloned = state.clone();
         select! {
+            _ = state.shutdown.cancelled() => {
+                break;
+            }
             _ = sigquit.recv() => {
                 break;
             }
@@ -203,10 +223,15 @@ pub async fn start_daemon() -> anyhow::Result<()> {
             _ = sigterm.recv() => {
                 break;
             }
-            _ = state.try_accept() => {
+            _ = state_cloned.try_accept() => {
                 // noop
             }
         };
+    }
+
+    // Ensure any active client disconnects cleanly before exiting.
+    if let Some(client) = state.client.write().await.take() {
+        let _ = tokio::task::spawn_blocking(move || client.disconnect()).await;
     }
 
     Ok(())

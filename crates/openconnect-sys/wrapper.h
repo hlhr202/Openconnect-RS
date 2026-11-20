@@ -1,5 +1,6 @@
 #ifdef _WIN32
-#define SOCKET int
+#include <stdint.h>
+typedef uintptr_t SOCKET;
 #endif
 
 #include <config.h>

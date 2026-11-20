@@ -1,0 +1,114 @@
+name: CI Safety & Quality Gates
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  rust-safety-gates:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+          cache: true
+
+      - name: Install Valgrind
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Run mock-FFI unit & safety regression tests
+        run: |
+          cargo test -p openconnect-sys --no-default-features --features mock-ffi
+          cargo test -p openconnect-core --no-default-features --features mock-ffi
+          cargo test -p openconnect-oidc
+          cargo test -p openconnect-cli --no-default-features --features mock-ffi
+
+      - name: Strict Clippy (unsafe docs + warnings denied)
+        run: |
+          cargo clippy -p openconnect-core --no-default-features --features mock-ffi --all-targets -- -D warnings
+          cargo clippy -p openconnect-oidc --all-targets -- -D warnings
+          cargo clippy -p openconnect-cli --no-default-features --features mock-ffi --all-targets -- -D warnings
+
+      - name: ASan + UBSan check on C helper.c
+        run: |
+          gcc -g -O0 -fsanitize=address,undefined -fno-omit-frame-pointer \
+            -Icrates/openconnect-sys/c-src \
+            crates/openconnect-sys/c-src/helper.c \
+            fixtures/safety-audit/01_helper_c_stack_underflow.c \
+            -o /tmp/test_helper_asan
+          /tmp/test_helper_asan
+
+      - name: Valgrind leak & memory error check on FFI regression binary
+        run: |
+          TEST_BIN=$(cargo test -p openconnect-core --no-default-features --features mock-ffi --test ffi_safety_regression --no-run --message-format=json \
+            | python3 -c "import sys,json; print([json.loads(l)['executable'] for l in sys.stdin if '\"executable\":' in l and 'ffi_safety_regression' in l][-1])")
+          valgrind --leak-check=full --show-leak-kinds=definite --errors-for-leak-kinds=definite --error-exitcode=1 "$TEST_BIN" --test-threads=1
+
+  gui-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12
+
+      - name: Install & Build GUI frontend
+        working-directory: crates/openconnect-gui
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+
+      - name: Verify Tauri Rust & NPM package version parity
+        run: |
+          python3 - <<'PY'
+          import json, tomllib
+          with open("Cargo.lock", "rb") as f:
+              cargo_pkgs = {p["name"]: p["version"] for p in tomllib.load(f)["package"]}
+          with open("crates/openconnect-gui/node_modules/@tauri-apps/api/package.json") as f:
+              npm_api = json.load(f)["version"]
+          with open("crates/openconnect-gui/node_modules/@tauri-apps/plugin-os/package.json") as f:
+              npm_os = json.load(f)["version"]
+          with open("crates/openconnect-gui/node_modules/@tauri-apps/plugin-shell/package.json") as f:
+              npm_shell = json.load(f)["version"]
+          pairs = [
+              ("tauri", cargo_pkgs["tauri"], "@tauri-apps/api", npm_api),
+              ("tauri-plugin-os", cargo_pkgs["tauri-plugin-os"], "@tauri-apps/plugin-os", npm_os),
+              ("tauri-plugin-shell", cargo_pkgs["tauri-plugin-shell"], "@tauri-apps/plugin-shell", npm_shell),
+          ]
+          for r_name, r_ver, j_name, j_ver in pairs:
+              assert r_ver.split(".")[:2] == j_ver.split(".")[:2], f"Version mismatch: {r_name} ({r_ver}) vs {j_name} ({j_ver})"
+              print(f"OK: {r_name} ({r_ver}) == {j_name} ({j_ver})")
+          PY
+
+  gui-tauri-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Tauri v2 Linux system libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libsoup-3.0-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          cache: true
+
+      - name: Check & Clippy openconnect-gui (Tauri v2 + mock-ffi)
+        run: cargo clippy -p openconnect-gui --no-default-features --features mock-ffi --all-targets -- -D warnings

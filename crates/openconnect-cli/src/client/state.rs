@@ -1,14 +1,14 @@
-use crate::{sock, JsonRequest, JsonResponse};
+use crate::{JsonRequest, JsonResponse, sock};
 use colored::Colorize;
 use comfy_table::Table;
 use futures::TryStreamExt;
 use openconnect_core::{
+    Connectable, VpnClient,
     config::{ConfigBuilder, EntrypointBuilder, LogLevel},
     events::EventHandlers,
     log::Logger,
     result::OpenconnectError,
     storage::{OidcServer, PasswordServer, StoredConfigs, StoredServer},
-    Connectable, VpnClient,
 };
 use openconnect_oidc::{
     obtain_cookie_by_oidc_token,
@@ -100,7 +100,12 @@ pub async fn obtain_cookie_from_oidc_server(
         .exchange_token(&device_auth_response, tokio::time::sleep, None)
         .await?;
 
-    Ok(obtain_cookie_by_oidc_token(&oidc_server.server, &token).await)
+    Ok(obtain_cookie_by_oidc_token(
+        &oidc_server.server,
+        &token,
+        oidc_server.allow_insecure.unwrap_or(false),
+    )
+    .await)
 }
 
 pub fn request_get_status() {
@@ -127,43 +132,42 @@ pub fn request_get_status() {
                         } => {
                             let mut table = Table::new();
                             let mut rows = vec![
-                                vec![format!("Server Name"), server_name],
-                                vec![format!("Server URL"), server_url],
-                                vec![format!("Server IP"), hostname],
-                                vec![format!("Connection Status"), status],
+                                vec!["Server Name".to_string(), server_name],
+                                vec!["Server URL".to_string(), server_url],
+                                vec!["Server IP".to_string(), hostname],
+                                vec!["Connection Status".to_string(), status],
                             ];
 
                             if let Some(info) = info {
-                                let addr = info.addr.unwrap_or("".to_string());
-                                let netmask = info.netmask.unwrap_or("".to_string());
-                                let addr6 = info.addr6.unwrap_or("".to_string());
-                                let netmask6 = info.netmask6.unwrap_or("".to_string());
-                                let dns1 = info.dns[0].clone().unwrap_or("".to_string());
-                                let dns2 = info.dns[1].clone().unwrap_or("".to_string());
-                                let dns3 = info.dns[2].clone().unwrap_or("".to_string());
-                                let nbns1 = info.nbns[0].clone().unwrap_or("".to_string());
-                                let nbns2 = info.nbns[1].clone().unwrap_or("".to_string());
-                                let nbns3 = info.nbns[2].clone().unwrap_or("".to_string());
-                                let domain = info.domain.unwrap_or("".to_string());
-                                let proxy_pac = info.proxy_pac.unwrap_or("".to_string());
+                                let addr = info.addr.unwrap_or_default();
+                                let netmask = info.netmask.unwrap_or_default();
+                                let addr6 = info.addr6.unwrap_or_default();
+                                let netmask6 = info.netmask6.unwrap_or_default();
+                                let dns1 = info.dns[0].clone().unwrap_or_default();
+                                let dns2 = info.dns[1].clone().unwrap_or_default();
+                                let dns3 = info.dns[2].clone().unwrap_or_default();
+                                let nbns1 = info.nbns[0].clone().unwrap_or_default();
+                                let nbns2 = info.nbns[1].clone().unwrap_or_default();
+                                let nbns3 = info.nbns[2].clone().unwrap_or_default();
+                                let domain = info.domain.unwrap_or_default();
+                                let proxy_pac = info.proxy_pac.unwrap_or_default();
                                 let mtu = info.mtu.to_string();
-                                let gateway_addr =
-                                    info.gateway_addr.clone().unwrap_or("".to_string());
+                                let gateway_addr = info.gateway_addr.unwrap_or_default();
                                 let info_rows = vec![
-                                    vec![format!("IPv4 Address"), addr],
-                                    vec![format!("IPv4 Netmask"), netmask],
-                                    vec![format!("IPv6 Address"), addr6],
-                                    vec![format!("IPv6 Netmask"), netmask6],
-                                    vec![format!("DNS 1"), dns1],
-                                    vec![format!("DNS 2"), dns2],
-                                    vec![format!("DNS 3"), dns3],
-                                    vec![format!("NBNS 1"), nbns1],
-                                    vec![format!("NBNS 2"), nbns2],
-                                    vec![format!("NBNS 3"), nbns3],
-                                    vec![format!("Domain"), domain],
-                                    vec![format!("Proxy PAC"), proxy_pac],
-                                    vec![format!("MTU"), mtu],
-                                    vec![format!("Gateway Address"), gateway_addr],
+                                    vec!["IPv4 Address".to_string(), addr],
+                                    vec!["IPv4 Netmask".to_string(), netmask],
+                                    vec!["IPv6 Address".to_string(), addr6],
+                                    vec!["IPv6 Netmask".to_string(), netmask6],
+                                    vec!["DNS 1".to_string(), dns1],
+                                    vec!["DNS 2".to_string(), dns2],
+                                    vec!["DNS 3".to_string(), dns3],
+                                    vec!["NBNS 1".to_string(), nbns1],
+                                    vec!["NBNS 2".to_string(), nbns2],
+                                    vec!["NBNS 3".to_string(), nbns3],
+                                    vec!["Domain".to_string(), domain],
+                                    vec!["Proxy PAC".to_string(), proxy_pac],
+                                    vec!["MTU".to_string(), mtu],
+                                    vec!["Gateway Address".to_string(), gateway_addr],
                                 ];
 
                                 rows.extend(info_rows);
