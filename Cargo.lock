@@ -3255,7 +3255,7 @@ dependencies = [
 
 [[package]]
 name = "openconnect-cli"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
@@ -3282,7 +3282,7 @@ dependencies = [
 
 [[package]]
 name = "openconnect-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "base64 0.22.1",
  "chacha20poly1305",
@@ -3310,7 +3310,7 @@ dependencies = [
 
 [[package]]
 name = "openconnect-gui"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "dunce",
  "open",
@@ -3329,7 +3329,7 @@ dependencies = [
 
 [[package]]
 name = "openconnect-oidc"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "openidconnect",
  "reqwest 0.12.28",
@@ -3341,7 +3341,7 @@ dependencies = [
 
 [[package]]
 name = "openconnect-sys"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "bindgen",
  "cc",

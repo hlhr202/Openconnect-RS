@@ -1,14 +1,24 @@
+import { FC, PropsWithChildren, useEffect, useState } from "react";
+import { useKey } from "react-use";
+import { Settings2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
-  Button,
-  Divider,
   Select,
+  SelectContent,
   SelectItem,
-  useDisclosure,
-} from "@heroui/react";
-import { FC, PropsWithChildren, useEffect } from "react";
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
 import { ServerEditorModal } from "./ServerEditorModal";
 import { useStoredConfigs } from "./state";
-import { useKey } from "react-use";
+
+const isInteractiveTarget = (target: EventTarget | null): boolean => {
+  if (!(target instanceof HTMLElement)) return false;
+  return !!target.closest(
+    "input, textarea, select, [contenteditable='true'], [role='dialog'], [role='listbox']"
+  );
+};
 
 export const ServerSelector = () => {
   const {
@@ -19,11 +29,12 @@ export const ServerSelector = () => {
     setSelectedName,
   } = useStoredConfigs();
 
-  const { isOpen, onOpen, onOpenChange } = useDisclosure();
+  const [isOpen, setIsOpen] = useState(false);
 
   useKey(
     "Tab",
     (evt) => {
+      if (isOpen || isInteractiveTarget(evt.target)) return;
       evt.preventDefault();
       if (serverList.length) {
         const currentIndex = serverList.findIndex(
@@ -38,16 +49,17 @@ export const ServerSelector = () => {
       }
     },
     undefined,
-    [serverList, selectedName, setSelectedName]
+    [isOpen, serverList, selectedName, setSelectedName]
   );
 
   useKey(
     "m",
-    () => {
-      onOpen();
+    (evt) => {
+      if (isOpen || isInteractiveTarget(evt.target)) return;
+      setIsOpen(true);
     },
     undefined,
-    [onOpen]
+    [isOpen]
   );
 
   useEffect(() => {
@@ -55,35 +67,45 @@ export const ServerSelector = () => {
   }, [getStoredConfigs]);
 
   return (
-    <section className="h-full w-full flex flex-col">
-      <div className="w-full flex">
+    <section className="flex h-full w-full flex-col">
+      <div className="flex w-full items-center gap-2">
         {!!serverList?.length && (
           <Select
-            size="md"
-            aria-label="VPN Server"
-            className="flex-1"
-            selectionMode="single"
-            selectedKeys={selectedName ? [selectedName] : []}
-            onSelectionChange={(keys) => {
-              const name = Array.from(keys as Set<string>)[0];
+            value={selectedName ?? ""}
+            onValueChange={(name) => {
               if (name) {
                 setSelectedName(name);
               }
             }}
           >
-            {serverList.map((server) => (
-              <SelectItem color="default" key={server.name}>
-                {server.name}
-              </SelectItem>
-            ))}
+            <SelectTrigger
+              aria-label="VPN Server"
+              className="h-9 flex-1 bg-background/50"
+            >
+              <SelectValue placeholder="Select a VPN server" />
+            </SelectTrigger>
+            <SelectContent position="popper">
+              {serverList.map((server) => (
+                <SelectItem key={server.name} value={server.name}>
+                  {server.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
           </Select>
         )}
-        <Button size="md" color="primary" className="ml-2" onPress={onOpen}>
+        <Button
+          type="button"
+          className="h-9 shrink-0"
+          onClick={() => setIsOpen(true)}
+        >
+          <Settings2 className="size-4" />
           Manage Server [M]
         </Button>
       </div>
-      <Divider className="mt-3 mb-3"></Divider>
-      <div className="flex flex-col gap-6 p-1">
+
+      <Separator className="my-4 bg-white/10" />
+
+      <div className="flex flex-col gap-5 px-1">
         <InfoRow label="Server Type">{selectedServer?.authType}</InfoRow>
         <InfoRow label="Server URL">{selectedServer?.server}</InfoRow>
         {selectedServer?.authType === "password" && (
@@ -102,8 +124,8 @@ export const ServerSelector = () => {
 
       <ServerEditorModal
         isOpen={isOpen}
-        onOpen={onOpen}
-        onOpenChange={onOpenChange}
+        onOpen={() => setIsOpen(true)}
+        onOpenChange={setIsOpen}
       />
     </section>
   );
@@ -111,10 +133,12 @@ export const ServerSelector = () => {
 
 const InfoRow: FC<PropsWithChildren<{ label: string }>> = (props) => {
   return (
-    <div className="flex gap-4">
-      <div className="w-[100px]">{props.label}:</div>
-      <Divider orientation="vertical" />
-      <div className="max-w-[400px] overflow-hidden text-ellipsis whitespace-nowrap">
+    <div className="flex items-center gap-4 text-sm">
+      <div className="w-[100px] shrink-0 text-muted-foreground">
+        {props.label}:
+      </div>
+      <Separator orientation="vertical" className="h-4 bg-white/15" />
+      <div className="min-w-0 flex-1 truncate text-foreground">
         {props.children}
       </div>
     </div>

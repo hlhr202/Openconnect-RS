@@ -22,7 +22,7 @@ crate-type = ["lib"]
 [dependencies]
 signal-hook = { workspace = true }
 libc = { workspace = true }
-openconnect-sys = { path = "../openconnect-sys", version = "0.3.0", default-features = false }
+openconnect-sys = { path = "../openconnect-sys", version = "0.3.1", default-features = false }
 thiserror = { workspace = true }
 base64 = { workspace = true }
 tokio = { workspace = true, features = ["fs", "rt", "macros"] }
