@@ -1,5 +1,2 @@
 allowBuilds:
   esbuild: true
-  "@heroui/shared-utils": true
-publicHoistPattern:
-  - "*@heroui/*"

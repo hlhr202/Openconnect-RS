@@ -1,18 +1,18 @@
-import {
-  Button,
-  Modal,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  Listbox,
-  ListboxItem,
-  Card,
-  CardBody,
-  ModalFooter,
-  Divider,
-} from "@heroui/react";
 import { useAtom } from "jotai";
 import { useState } from "react";
+import { Check, ClipboardPaste, Plus, Server } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 import { FormParams, ServerEditor } from "./ServerEditor";
 import { storedConfigsAtom } from "./state";
 import { decodeUtf8Base64 } from "./lib/base64";
@@ -28,10 +28,13 @@ export const ServerEditorModal = (props: IModalProps) => {
   const [serverList] = useAtom(storedConfigsAtom);
   const [selectedName, setSelectedName] = useState<string | null>(null);
   const [formParams, setFormParams] = useState<FormParams | null>(null);
-  const handleClose = () => {
-    setSelectedName(null);
-    setFormParams(null);
-    props.onOpenChange(false);
+
+  const handleOpenChange = (open: boolean) => {
+    if (!open) {
+      setSelectedName(null);
+      setFormParams(null);
+    }
+    props.onOpenChange(open);
   };
 
   const handlePaste = (base64: string) => {
@@ -50,99 +53,121 @@ export const ServerEditorModal = (props: IModalProps) => {
   };
 
   return (
-    <Modal
-      size="sm"
-      backdrop="blur"
-      shadow="lg"
-      hideCloseButton
-      isOpen={props.isOpen}
-      onOpenChange={props.onOpenChange}
-      onClose={handleClose}
-      className="min-w-[800px] min-h-[620px] dark bg-background text-foreground bg-opacity-90"
-    >
-      <ModalContent>
-        {(closeModal) => {
-          return (
-            <>
-              <ModalHeader className="select-none">Manager Servers</ModalHeader>
-              <ModalBody>
-                <div className="flex gap-4">
-                  <Button
-                    size="sm"
-                    color="secondary"
-                    className="flex-1"
-                    onPress={() => {
-                      navigator.clipboard
-                        .readText()
-                        .then(handlePaste)
-                        .catch(() => {});
-                    }}
-                  >
-                    Import config from clipboard
-                  </Button>
-                  <Button
-                    size="sm"
-                    color="primary"
-                    className="flex-1"
-                    onPress={() => {
-                      setSelectedName(null);
-                      setFormParams({ mode: "add" });
-                    }}
-                  >
-                    Add New Server Config
-                  </Button>
+    <Dialog open={props.isOpen} onOpenChange={handleOpenChange}>
+      <DialogContent
+        showCloseButton={false}
+        className="flex h-[620px] flex-col gap-0 overflow-hidden bg-background/95 p-0 backdrop-blur-xl sm:max-w-[800px]"
+      >
+        <DialogHeader className="border-b px-6 py-4">
+          <DialogTitle className="select-none text-lg">
+            Manage Servers
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            Add, import, edit, or delete VPN server configurations
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="flex min-h-0 flex-1 flex-col gap-4 px-6 py-4">
+          <div className="flex shrink-0 gap-3">
+            <Button
+              type="button"
+              size="sm"
+              variant="secondary"
+              className="flex-1"
+              onClick={() => {
+                navigator.clipboard
+                  .readText()
+                  .then(handlePaste)
+                  .catch(() => {});
+              }}
+            >
+              <ClipboardPaste className="size-4" />
+              Import config from clipboard
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              className="flex-1"
+              onClick={() => {
+                setSelectedName(null);
+                setFormParams({ mode: "add" });
+              }}
+            >
+              <Plus className="size-4" />
+              Add New Server Config
+            </Button>
+          </div>
+
+          <div className="flex min-h-0 flex-1 gap-4">
+            <div className="flex w-[220px] shrink-0 flex-col overflow-hidden rounded-xl border bg-card">
+              <div className="px-3.5 py-2.5 text-xs font-medium text-muted-foreground select-none">
+                Server List
+              </div>
+              <Separator />
+              <ScrollArea className="min-h-0 flex-1">
+                <div
+                  role="listbox"
+                  aria-label="Server List"
+                  className="flex flex-col gap-1 p-2"
+                >
+                  {serverList.length === 0 ? (
+                    <div className="px-2 py-6 text-center text-xs text-muted-foreground">
+                      No servers configured
+                    </div>
+                  ) : (
+                    serverList.map((server) => {
+                      const isSelected = selectedName === server.name;
+                      return (
+                        <button
+                          key={server.name}
+                          type="button"
+                          role="option"
+                          aria-selected={isSelected}
+                          onClick={() => {
+                            setSelectedName(server.name);
+                            setFormParams({ mode: "edit", name: server.name });
+                          }}
+                          className={cn(
+                            "flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-2 text-left text-sm transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring/50",
+                            isSelected
+                              ? "bg-primary text-primary-foreground font-medium"
+                              : "text-foreground/90 hover:bg-muted"
+                          )}
+                        >
+                          <span className="truncate">{server.name}</span>
+                          {isSelected && <Check className="size-4 shrink-0" />}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
-                <div className="flex gap-1 flex-1">
-                  <Card>
-                    <CardBody className="min-w-[200px] overflow-auto">
-                      <Listbox
-                        aria-label="Server List"
-                        variant="shadow"
-                        color="primary"
-                        disallowEmptySelection
-                        topContent={
-                          <>
-                            <span className="select-none p-1">Server List</span>
-                            <Divider />
-                          </>
-                        }
-                        selectedKeys={selectedName ? [selectedName] : []}
-                        selectionMode="single"
-                        onSelectionChange={(keys) => {
-                          const name = Array.from(keys as Set<string>)[0];
-                          if (name) {
-                            setSelectedName(name);
-                            setFormParams({ mode: "edit", name });
-                          } else {
-                            setSelectedName(null);
-                            setFormParams(null);
-                          }
-                        }}
-                      >
-                        {serverList.map((server) => (
-                          <ListboxItem key={server.name}>
-                            {server.name}
-                          </ListboxItem>
-                        ))}
-                      </Listbox>
-                    </CardBody>
-                  </Card>
-                  <Card className="flex-1 ml-5 min-h-full">
-                    <CardBody>
-                      {formParams && <ServerEditor {...formParams} />}
-                    </CardBody>
-                  </Card>
+              </ScrollArea>
+            </div>
+
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-xl border bg-card p-4">
+              {formParams ? (
+                <ServerEditor {...formParams} />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-center text-sm text-muted-foreground">
+                  <Server className="size-8 opacity-40" />
+                  <p>Select a server from the list or add a new configuration</p>
                 </div>
-              </ModalBody>
-              <ModalFooter>
-                <Button onPress={closeModal} size="sm" className="w-full">
-                  Close
-                </Button>
-              </ModalFooter>
-            </>
-          );
-        }}
-      </ModalContent>
-    </Modal>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="mx-0 mb-0 border-t px-6 py-3">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => handleOpenChange(false)}
+            className="w-full"
+          >
+            Close
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 };
