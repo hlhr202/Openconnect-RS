@@ -2,18 +2,30 @@ import { FC, PropsWithChildren } from "react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { hide } from "@tauri-apps/api/app";
 import { type as getOsType } from "@tauri-apps/plugin-os";
+import { Minus, Square, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 const TitleBarButton: FC<
-  PropsWithChildren<{ id: string; className?: string; onClick?: () => void }>
-> = ({ onClick, className, children, id }) => {
+  PropsWithChildren<{
+    id: string;
+    label: string;
+    className?: string;
+    onClick?: () => void;
+  }>
+> = ({ onClick, className, children, id, label }) => {
   return (
-    <div
+    <button
+      type="button"
       onClick={onClick}
       id={id}
-      className={`${className ?? ""} inline-flex justify-center items-center w-[45px] h-[38px] hover:bg-gray-400/20 transition-colors`}
+      aria-label={label}
+      className={cn(
+        "inline-flex h-10 w-11 items-center justify-center text-white/80 transition-colors outline-none hover:bg-white/10 hover:text-white focus-visible:bg-white/15 focus-visible:ring-2 focus-visible:ring-ring/50",
+        className
+      )}
     >
       {children}
-    </div>
+    </button>
   );
 };
 
@@ -43,44 +55,29 @@ export const TauriTitleBar = () => {
   return (
     <div
       data-tauri-drag-region
-      className="titlebar dark z-[51] h-[15vh] bg-gradient-to-b from-gray-700 to-transparent select-none flex justify-end fixed top-0 left-0 right-0 rounded-t-lg"
+      className="titlebar fixed top-0 right-0 left-0 z-[60] flex h-10 select-none items-center justify-end rounded-t-lg bg-gradient-to-b from-black/45 to-transparent"
     >
-      <TitleBarButton id="titlebar-minimize" onClick={minimize}>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="1.2em"
-          height="1.2em"
-          viewBox="0 0 24 24"
-        >
-          <path fill="white" d="M20 14H4v-4h16" />
-        </svg>
+      <TitleBarButton
+        id="titlebar-minimize"
+        label="Minimize window"
+        onClick={minimize}
+      >
+        <Minus className="size-4" />
       </TitleBarButton>
-      <TitleBarButton id="titlebar-maximize" onClick={maximize}>
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="1.2em"
-          height="1.2em"
-          viewBox="0 0 24 24"
-        >
-          <path fill="white" d="M4 4h16v16H4zm2 4v10h12V8z" />
-        </svg>
+      <TitleBarButton
+        id="titlebar-maximize"
+        label="Maximize window"
+        onClick={maximize}
+      >
+        <Square className="size-3.5" />
       </TitleBarButton>
       <TitleBarButton
         id="titlebar-hide"
+        label="Hide window"
         onClick={handleHide}
-        className="rounded-tr-lg"
+        className="rounded-tr-lg hover:bg-destructive/80"
       >
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          width="1.2em"
-          height="1.2em"
-          viewBox="0 0 24 24"
-        >
-          <path
-            fill="white"
-            d="M13.46 12L19 17.54V19h-1.46L12 13.46L6.46 19H5v-1.46L10.54 12L5 6.46V5h1.46L12 10.54L17.54 5H19v1.46z"
-          />
-        </svg>
+        <X className="size-4" />
       </TitleBarButton>
     </div>
   );

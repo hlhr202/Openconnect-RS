@@ -1,27 +1,21 @@
-import {
-  HeroUIProvider,
-  Button,
-  Card,
-  CardBody,
-  CardFooter,
-  CircularProgress,
-  Link,
-} from "@heroui/react";
-import { TauriTitleBar } from "./Titlebar";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import { atom, useAtom } from "jotai";
+import { ToastContainer } from "react-toastify";
+import Lottie from "lottie-react";
+import { useKey } from "react-use";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardFooter } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
+import { TauriTitleBar } from "./Titlebar";
 import { ServerSelector } from "./ServerSelector";
 import bg from "./assets/bg.jpeg";
 import { useStoredConfigs } from "./state";
 import { toastError, toastSuccess } from "./lib/toast";
-import { ToastContainer } from "react-toastify";
 import connected from "./assets/connected-animate.json";
-import Lottie from "lottie-react";
 import { AboutModal } from "./About";
 import { CertPromptModal } from "./CertPromptModal";
-import { useKey } from "react-use";
 
 enum EStatus {
   Initialized = "INITIALIZED",
@@ -83,7 +77,15 @@ function App() {
 
   useKey(
     "Enter",
-    () => {
+    (evt) => {
+      if (
+        isAboutOpened ||
+        document.querySelector("[role='dialog']") ||
+        (evt.target instanceof HTMLElement &&
+          evt.target.closest("input, textarea, select, button, [role='listbox']"))
+      ) {
+        return;
+      }
       if (vpnStatus.status === EStatus.Connected) {
         handleDisconnect();
       } else if (selectedServer) {
@@ -91,7 +93,7 @@ function App() {
       }
     },
     undefined,
-    [vpnStatus, selectedServer, handleConnect, handleDisconnect]
+    [isAboutOpened, vpnStatus, selectedServer, handleConnect, handleDisconnect]
   );
 
   useEffect(() => {
@@ -113,34 +115,30 @@ function App() {
   }, []);
 
   return (
-    <HeroUIProvider>
+    <>
       <ToastContainer
         className="min-w-[600px]"
         theme="dark"
         hideProgressBar={false}
         autoClose={5000}
       />
-      <main className="dark border-none select-none text-foreground h-[100vh] flex justify-center flex-col items-center rounded-lg overflow-hidden">
-        <div className="fixed z-[-5] overflow-hidden w-full h-full rounded-lg">
+      <main className="dark relative flex h-screen flex-col items-center justify-center overflow-hidden rounded-lg border-none text-foreground select-none">
+        <div className="fixed inset-0 z-[-5] overflow-hidden rounded-lg">
           <img
             src={bg}
             alt="bg"
             style={{ objectFit: "cover" }}
-            className={`h-full w-full scale-[120%] transition-all duration-2000 brightness-60 contrast-70${
-              mounted ? " blur" : " blur-sm"
+            className={`h-full w-full scale-[120%] brightness-60 contrast-75 transition-all duration-[2000ms] ${
+              mounted ? "blur-md" : "blur-xs"
             }`}
           />
         </div>
         <TauriTitleBar />
-        <h1 className="font-thin pb-8 text-3xl select-none cursor-default [text-shadow:_0px_0px_10px_rgb(0_0_0_/_90%)]">
+        <h1 className="cursor-default pb-8 text-3xl font-light tracking-tight select-none [text-shadow:_0px_0px_10px_rgb(0_0_0_/_90%)]">
           Openconnect RS
         </h1>
-        <Card
-          isBlurred
-          shadow="lg"
-          className="max-w-[800px] min-w-[600px] max-h-[800px] min-h-[400px] dark:bg-default-100/70"
-        >
-          <CardBody>
+        <Card className="min-h-[400px] w-[620px] max-w-[800px] justify-between bg-card/75 shadow-2xl ring-white/10 backdrop-blur-xl">
+          <CardContent className="flex flex-1 flex-col pt-1">
             {(() => {
               switch (vpnStatus.status) {
                 case EStatus.Initialized:
@@ -149,45 +147,50 @@ function App() {
                   return <ServerSelector />;
                 case EStatus.Connecting:
                   return (
-                    <div className="flex flex-col w-full h-full items-center justify-center gap-5">
-                      <div className="flex gap-5 items-center">
-                        <CircularProgress color="success" />
-                        <span>Connecting...</span>
+                    <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-4">
+                      <div className="flex items-center gap-3">
+                        <Spinner className="size-6 text-emerald-400" />
+                        <span className="text-base">Connecting...</span>
                       </div>
-                      {vpnStatus.message && <p>{vpnStatus.message}</p>}
+                      {vpnStatus.message && (
+                        <p className="text-sm text-muted-foreground">
+                          {vpnStatus.message}
+                        </p>
+                      )}
                     </div>
                   );
 
                 case EStatus.Disconnecting:
                   return (
-                    <div className="flex w-full h-full items-center justify-center">
-                      <div className="flex gap-5 items-center">
-                        <CircularProgress color="success" />
-                        <span>Disconnecting...</span>
+                    <div className="flex h-full w-full flex-1 items-center justify-center">
+                      <div className="flex items-center gap-3">
+                        <Spinner className="size-6 text-emerald-400" />
+                        <span className="text-base">Disconnecting...</span>
                       </div>
                     </div>
                   );
 
                 case EStatus.Connected:
                   return (
-                    <div className="flex flex-col gap-5 w-full h-full items-center justify-center">
+                    <div className="flex h-full w-full flex-1 flex-col items-center justify-center gap-4">
                       {/* thanks https://lottiefiles.com/animations/trusted-sites-animation-dkgE4eMn7w */}
                       <Lottie
                         animationData={connected}
                         style={{ width: "100px", height: "100px" }}
                       />
-                      <div>Connected</div>
+                      <div className="text-base font-medium">Connected</div>
                     </div>
                   );
               }
             })()}
-          </CardBody>
-          <CardFooter className="justify-center">
+          </CardContent>
+          <CardFooter className="justify-center border-white/10 bg-black/15 py-4">
             {vpnStatus.status === EStatus.Connected && (
               <Button
-                color="primary"
-                className="m-3 w-[50%]"
-                onPress={handleDisconnect}
+                type="button"
+                size="lg"
+                className="w-1/2"
+                onClick={handleDisconnect}
               >
                 Disconnect [Enter]
               </Button>
@@ -196,28 +199,30 @@ function App() {
             vpnStatus.status === EStatus.Initialized ||
             vpnStatus.status === EStatus.Error ? (
               <Button
-                color="success"
-                className="m-3 w-full"
-                onPress={handleConnect}
+                type="button"
+                size="lg"
+                className="w-full bg-emerald-600 text-white hover:bg-emerald-500"
+                onClick={handleConnect}
               >
                 Connect [Enter]
               </Button>
             ) : null}
           </CardFooter>
         </Card>
-        <div className="font-thin mt-10 text-xs select-none cursor-default">
+        <div className="mt-10 cursor-default text-xs font-light text-white/80 select-none">
           Source codes license - LGPL
         </div>
-        <div className="font-thin mt-1 text-xs select-none cursor-default">
+        <div className="mt-1 cursor-default text-xs font-light text-white/80 select-none">
           Copyright @2024 hlhr202{" "}
         </div>
-        <div className="font-thin mt-1 text-xs select-none cursor-pointer">
-          <Link
-            className="text-white underline text-xs"
-            onPress={() => setIsAboutOpened(true)}
+        <div className="mt-1 text-xs font-light select-none">
+          <button
+            type="button"
+            className="cursor-pointer rounded-xs text-xs text-white underline underline-offset-4 outline-none hover:text-white/80 focus-visible:ring-2 focus-visible:ring-ring/50"
+            onClick={() => setIsAboutOpened(true)}
           >
             About this App
-          </Link>
+          </button>
         </div>
         <CertPromptModal />
         <AboutModal
@@ -226,7 +231,7 @@ function App() {
           onOpenChange={setIsAboutOpened}
         />
       </main>
-    </HeroUIProvider>
+    </>
   );
 }
 
